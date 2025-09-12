@@ -4,45 +4,69 @@
       {
         "id": 1,
         "title": "Initialize Project Structure and Core Infrastructure",
-        "description": "Set up the complete development environment with separate backend and frontend folders, initialize TypeScript configurations, and establish the foundational project structure as defined in the architecture documentation.",
-        "details": "Create backend/ and frontend/ directories. Initialize backend with NestJS CLI using TypeScript template. Set up frontend with Vite + React + TypeScript template. Configure PostgreSQL database with Docker Compose setup matching the architecture. Install and configure Prisma ORM with the complete schema from architecture.md. Set up ESLint, Prettier, and pre-commit hooks for both projects. Create environment configuration files (.env.example, .env.local) with all required variables. Initialize Git repository structure with proper .gitignore files. Configure Docker Compose with PostgreSQL 17-alpine and backend service definitions. Set up basic logging with Winston as specified in architecture.",
-        "testStrategy": "Verify both frontend and backend start without errors. Confirm database connection works. Test environment variable loading. Validate linting and formatting rules work correctly. Ensure Docker containers start and communicate properly.",
-        "priority": "high",
-        "dependencies": [],
+        "description": "Set up a Next.js 15 monorepo with App Router, Turbopack, TypeScript, Tailwind CSS, shadcn/ui components, and Turborepo structure. Configure PostgreSQL with Prisma, implement authentication with NextAuth.js v5, and establish development tooling.",
         "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "details": "Initialize Next.js 15 project using pnpm create next-app@latest with TypeScript, Tailwind CSS, App Router, and Turbopack. Set up monorepo structure with Turborepo containing apps/web and packages (shared, database, ui). Configure PostgreSQL database with Docker Compose using PostgreSQL 17. Implement database layer with Prisma ORM including complete schema from architecture.md. Set up NextAuth.js v5 (Auth.js) with Prisma adapter for authentication. Install and configure shadcn/ui components. Configure ESLint, Prettier, Husky git hooks, and lint-staged. Set up environment configuration (.env.example, .env.local) with all required variables for Next.js and database. Initialize proper .gitignore and establish Git repository structure. Configure TanStack Query for server state management. Set up development scripts and build pipeline with Turborepo.",
+        "testStrategy": "Verify Next.js development server starts without errors on port 3000. Confirm database connection works via Prisma Studio. Test authentication flow with NextAuth.js login/logout. Validate Tailwind CSS and shadcn/ui components render correctly. Ensure TypeScript compilation passes with strict mode. Test monorepo build pipeline with Turborepo. Verify environment variable loading works correctly.",
         "subtasks": [
           {
             "id": 1,
-            "title": "Initialize backend with Node.js and TypeScript",
-            "description": "Set up Node.js backend project with Express, TypeScript configuration, and development tooling",
-            "details": "Create backend/ directory. Run npm init and install core dependencies: express, typescript, @types/node, @types/express, ts-node, nodemon. Configure tsconfig.json with strict mode, ES2022 target, and proper module resolution. Set up nodemon.json for development with TypeScript support. Create src/server.ts with basic Express server and health check endpoint. Configure package.json scripts for dev, build, and start commands. Set up proper folder structure: controllers/, services/, middleware/, routes/, utils/, types/.",
+            "title": "Initialize Next.js 15 project with monorepo structure",
+            "description": "Set up Next.js 15 with App Router, TypeScript, Tailwind CSS, Turbopack and configure Turborepo monorepo structure",
             "status": "pending",
             "dependencies": [],
-            "parentTaskId": 1
+            "details": "Run pnpm create next-app@latest r-worktime --typescript --tailwind --app --turbopack to create base Next.js project. Initialize Turborepo with pnpm add -D turbo and create turborepo.json configuration. Set up monorepo structure: apps/web/ for Next.js app, packages/shared/ for types and utilities, packages/database/ for Prisma client, packages/ui/ for shared UI components. Configure root package.json with workspaces and turbo scripts. Create proper tsconfig.json files for each workspace with path mapping. Set up pnpm-workspace.yaml to define workspace packages.",
+            "testStrategy": ""
           },
           {
             "id": 2,
-            "title": "Create React frontend with Vite and TypeScript",
-            "description": "Initialize React frontend application using Vite build tool with TypeScript and Material-UI setup",
-            "details": "Create frontend/ directory. Run npm create vite@latest with React and TypeScript template. Install Material-UI dependencies: @mui/material, @mui/icons-material, @emotion/react, @emotion/styled. Configure tsconfig.json for React with jsx: react-jsx. Set up vite.config.ts with proxy configuration for backend API (proxy /api to localhost:3001). Install additional dependencies: axios, zustand, @tanstack/react-query, react-dropzone. Create src folder structure: components/, pages/, services/, store/, hooks/, utils/, types/. Set up basic App.tsx with Material-UI ThemeProvider.",
+            "title": "Configure PostgreSQL and Prisma database layer",
+            "description": "Set up PostgreSQL with Docker Compose and implement complete Prisma schema with migrations",
             "status": "pending",
-            "dependencies": [],
-            "parentTaskId": 1
+            "dependencies": [
+              1
+            ],
+            "details": "Create docker-compose.yml with PostgreSQL 17-alpine service, including health checks and volume persistence. Set up packages/database with Prisma client and complete schema from architecture.md including User, UserSettings, TimeEntry, ImportLog models with all relationships, indexes, and constraints. Configure proper database connection with DATABASE_URL and DATABASE_URL_UNPOOLED for connection pooling. Generate Prisma client and create initial migration. Set up database seeding script for development with default admin user. Create weekly_overtime_summary materialized view for performance optimization.",
+            "testStrategy": ""
           },
           {
             "id": 3,
-            "title": "Set up Docker and PostgreSQL database",
-            "description": "Configure Docker Compose with PostgreSQL database and necessary environment setup",
-            "details": "Create docker-compose.yml in project root with PostgreSQL 14-alpine service. Configure database with environment variables: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB. Set up volume for data persistence. Add adminer service for database management UI on port 8080. Create .env.example with all required environment variables documented. Configure DATABASE_URL for Prisma connection. Ensure database is accessible on port 5432. Add health check configuration for database service. Create init scripts directory for database initialization if needed.",
+            "title": "Implement NextAuth.js v5 authentication system",
+            "description": "Set up NextAuth.js v5 (Auth.js) with Prisma adapter and credentials provider for user authentication",
+            "status": "pending",
+            "dependencies": [
+              2
+            ],
+            "details": "Install next-auth@beta and @auth/prisma-adapter. Configure NextAuth.js in apps/web/auth.ts with Prisma adapter connection. Set up credentials provider for email/password authentication with bcrypt password hashing. Create authentication API routes in app/api/auth/[...nextauth]/route.ts. Implement session middleware and protect API routes. Configure JWT strategy with 30-day expiration. Set up authentication context and session providers for client components. Create login/logout components using NextAuth signIn/signOut functions. Configure environment variables: NEXTAUTH_URL, NEXTAUTH_SECRET.",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Setup UI layer with shadcn/ui and configure development tools",
+            "description": "Install shadcn/ui components, configure development tooling with ESLint, Prettier, and Git hooks",
+            "status": "pending",
+            "dependencies": [
+              3
+            ],
+            "details": "Run pnpm dlx shadcn-ui@latest init to setup shadcn/ui in apps/web with Tailwind CSS configuration. Install core shadcn/ui components: button, input, label, card, dialog, dropdown-menu, toast. Set up packages/ui as shared component library with Tailwind CSS and Radix UI dependencies. Configure ESLint with next/core-web-vitals, TypeScript rules, and Prettier integration. Set up Prettier configuration with consistent formatting rules (2 spaces, single quotes). Install and configure Husky and lint-staged for pre-commit hooks. Set up Turborepo build pipeline scripts in package.json files. Install TanStack Query and React Hook Form with Zod validation. Create .env.example with all required environment variables documented.",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Set up PostgreSQL with Docker and Prisma",
+            "description": "Configure PostgreSQL database using Docker Compose and initialize Prisma ORM",
+            "details": "Create docker-compose.yml with PostgreSQL 17-alpine:\n- Set POSTGRES_USER=worktime_user\n- Set POSTGRES_PASSWORD via .env\n- Set POSTGRES_DB=worktime\n- Configure volume for data persistence\n- Add health check\nInstall Prisma: pnpm add -D prisma && pnpm add @prisma/client\nInitialize Prisma: pnpm prisma init\nMove Prisma to packages/database\nConfigure DATABASE_URL in .env\nSet up Prisma client singleton in packages/database",
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 1
           },
           {
-            "id": 4,
-            "title": "Configure ESLint, Prettier and Git hooks",
-            "description": "Set up code quality tools and pre-commit hooks for consistent code style",
-            "details": "Install ESLint and Prettier dependencies for both frontend and backend. Configure .eslintrc.js with TypeScript rules and React plugin for frontend. Set up .prettierrc with consistent formatting rules (2 spaces, single quotes, no semicolons). Install husky and lint-staged for pre-commit hooks. Configure pre-commit hook to run linting and formatting on staged files. Create .editorconfig for IDE consistency. Add format and lint scripts to both package.json files. Ensure ESLint and Prettier work together without conflicts.",
+            "id": 6,
+            "title": "Configure development tools and Git hooks",
+            "description": "Set up ESLint, Prettier, Husky, and lint-staged for code quality",
+            "details": "Install dev dependencies:\n- pnpm add -D eslint eslint-config-next @typescript-eslint/parser @typescript-eslint/eslint-plugin\n- pnpm add -D prettier prettier-plugin-tailwindcss\n- pnpm add -D husky lint-staged\nConfigure .eslintrc.json with Next.js and TypeScript rules\nCreate .prettierrc with Tailwind CSS plugin\nInitialize Husky: pnpm dlx husky-init && pnpm install\nSet up pre-commit hook with lint-staged\nConfigure VS Code settings in .vscode/settings.json",
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 1
@@ -95,18 +119,18 @@
         "subtasks": [
           {
             "id": 1,
-            "title": "Install authentication dependencies and create auth module",
-            "description": "Set up all required authentication packages and create the basic auth module structure",
-            "details": "Install packages: npm install bcrypt jsonwebtoken passport passport-jwt passport-local @types/bcrypt @types/passport-jwt. Create auth/ directory in backend/src. Create auth.module.ts, auth.service.ts, auth.controller.ts files. Set up JWT module configuration with secret and expiration time from environment. Create strategies/ folder for JWT and local strategies. Configure auth module imports and providers.",
+            "title": "Install and configure NextAuth.js v5",
+            "description": "Set up NextAuth.js v5 (Auth.js) with Prisma adapter for authentication",
+            "details": "Install dependencies:\n- pnpm add next-auth@beta @auth/prisma-adapter\n- pnpm add bcryptjs @types/bcryptjs\nCreate auth configuration file at app/lib/auth.ts\nSet up NextAuth with:\n- PrismaAdapter for database integration\n- Credentials provider for email/password\n- JWT strategy with 30-day maxAge\n- Session callbacks for user data\nConfigure environment variables:\n- NEXTAUTH_URL=http://localhost:3000\n- NEXTAUTH_SECRET (generate with: openssl rand -base64 32)\nCreate auth types in packages/shared/types/auth.ts",
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 3
           },
           {
             "id": 2,
-            "title": "Implement login/logout endpoints and JWT generation",
-            "description": "Create authentication endpoints with JWT token generation and validation",
-            "details": "Create POST /api/auth/login endpoint accepting username/password. Implement password validation using bcrypt.compare() with hashed password from database. Generate JWT token with user payload and 24h expiration (30d for remember me). Create POST /api/auth/logout endpoint to invalidate sessions. Implement refresh token mechanism for token renewal. Add GET /api/auth/me endpoint to get current user info. Return user data without password hash in responses.",
+            "title": "Create auth API routes and middleware",
+            "description": "Implement authentication API routes and middleware for route protection",
+            "details": "Create app/api/auth/[...nextauth]/route.ts:\n- Export GET and POST handlers from NextAuth\nCreate app/api/auth/register/route.ts:\n- POST endpoint for user registration\n- Hash password with bcryptjs (10 rounds)\n- Create user in database with Prisma\n- Return success response\nCreate middleware.ts in project root:\n- Protect dashboard routes (/dashboard/*)\n- Protect API routes (/api/* except /api/auth/*)\n- Redirect unauthenticated users to /login\nCreate auth helper functions:\n- getCurrentUser() server function\n- useSession() client hook wrapper",
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 3
@@ -127,56 +151,30 @@
         "subtasks": [
           {
             "id": 1,
-            "title": "Create file upload endpoint with multer middleware",
-            "description": "Implement the backend endpoint for handling file uploads with proper middleware configuration, file size limits, and error handling",
-            "dependencies": [],
-            "details": "Create POST /api/uploads/timing endpoint using multer middleware with 10MB file size limit. Configure multer for single file upload with file type validation (.json only). Add proper error handling for oversized files, invalid file types, and malformed requests. Include request logging and security headers. Implement temporary file storage with automatic cleanup after processing. Ensure proper CORS configuration for frontend requests.",
+            "title": "Create file upload API route with Next.js",
+            "description": "Implement file upload endpoint using Next.js 15 API routes with proper validation",
+            "details": "Create app/api/upload/route.ts:\n- POST handler using FormData API\n- Parse multipart/form-data with Next.js built-in support\n- Validate file size (max 10MB)\n- Validate file type (JSON only)\n- Parse and validate JSON structure\n- Use Zod schema for Timing export validation\nRequired fields: id, startDate, endDate, duration, project, activityTitle\nReturn preview data before actual import\nError handling with proper status codes",
             "status": "pending",
-            "testStrategy": "Unit tests for file size enforcement, MIME type validation, and error scenarios. Integration tests with actual file uploads including edge cases."
+            "dependencies": [],
+            "parentTaskId": 4
           },
           {
             "id": 2,
-            "title": "Build comprehensive JSON validation for Timing export format",
-            "description": "Create validation system to verify uploaded JSON files match expected Timing export structure and contain valid data",
-            "dependencies": [
-              "4.1"
-            ],
-            "details": "Implement validation using Zod schemas based on architecture.md Timing export format. Validate required fields: id, startDate, endDate, duration, project, activityTitle. Check data types and constraints (positive duration, valid dates, string fields). Handle nested structures and arrays properly. Create detailed error messages for specific validation failures. Support both single entries and batch arrays. Add file hash generation for duplicate import detection.",
+            "title": "Implement ImportService with Prisma transactions",
+            "description": "Create service class for processing Timing exports with database transactions",
+            "details": "Create app/services/import.service.ts:\n- processTimingExport() method with Prisma $transaction\n- analyzeImport() for duplicate detection based on timingId\n- parseTimingEntry() to transform Timing format to TimeEntry\n- detectType() method for entry classification:\n  * 'Krankheit' → SICK\n  * 'Urlaub' → VACATION\n  * 'Feiertag' → HOLIDAY\n  * Default → WORK\n- Replace same-day entries in transaction\n- Generate ImportLog records with statistics\n- Return preview with affected dates and counts\nUse packages/shared/types for all type definitions",
             "status": "pending",
-            "testStrategy": "Test valid Timing JSON files pass validation. Verify invalid JSON structures are rejected with clear error messages. Test edge cases like empty files, malformed dates, and missing required fields."
+            "dependencies": [],
+            "parentTaskId": 4
           },
           {
             "id": 3,
-            "title": "Implement ImportService class with transaction-based processing",
-            "description": "Create core service class to handle the complete import pipeline with database transactions and error recovery",
-            "dependencies": [
-              "4.2"
-            ],
-            "details": "Build ImportService class following architecture.ts example with processTimingExport method. Implement transaction-based processing using Prisma $transaction. Create analyzeImport method for duplicate detection and preview generation. Add parseTimingEntry method to transform Timing data to TimeEntry format. Include comprehensive error handling for malformed JSON, invalid dates, and processing failures. Implement proper rollback mechanisms on transaction failures. Add import statistics tracking and logging.",
+            "title": "Create upload UI component with drag-and-drop",
+            "description": "Build React component for file upload with drag-and-drop support and preview",
+            "details": "Create app/components/upload/upload-zone.tsx:\n- Use react-dropzone or native HTML5 drag-and-drop\n- Show upload progress with shadcn/ui Progress\n- Display file validation errors with Toast\n- Show import preview before confirmation:\n  * Affected dates list\n  * New entries count\n  * Replaced entries count\n  * Warnings for duplicates\n- Use TanStack Query mutation for upload\n- Optimistic UI updates\n- Success/error notifications\nStyle with Tailwind CSS and shadcn/ui components",
             "status": "pending",
-            "testStrategy": "Test successful imports complete within transactions. Verify rollback behavior on failures. Test partial failure scenarios don't corrupt existing data. Validate import statistics are accurately tracked."
-          },
-          {
-            "id": 4,
-            "title": "Create duplicate detection and entry type classification system",
-            "description": "Implement logic to detect duplicate imports, classify entry types from project paths, and handle same-day entry replacements",
-            "dependencies": [
-              "4.3"
-            ],
-            "details": "Implement duplicate detection based on timingId and date combinations. Create detectType method to classify entries as WORK, VACATION, SICK, or HOLIDAY from project paths (German keywords: 'Krankheit', 'Urlaub', 'Feiertag'). Build replacement logic for same-day entries that removes existing entries before inserting new ones. Add support for billable/non-billable classification. Implement extractProjectName and extractTime helper methods. Create comprehensive logging for all classification decisions.",
-            "status": "pending",
-            "testStrategy": "Test duplicate imports are properly detected and handled. Verify entry type classification works correctly for different German project path patterns. Confirm same-day replacement logic maintains data integrity."
-          },
-          {
-            "id": 5,
-            "title": "Build import preview and logging system",
-            "description": "Create preview functionality and comprehensive ImportLog records for tracking all import operations",
-            "dependencies": [
-              "4.4"
-            ],
-            "details": "Implement preview functionality showing affected dates, new/replaced entries count, and warnings before actual import. Create ImportLog model records with fileName, fileHash, importDate, affectedDates, and statistics (replacedEntries, newEntries, skippedEntries). Add import status tracking (SUCCESS, PARTIAL, FAILED) with detailed error messages. Build user-friendly preview interface data with warnings for large replacements or data inconsistencies. Include metadata storage for additional import context and debugging information.",
-            "status": "pending",
-            "testStrategy": "Test preview accurately shows import impact before processing. Verify ImportLog records capture all processing statistics correctly. Confirm warning system alerts users to potential data issues."
+            "dependencies": [],
+            "parentTaskId": 4
           }
         ]
       },
@@ -194,9 +192,18 @@
         "subtasks": [
           {
             "id": 1,
-            "title": "Create overtime calculation service with daily/weekly logic",
-            "description": "Build core calculation service for computing overtime balances",
-            "details": "Create services/overtime/overtime.service.ts file. Implement calculateDailyBalance method (actual - target hours). Build calculateWeeklyBalance aggregating daily balances. Create calculateMonthlyBalance for monthly summaries. Add support for different time entry types (WORK, VACATION, SICK). Implement weekend overtime rules (100% overtime on weekends). Add 15-minute precision rounding (Math.round(hours * 4) / 4). Create helper methods for date range queries.",
+            "title": "Create OvertimeService with calculation logic",
+            "description": "Build service for calculating overtime balances with caching",
+            "details": "Create app/services/overtime.service.ts:\n- calculateBalance(userId, startDate?, endDate?) main method\n- Use Prisma to fetch TimeEntry records\n- Compare actual hours vs UserSettings.weeklyHours\n- Handle different entry types:\n  * WORK: Count as worked hours\n  * VACATION/SICK: Count as target hours\n  * HOLIDAY: Skip from calculation\n- 15-minute precision: Math.round(hours * 4) / 4\n- Implement in-memory caching with 5-minute TTL\n- invalidateCache() on data changes\nCreate API route app/api/statistics/overtime/route.ts\nReturn format: { balance: number, details: {...} }",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 5
+          },
+          {
+            "id": 2,
+            "title": "Create weekly and monthly statistics API routes",
+            "description": "Build API endpoints for weekly and monthly overtime statistics",
+            "details": "Create app/api/statistics/weekly/route.ts:\n- GET handler with year and week parameters\n- Aggregate daily entries by week\n- Calculate weekly overtime (actual - target)\n- Return daily breakdown and weekly total\n\nCreate app/api/statistics/monthly/route.ts:\n- GET handler with year and month parameters\n- Aggregate entries by month\n- Include billable vs non-billable hours\n- Return weekly breakdown within month\n\nBoth routes use OvertimeService for calculations\nAdd proper TypeScript types in packages/shared/types/statistics.ts\nUse Server Components where possible for caching",
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 5
@@ -217,27 +224,27 @@
         "subtasks": [
           {
             "id": 1,
-            "title": "Create authentication components and context",
-            "description": "Build login/logout UI and authentication state management",
-            "details": "Create AuthContext with useAuth hook for global auth state. Build LoginPage component with Material-UI form (TextField, Button). Implement form validation with error messages. Create PrivateRoute component for protected routes. Set up axios interceptor to add JWT token to requests. Handle 401 responses with redirect to login. Store token in localStorage or httpOnly cookie. Create logout functionality that clears auth state.",
+            "title": "Create authentication pages and components",
+            "description": "Build login, register, and auth-related UI components using Next.js and shadcn/ui",
+            "details": "Create app/(auth)/login/page.tsx:\n- Server Component with form using Server Actions\n- shadcn/ui Form with react-hook-form\n- Email and password fields with validation\n- \"Remember me\" checkbox\n- Link to register page\n\nCreate app/(auth)/register/page.tsx:\n- Registration form with email, password, confirm password\n- Client-side validation with Zod\n- Server Action for user creation\n- Auto-login after registration\n\nCreate app/components/layout/user-menu.tsx:\n- Display current user email\n- Logout button with signOut() from NextAuth\n- User settings link",
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 6
           },
           {
             "id": 2,
-            "title": "Build main dashboard with overtime balance display",
-            "description": "Create the main dashboard component showing current overtime balance and statistics",
-            "details": "Create DashboardPage component with Material-UI Grid layout. Build BalanceCard component with large number display for total balance. Implement color coding: green (positive), red (negative), gray (zero). Add secondary cards for week and month statistics. Use TanStack Query for data fetching with auto-refresh. Implement loading skeletons during data fetch. Add last update timestamp with relative time (e.g., '2 hours ago'). Create responsive breakpoints for mobile/tablet/desktop views.",
+            "title": "Build main dashboard with overtime display",
+            "description": "Create dashboard page showing overtime balance and key statistics",
+            "details": "Create app/(dashboard)/dashboard/page.tsx:\n- Server Component fetching initial data\n- Display cards using shadcn/ui Card component:\n  * Overtime balance (large number, color-coded)\n  * This week's balance\n  * This month's balance\n  * Last import date\n\nCreate app/components/dashboard/overtime-card.tsx:\n- Client Component with live updates via TanStack Query\n- Color coding: green (positive), red (negative)\n- Loading skeleton while fetching\n- Refresh button with mutation\n\nCreate app/components/dashboard/stats-grid.tsx:\n- Responsive grid layout with Tailwind\n- Statistical cards for weekly/monthly views\n- Charts using Recharts for trends",
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 6
           },
           {
             "id": 3,
-            "title": "Implement file upload component with drag-and-drop",
-            "description": "Create the file upload interface for Timing JSON exports",
-            "details": "Install and configure react-dropzone for drag-and-drop functionality. Create FileUploadZone component with visual feedback on drag over. Implement file validation (JSON only, max 10MB). Add upload progress bar using axios onUploadProgress. Create success/error notifications with Material-UI Snackbar. Show file preview with name and size before upload. Handle multiple file uploads sequentially. Add click-to-browse as fallback option. Style drop zone with dashed border and upload icon.",
+            "title": "Create weekly and entries view pages",
+            "description": "Build pages for viewing time entries and weekly breakdowns",
+            "details": "Create app/(dashboard)/entries/page.tsx:\n- Table view using shadcn/ui Table\n- Columns: Date, Start, End, Duration, Type, Project\n- Pagination with shadcn/ui Pagination\n- Filter by date range and type\n- Sort by columns\n- Delete entries with confirmation dialog\n\nCreate app/(dashboard)/statistics/weekly/page.tsx:\n- Week selector with navigation arrows\n- Daily breakdown table\n- Visual chart of daily hours\n- Week total and overtime calculation\n- Export to CSV button\n\nUse TanStack Table for advanced table features\nImplement virtual scrolling for large datasets\nAdd loading states and error boundaries",
             "status": "pending",
             "dependencies": [],
             "parentTaskId": 6

@@ -11,9 +11,41 @@ Create OvertimeService with methods for daily, weekly, monthly balance calculati
 Verify daily balance calculations match manual calculations. Test weekly and monthly aggregations sum correctly. Confirm cache improves query performance. Validate cache invalidation works after imports. Test overtime rules apply correctly for weekends. Ensure precision rounding maintains accuracy.
 
 # Subtasks:
-## 1. Create overtime calculation service with daily/weekly logic [pending]
+## 1. Create OvertimeService with calculation logic [pending]
 ### Dependencies: None
-### Description: Build core calculation service for computing overtime balances
+### Description: Build service for calculating overtime balances with caching
 ### Details:
-Create services/overtime/overtime.service.ts file. Implement calculateDailyBalance method (actual - target hours). Build calculateWeeklyBalance aggregating daily balances. Create calculateMonthlyBalance for monthly summaries. Add support for different time entry types (WORK, VACATION, SICK). Implement weekend overtime rules (100% overtime on weekends). Add 15-minute precision rounding (Math.round(hours * 4) / 4). Create helper methods for date range queries.
+Create app/services/overtime.service.ts:
+- calculateBalance(userId, startDate?, endDate?) main method
+- Use Prisma to fetch TimeEntry records
+- Compare actual hours vs UserSettings.weeklyHours
+- Handle different entry types:
+  * WORK: Count as worked hours
+  * VACATION/SICK: Count as target hours
+  * HOLIDAY: Skip from calculation
+- 15-minute precision: Math.round(hours * 4) / 4
+- Implement in-memory caching with 5-minute TTL
+- invalidateCache() on data changes
+Create API route app/api/statistics/overtime/route.ts
+Return format: { balance: number, details: {...} }
+
+## 2. Create weekly and monthly statistics API routes [pending]
+### Dependencies: None
+### Description: Build API endpoints for weekly and monthly overtime statistics
+### Details:
+Create app/api/statistics/weekly/route.ts:
+- GET handler with year and week parameters
+- Aggregate daily entries by week
+- Calculate weekly overtime (actual - target)
+- Return daily breakdown and weekly total
+
+Create app/api/statistics/monthly/route.ts:
+- GET handler with year and month parameters
+- Aggregate entries by month
+- Include billable vs non-billable hours
+- Return weekly breakdown within month
+
+Both routes use OvertimeService for calculations
+Add proper TypeScript types in packages/shared/types/statistics.ts
+Use Server Components where possible for caching
 

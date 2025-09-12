@@ -11,15 +11,40 @@ Install required packages: @nestjs/passport, @nestjs/jwt, passport-jwt, bcrypt. 
 Test successful login with valid credentials returns JWT token. Verify invalid credentials are rejected. Confirm protected routes require valid JWT. Test logout clears authentication state. Validate rate limiting blocks excessive requests. Ensure CORS allows only configured frontend origin.
 
 # Subtasks:
-## 1. Install authentication dependencies and create auth module [pending]
+## 1. Install and configure NextAuth.js v5 [pending]
 ### Dependencies: None
-### Description: Set up all required authentication packages and create the basic auth module structure
+### Description: Set up NextAuth.js v5 (Auth.js) with Prisma adapter for authentication
 ### Details:
-Install packages: npm install bcrypt jsonwebtoken passport passport-jwt passport-local @types/bcrypt @types/passport-jwt. Create auth/ directory in backend/src. Create auth.module.ts, auth.service.ts, auth.controller.ts files. Set up JWT module configuration with secret and expiration time from environment. Create strategies/ folder for JWT and local strategies. Configure auth module imports and providers.
+Install dependencies:
+- pnpm add next-auth@beta @auth/prisma-adapter
+- pnpm add bcryptjs @types/bcryptjs
+Create auth configuration file at app/lib/auth.ts
+Set up NextAuth with:
+- PrismaAdapter for database integration
+- Credentials provider for email/password
+- JWT strategy with 30-day maxAge
+- Session callbacks for user data
+Configure environment variables:
+- NEXTAUTH_URL=http://localhost:3000
+- NEXTAUTH_SECRET (generate with: openssl rand -base64 32)
+Create auth types in packages/shared/types/auth.ts
 
-## 2. Implement login/logout endpoints and JWT generation [pending]
+## 2. Create auth API routes and middleware [pending]
 ### Dependencies: None
-### Description: Create authentication endpoints with JWT token generation and validation
+### Description: Implement authentication API routes and middleware for route protection
 ### Details:
-Create POST /api/auth/login endpoint accepting username/password. Implement password validation using bcrypt.compare() with hashed password from database. Generate JWT token with user payload and 24h expiration (30d for remember me). Create POST /api/auth/logout endpoint to invalidate sessions. Implement refresh token mechanism for token renewal. Add GET /api/auth/me endpoint to get current user info. Return user data without password hash in responses.
+Create app/api/auth/[...nextauth]/route.ts:
+- Export GET and POST handlers from NextAuth
+Create app/api/auth/register/route.ts:
+- POST endpoint for user registration
+- Hash password with bcryptjs (10 rounds)
+- Create user in database with Prisma
+- Return success response
+Create middleware.ts in project root:
+- Protect dashboard routes (/dashboard/*)
+- Protect API routes (/api/* except /api/auth/*)
+- Redirect unauthenticated users to /login
+Create auth helper functions:
+- getCurrentUser() server function
+- useSession() client hook wrapper
 

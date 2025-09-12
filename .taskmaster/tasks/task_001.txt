@@ -3,35 +3,65 @@
 # Status: pending
 # Dependencies: None
 # Priority: high
-# Description: Set up the complete development environment with separate backend and frontend folders, initialize TypeScript configurations, and establish the foundational project structure as defined in the architecture documentation.
+# Description: Set up a Next.js 15 monorepo with App Router, Turbopack, TypeScript, Tailwind CSS, shadcn/ui components, and Turborepo structure. Configure PostgreSQL with Prisma, implement authentication with NextAuth.js v5, and establish development tooling.
 # Details:
-Create backend/ and frontend/ directories. Initialize backend with NestJS CLI using TypeScript template. Set up frontend with Vite + React + TypeScript template. Configure PostgreSQL database with Docker Compose setup matching the architecture. Install and configure Prisma ORM with the complete schema from architecture.md. Set up ESLint, Prettier, and pre-commit hooks for both projects. Create environment configuration files (.env.example, .env.local) with all required variables. Initialize Git repository structure with proper .gitignore files. Configure Docker Compose with PostgreSQL 17-alpine and backend service definitions. Set up basic logging with Winston as specified in architecture.
+Initialize Next.js 15 project using pnpm create next-app@latest with TypeScript, Tailwind CSS, App Router, and Turbopack. Set up monorepo structure with Turborepo containing apps/web and packages (shared, database, ui). Configure PostgreSQL database with Docker Compose using PostgreSQL 17. Implement database layer with Prisma ORM including complete schema from architecture.md. Set up NextAuth.js v5 (Auth.js) with Prisma adapter for authentication. Install and configure shadcn/ui components. Configure ESLint, Prettier, Husky git hooks, and lint-staged. Set up environment configuration (.env.example, .env.local) with all required variables for Next.js and database. Initialize proper .gitignore and establish Git repository structure. Configure TanStack Query for server state management. Set up development scripts and build pipeline with Turborepo.
 
 # Test Strategy:
-Verify both frontend and backend start without errors. Confirm database connection works. Test environment variable loading. Validate linting and formatting rules work correctly. Ensure Docker containers start and communicate properly.
+Verify Next.js development server starts without errors on port 3000. Confirm database connection works via Prisma Studio. Test authentication flow with NextAuth.js login/logout. Validate Tailwind CSS and shadcn/ui components render correctly. Ensure TypeScript compilation passes with strict mode. Test monorepo build pipeline with Turborepo. Verify environment variable loading works correctly.
 
 # Subtasks:
-## 1. Initialize backend with Node.js and TypeScript [pending]
+## 1. Initialize Next.js 15 project with monorepo structure [pending]
 ### Dependencies: None
-### Description: Set up Node.js backend project with Express, TypeScript configuration, and development tooling
+### Description: Set up Next.js 15 with App Router, TypeScript, Tailwind CSS, Turbopack and configure Turborepo monorepo structure
 ### Details:
-Create backend/ directory. Run npm init and install core dependencies: express, typescript, @types/node, @types/express, ts-node, nodemon. Configure tsconfig.json with strict mode, ES2022 target, and proper module resolution. Set up nodemon.json for development with TypeScript support. Create src/server.ts with basic Express server and health check endpoint. Configure package.json scripts for dev, build, and start commands. Set up proper folder structure: controllers/, services/, middleware/, routes/, utils/, types/.
+Run pnpm create next-app@latest r-worktime --typescript --tailwind --app --turbopack to create base Next.js project. Initialize Turborepo with pnpm add -D turbo and create turborepo.json configuration. Set up monorepo structure: apps/web/ for Next.js app, packages/shared/ for types and utilities, packages/database/ for Prisma client, packages/ui/ for shared UI components. Configure root package.json with workspaces and turbo scripts. Create proper tsconfig.json files for each workspace with path mapping. Set up pnpm-workspace.yaml to define workspace packages.
 
-## 2. Create React frontend with Vite and TypeScript [pending]
-### Dependencies: None
-### Description: Initialize React frontend application using Vite build tool with TypeScript and Material-UI setup
+## 2. Configure PostgreSQL and Prisma database layer [pending]
+### Dependencies: 1.1
+### Description: Set up PostgreSQL with Docker Compose and implement complete Prisma schema with migrations
 ### Details:
-Create frontend/ directory. Run npm create vite@latest with React and TypeScript template. Install Material-UI dependencies: @mui/material, @mui/icons-material, @emotion/react, @emotion/styled. Configure tsconfig.json for React with jsx: react-jsx. Set up vite.config.ts with proxy configuration for backend API (proxy /api to localhost:3001). Install additional dependencies: axios, zustand, @tanstack/react-query, react-dropzone. Create src folder structure: components/, pages/, services/, store/, hooks/, utils/, types/. Set up basic App.tsx with Material-UI ThemeProvider.
+Create docker-compose.yml with PostgreSQL 17-alpine service, including health checks and volume persistence. Set up packages/database with Prisma client and complete schema from architecture.md including User, UserSettings, TimeEntry, ImportLog models with all relationships, indexes, and constraints. Configure proper database connection with DATABASE_URL and DATABASE_URL_UNPOOLED for connection pooling. Generate Prisma client and create initial migration. Set up database seeding script for development with default admin user. Create weekly_overtime_summary materialized view for performance optimization.
 
-## 3. Set up Docker and PostgreSQL database [pending]
-### Dependencies: None
-### Description: Configure Docker Compose with PostgreSQL database and necessary environment setup
+## 3. Implement NextAuth.js v5 authentication system [pending]
+### Dependencies: 1.2
+### Description: Set up NextAuth.js v5 (Auth.js) with Prisma adapter and credentials provider for user authentication
 ### Details:
-Create docker-compose.yml in project root with PostgreSQL 14-alpine service. Configure database with environment variables: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB. Set up volume for data persistence. Add adminer service for database management UI on port 8080. Create .env.example with all required environment variables documented. Configure DATABASE_URL for Prisma connection. Ensure database is accessible on port 5432. Add health check configuration for database service. Create init scripts directory for database initialization if needed.
+Install next-auth@beta and @auth/prisma-adapter. Configure NextAuth.js in apps/web/auth.ts with Prisma adapter connection. Set up credentials provider for email/password authentication with bcrypt password hashing. Create authentication API routes in app/api/auth/[...nextauth]/route.ts. Implement session middleware and protect API routes. Configure JWT strategy with 30-day expiration. Set up authentication context and session providers for client components. Create login/logout components using NextAuth signIn/signOut functions. Configure environment variables: NEXTAUTH_URL, NEXTAUTH_SECRET.
 
-## 4. Configure ESLint, Prettier and Git hooks [pending]
-### Dependencies: None
-### Description: Set up code quality tools and pre-commit hooks for consistent code style
+## 4. Setup UI layer with shadcn/ui and configure development tools [pending]
+### Dependencies: 1.3
+### Description: Install shadcn/ui components, configure development tooling with ESLint, Prettier, and Git hooks
 ### Details:
-Install ESLint and Prettier dependencies for both frontend and backend. Configure .eslintrc.js with TypeScript rules and React plugin for frontend. Set up .prettierrc with consistent formatting rules (2 spaces, single quotes, no semicolons). Install husky and lint-staged for pre-commit hooks. Configure pre-commit hook to run linting and formatting on staged files. Create .editorconfig for IDE consistency. Add format and lint scripts to both package.json files. Ensure ESLint and Prettier work together without conflicts.
+Run pnpm dlx shadcn-ui@latest init to setup shadcn/ui in apps/web with Tailwind CSS configuration. Install core shadcn/ui components: button, input, label, card, dialog, dropdown-menu, toast. Set up packages/ui as shared component library with Tailwind CSS and Radix UI dependencies. Configure ESLint with next/core-web-vitals, TypeScript rules, and Prettier integration. Set up Prettier configuration with consistent formatting rules (2 spaces, single quotes). Install and configure Husky and lint-staged for pre-commit hooks. Set up Turborepo build pipeline scripts in package.json files. Install TanStack Query and React Hook Form with Zod validation. Create .env.example with all required environment variables documented.
+
+## 5. Set up PostgreSQL with Docker and Prisma [pending]
+### Dependencies: None
+### Description: Configure PostgreSQL database using Docker Compose and initialize Prisma ORM
+### Details:
+Create docker-compose.yml with PostgreSQL 17-alpine:
+- Set POSTGRES_USER=worktime_user
+- Set POSTGRES_PASSWORD via .env
+- Set POSTGRES_DB=worktime
+- Configure volume for data persistence
+- Add health check
+Install Prisma: pnpm add -D prisma && pnpm add @prisma/client
+Initialize Prisma: pnpm prisma init
+Move Prisma to packages/database
+Configure DATABASE_URL in .env
+Set up Prisma client singleton in packages/database
+
+## 6. Configure development tools and Git hooks [pending]
+### Dependencies: None
+### Description: Set up ESLint, Prettier, Husky, and lint-staged for code quality
+### Details:
+Install dev dependencies:
+- pnpm add -D eslint eslint-config-next @typescript-eslint/parser @typescript-eslint/eslint-plugin
+- pnpm add -D prettier prettier-plugin-tailwindcss
+- pnpm add -D husky lint-staged
+Configure .eslintrc.json with Next.js and TypeScript rules
+Create .prettierrc with Tailwind CSS plugin
+Initialize Husky: pnpm dlx husky-init && pnpm install
+Set up pre-commit hook with lint-staged
+Configure VS Code settings in .vscode/settings.json
 

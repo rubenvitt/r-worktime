@@ -11,21 +11,71 @@ Initialize React app with Vite, TypeScript, and Material-UI v5. Set up Zustand s
 Test responsive design works on mobile and desktop viewports. Verify file upload shows proper progress and error states. Confirm authentication flow redirects appropriately. Test dashboard displays accurate overtime balance with correct color coding. Validate loading states appear during API calls. Ensure auto-refresh updates data without user intervention.
 
 # Subtasks:
-## 1. Create authentication components and context [pending]
+## 1. Create authentication pages and components [pending]
 ### Dependencies: None
-### Description: Build login/logout UI and authentication state management
+### Description: Build login, register, and auth-related UI components using Next.js and shadcn/ui
 ### Details:
-Create AuthContext with useAuth hook for global auth state. Build LoginPage component with Material-UI form (TextField, Button). Implement form validation with error messages. Create PrivateRoute component for protected routes. Set up axios interceptor to add JWT token to requests. Handle 401 responses with redirect to login. Store token in localStorage or httpOnly cookie. Create logout functionality that clears auth state.
+Create app/(auth)/login/page.tsx:
+- Server Component with form using Server Actions
+- shadcn/ui Form with react-hook-form
+- Email and password fields with validation
+- "Remember me" checkbox
+- Link to register page
 
-## 2. Build main dashboard with overtime balance display [pending]
-### Dependencies: None
-### Description: Create the main dashboard component showing current overtime balance and statistics
-### Details:
-Create DashboardPage component with Material-UI Grid layout. Build BalanceCard component with large number display for total balance. Implement color coding: green (positive), red (negative), gray (zero). Add secondary cards for week and month statistics. Use TanStack Query for data fetching with auto-refresh. Implement loading skeletons during data fetch. Add last update timestamp with relative time (e.g., '2 hours ago'). Create responsive breakpoints for mobile/tablet/desktop views.
+Create app/(auth)/register/page.tsx:
+- Registration form with email, password, confirm password
+- Client-side validation with Zod
+- Server Action for user creation
+- Auto-login after registration
 
-## 3. Implement file upload component with drag-and-drop [pending]
+Create app/components/layout/user-menu.tsx:
+- Display current user email
+- Logout button with signOut() from NextAuth
+- User settings link
+
+## 2. Build main dashboard with overtime display [pending]
 ### Dependencies: None
-### Description: Create the file upload interface for Timing JSON exports
+### Description: Create dashboard page showing overtime balance and key statistics
 ### Details:
-Install and configure react-dropzone for drag-and-drop functionality. Create FileUploadZone component with visual feedback on drag over. Implement file validation (JSON only, max 10MB). Add upload progress bar using axios onUploadProgress. Create success/error notifications with Material-UI Snackbar. Show file preview with name and size before upload. Handle multiple file uploads sequentially. Add click-to-browse as fallback option. Style drop zone with dashed border and upload icon.
+Create app/(dashboard)/dashboard/page.tsx:
+- Server Component fetching initial data
+- Display cards using shadcn/ui Card component:
+  * Overtime balance (large number, color-coded)
+  * This week's balance
+  * This month's balance
+  * Last import date
+
+Create app/components/dashboard/overtime-card.tsx:
+- Client Component with live updates via TanStack Query
+- Color coding: green (positive), red (negative)
+- Loading skeleton while fetching
+- Refresh button with mutation
+
+Create app/components/dashboard/stats-grid.tsx:
+- Responsive grid layout with Tailwind
+- Statistical cards for weekly/monthly views
+- Charts using Recharts for trends
+
+## 3. Create weekly and entries view pages [pending]
+### Dependencies: None
+### Description: Build pages for viewing time entries and weekly breakdowns
+### Details:
+Create app/(dashboard)/entries/page.tsx:
+- Table view using shadcn/ui Table
+- Columns: Date, Start, End, Duration, Type, Project
+- Pagination with shadcn/ui Pagination
+- Filter by date range and type
+- Sort by columns
+- Delete entries with confirmation dialog
+
+Create app/(dashboard)/statistics/weekly/page.tsx:
+- Week selector with navigation arrows
+- Daily breakdown table
+- Visual chart of daily hours
+- Week total and overtime calculation
+- Export to CSV button
+
+Use TanStack Table for advanced table features
+Implement virtual scrolling for large datasets
+Add loading states and error boundaries
 

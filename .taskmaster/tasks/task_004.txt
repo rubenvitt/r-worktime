@@ -11,33 +11,54 @@ Create file upload endpoint with multer middleware (10MB limit). Implement compr
 Test upload of valid Timing JSON file processes correctly. Verify file size limits are enforced. Confirm duplicate imports replace existing entries properly. Test invalid JSON files are rejected with clear error messages. Validate import logging captures all processing statistics. Ensure transaction rollback works on processing errors.
 
 # Subtasks:
-## 1. Create file upload endpoint with multer middleware [pending]
+## 1. Create file upload API route with Next.js [pending]
 ### Dependencies: None
-### Description: Implement the backend endpoint for handling file uploads with proper middleware configuration, file size limits, and error handling
+### Description: Implement file upload endpoint using Next.js 15 API routes with proper validation
 ### Details:
-Create POST /api/uploads/timing endpoint using multer middleware with 10MB file size limit. Configure multer for single file upload with file type validation (.json only). Add proper error handling for oversized files, invalid file types, and malformed requests. Include request logging and security headers. Implement temporary file storage with automatic cleanup after processing. Ensure proper CORS configuration for frontend requests.
+Create app/api/upload/route.ts:
+- POST handler using FormData API
+- Parse multipart/form-data with Next.js built-in support
+- Validate file size (max 10MB)
+- Validate file type (JSON only)
+- Parse and validate JSON structure
+- Use Zod schema for Timing export validation
+Required fields: id, startDate, endDate, duration, project, activityTitle
+Return preview data before actual import
+Error handling with proper status codes
 
-## 2. Build comprehensive JSON validation for Timing export format [pending]
-### Dependencies: 4.1
-### Description: Create validation system to verify uploaded JSON files match expected Timing export structure and contain valid data
+## 2. Implement ImportService with Prisma transactions [pending]
+### Dependencies: None
+### Description: Create service class for processing Timing exports with database transactions
 ### Details:
-Implement validation using Zod schemas based on architecture.md Timing export format. Validate required fields: id, startDate, endDate, duration, project, activityTitle. Check data types and constraints (positive duration, valid dates, string fields). Handle nested structures and arrays properly. Create detailed error messages for specific validation failures. Support both single entries and batch arrays. Add file hash generation for duplicate import detection.
+Create app/services/import.service.ts:
+- processTimingExport() method with Prisma $transaction
+- analyzeImport() for duplicate detection based on timingId
+- parseTimingEntry() to transform Timing format to TimeEntry
+- detectType() method for entry classification:
+  * 'Krankheit' → SICK
+  * 'Urlaub' → VACATION
+  * 'Feiertag' → HOLIDAY
+  * Default → WORK
+- Replace same-day entries in transaction
+- Generate ImportLog records with statistics
+- Return preview with affected dates and counts
+Use packages/shared/types for all type definitions
 
-## 3. Implement ImportService class with transaction-based processing [pending]
-### Dependencies: 4.2
-### Description: Create core service class to handle the complete import pipeline with database transactions and error recovery
+## 3. Create upload UI component with drag-and-drop [pending]
+### Dependencies: None
+### Description: Build React component for file upload with drag-and-drop support and preview
 ### Details:
-Build ImportService class following architecture.ts example with processTimingExport method. Implement transaction-based processing using Prisma $transaction. Create analyzeImport method for duplicate detection and preview generation. Add parseTimingEntry method to transform Timing data to TimeEntry format. Include comprehensive error handling for malformed JSON, invalid dates, and processing failures. Implement proper rollback mechanisms on transaction failures. Add import statistics tracking and logging.
-
-## 4. Create duplicate detection and entry type classification system [pending]
-### Dependencies: 4.3
-### Description: Implement logic to detect duplicate imports, classify entry types from project paths, and handle same-day entry replacements
-### Details:
-Implement duplicate detection based on timingId and date combinations. Create detectType method to classify entries as WORK, VACATION, SICK, or HOLIDAY from project paths (German keywords: 'Krankheit', 'Urlaub', 'Feiertag'). Build replacement logic for same-day entries that removes existing entries before inserting new ones. Add support for billable/non-billable classification. Implement extractProjectName and extractTime helper methods. Create comprehensive logging for all classification decisions.
-
-## 5. Build import preview and logging system [pending]
-### Dependencies: 4.4
-### Description: Create preview functionality and comprehensive ImportLog records for tracking all import operations
-### Details:
-Implement preview functionality showing affected dates, new/replaced entries count, and warnings before actual import. Create ImportLog model records with fileName, fileHash, importDate, affectedDates, and statistics (replacedEntries, newEntries, skippedEntries). Add import status tracking (SUCCESS, PARTIAL, FAILED) with detailed error messages. Build user-friendly preview interface data with warnings for large replacements or data inconsistencies. Include metadata storage for additional import context and debugging information.
+Create app/components/upload/upload-zone.tsx:
+- Use react-dropzone or native HTML5 drag-and-drop
+- Show upload progress with shadcn/ui Progress
+- Display file validation errors with Toast
+- Show import preview before confirmation:
+  * Affected dates list
+  * New entries count
+  * Replaced entries count
+  * Warnings for duplicates
+- Use TanStack Query mutation for upload
+- Optimistic UI updates
+- Success/error notifications
+Style with Tailwind CSS and shadcn/ui components
 
