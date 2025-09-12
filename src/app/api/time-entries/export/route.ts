@@ -1,8 +1,8 @@
 import type { Prisma } from "@prisma/client";
+import { EntryType } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { EntryType } from "@/types/database";
 
 // Export format type
 type ExportFormat = "json" | "csv" | "excel";
@@ -17,18 +17,16 @@ const formatTimeForCSV = (date: Date): string => {
   return date.toTimeString().split(" ")[0].substring(0, 5);
 };
 
-// Type for time entry
+// Type for time entry export (matches the database query)
 type TimeEntryExport = {
   id: string;
   date: Date;
   startTime: Date;
   endTime: Date | null;
+  duration: Prisma.Decimal;
   type: EntryType;
-  project: string | null;
-  task: string | null;
   description: string | null;
-  workHours: Prisma.Decimal;
-  breakDuration: Prisma.Decimal;
+  createdAt: Date;
 };
 
 // Helper function to convert to CSV
@@ -49,7 +47,7 @@ const convertToCSV = (entries: TimeEntryExport[]): string => {
     const row = [
       formatDateForCSV(new Date(entry.date)),
       formatTimeForCSV(new Date(entry.startTime)),
-      formatTimeForCSV(new Date(entry.endTime)),
+      entry.endTime ? formatTimeForCSV(new Date(entry.endTime)) : "",
       entry.duration.toString(),
       entry.type,
       entry.description ? `"${entry.description.replace(/"/g, '""')}"` : "",
@@ -67,7 +65,7 @@ const convertToTimingJSON = (
   return entries.map((entry) => ({
     date: formatDateForCSV(new Date(entry.date)),
     startTime: formatTimeForCSV(new Date(entry.startTime)),
-    endTime: formatTimeForCSV(new Date(entry.endTime)),
+    endTime: entry.endTime ? formatTimeForCSV(new Date(entry.endTime)) : "",
     duration: parseFloat(entry.duration.toString()),
     type: entry.type,
     projectName: entry.description || "",

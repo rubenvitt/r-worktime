@@ -1,7 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { auth } from "@/lib/auth";
-import { SettingsService } from "@/services/settings.service";
+import {
+  getUserSettings,
+  resetUserSettings,
+  updateUserSettings,
+} from "@/services/settings.service";
 import { userSettingsUpdateSchema } from "@/types/settings";
 
 /**
@@ -19,7 +23,7 @@ export async function GET() {
       );
     }
 
-    const settings = await SettingsService.getUserSettings(session.user.id);
+    const settings = await getUserSettings(session.user.id);
 
     return NextResponse.json({
       success: true,
@@ -57,7 +61,7 @@ export async function PUT(request: NextRequest) {
     // Validate the input
     const validatedData = userSettingsUpdateSchema.parse(body);
 
-    const updatedSettings = await SettingsService.updateUserSettings(
+    const updatedSettings = await updateUserSettings(
       session.user.id,
       validatedData,
     );
@@ -105,9 +109,7 @@ export async function DELETE() {
       );
     }
 
-    const resetSettings = await SettingsService.resetUserSettings(
-      session.user.id,
-    );
+    const resetSettings = await resetUserSettings(session.user.id);
 
     return NextResponse.json({
       success: true,
