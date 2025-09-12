@@ -2,8 +2,11 @@ import crypto from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { previewCache } from "@/lib/preview-cache";
+import { prisma } from "@/lib/prisma";
 import { timingExportSchema } from "@/lib/schemas/timing-import";
 import { ImportService } from "@/services/import.service";
+import { ImportPreviewService } from "@/services/import-preview.service";
 
 // 10MB file size limit
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -80,59 +83,57 @@ export async function POST(request: NextRequest) {
     const timingData = validationResult.data;
 
     // Check if file has entries (handle both array and object format)
-    const entries = Array.isArray(timingData) ? timingData : timingData.entries;
-    if (!entries || entries.length === 0) {
+    const validationEntries = Array.isArray(timingData)
+      ? timingData
+      : timingData.entries;
+    if (!validationEntries || validationEntries.length === 0) {
       return NextResponse.json(
         { error: "No entries found in the file" },
         { status: 400 },
       );
     }
 
-    // Initialize import service
-    const importService = new ImportService();
+    // Get user from database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
 
-    // Check for duplicate import
-    const isDuplicate = await importService.checkDuplicateImport(
-      session.user.email,
-      fileHash,
-    );
-
-    if (isDuplicate && !formData.get("force")) {
-      // Return preview with duplicate warning
-      const preview = await importService.analyzeImport(
-        session.user.email,
-        timingData,
-      );
-
-      return NextResponse.json({
-        status: "duplicate_warning",
-        message: "This file has already been imported",
-        fileHash,
-        preview,
-        requiresConfirmation: true,
-      });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Analyze import for preview
-    const preview = await importService.analyzeImport(
-      session.user.email,
-      timingData,
-    );
+    // Check if this is a confirmation request (two-step import)
+    const previewId = formData.get("previewId") as string | null;
+    const shouldConfirm = formData.get("confirm") === "true";
 
-    // If confirmation is provided, process the import
-    const shouldProcess = formData.get("confirm") === "true";
+    if (previewId && shouldConfirm) {
+      // Retrieve cached preview data
+      const cached = previewCache.get(previewId, user.id);
 
-    if (shouldProcess) {
-      // Process the import with transaction
+      if (!cached) {
+        return NextResponse.json(
+          {
+            error:
+              "Preview expired or not found. Please upload the file again.",
+          },
+          { status: 400 },
+        );
+      }
+
+      // Process the import with the cached data
+      const importService = new ImportService();
       const result = await importService.processTimingExport(
         session.user.email,
-        timingData,
+        cached.timingData,
         {
-          fileName: file.name,
+          fileName: file?.name || "import.json",
           fileHash,
           force: formData.get("force") === "true",
         },
       );
+
+      // Clean up the preview cache
+      previewCache.delete(previewId);
 
       return NextResponse.json({
         status: "success",
@@ -141,13 +142,71 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Return preview for confirmation
+    // Generate detailed preview
+    const importService = new ImportService();
+    const previewService = new ImportPreviewService();
+
+    // Check for duplicate import
+    const isDuplicate = await importService.checkDuplicateImport(
+      session.user.email,
+      fileHash,
+    );
+
+    // Get existing entries for comparison
+    const affectedDates = new Set<string>();
+    const entries = Array.isArray(timingData) ? timingData : timingData.entries;
+
+    entries.forEach((entry) => {
+      const dateStr = entry.startDate.split("T")[0];
+      affectedDates.add(dateStr);
+    });
+
+    const existingEntries = await prisma.timeEntry.findMany({
+      where: {
+        userId: user.id,
+        date: {
+          in: Array.from(affectedDates).map((d) => new Date(d)),
+        },
+      },
+      orderBy: {
+        startTime: "asc",
+      },
+    });
+
+    // Generate detailed preview
+    const detailedPreview = await previewService.generateDetailedPreview(
+      timingData,
+      existingEntries,
+      {
+        fileName: file.name,
+        fileHash,
+      },
+    );
+
+    // Add duplicate warning if applicable
+    if (isDuplicate) {
+      detailedPreview.warnings.unshift({
+        type: "DUPLICATE",
+        date: "",
+        message: "Diese Datei wurde bereits importiert",
+        severity: "warning",
+        details: "Verwenden Sie 'force' um trotzdem zu importieren",
+      });
+    }
+
+    // Cache the preview data for two-step import
+    previewCache.set(detailedPreview.previewId, {
+      preview: detailedPreview,
+      timingData,
+      userId: user.id,
+    });
+
+    // Return detailed preview for confirmation
     return NextResponse.json({
       status: "preview",
       message: "Import preview ready",
-      fileHash,
-      fileName: file.name,
-      preview,
+      preview: detailedPreview,
+      isDuplicate,
       requiresConfirmation: true,
     });
   } catch (error) {

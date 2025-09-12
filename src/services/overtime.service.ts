@@ -445,7 +445,7 @@ export class OvertimeService {
       start: monthStart,
       end: monthEnd,
     }).filter((day) => settings?.workDays.includes(day.getDay())).length;
-    targetHours = workDaysInMonth * settings?.dailyHours;
+    targetHours = workDaysInMonth * (settings?.dailyHours || 8);
 
     const monthlyStats: MonthlyStatistics = {
       userId,

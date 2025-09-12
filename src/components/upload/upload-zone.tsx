@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { ImportPreview } from "@/components/import/import-preview";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,32 +23,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ImportPreview } from "./import-preview";
-
-interface UploadResponse {
-  status: "preview" | "success" | "duplicate_warning";
-  message: string;
-  fileHash?: string;
-  fileName?: string;
-  preview?: {
-    totalEntries: number;
-    newEntries: number;
-    replacedEntries: number;
-    affectedDates: string[];
-    duplicateWarnings: string[];
-    entryTypeBreakdown: Record<string, number>;
-    estimatedHours: number;
-  };
-  result?: {
-    importLogId: string;
-    processedEntries: number;
-    createdEntries: number;
-    replacedEntries: number;
-    skippedEntries: number;
-    errors: string[];
-  };
-  requiresConfirmation?: boolean;
-}
+import type { UploadResponse } from "@/types/import";
 
 export function UploadZone() {
   const [file, setFile] = useState<File | null>(null);
@@ -61,15 +37,18 @@ export function UploadZone() {
       file,
       confirm,
       force,
+      previewId,
     }: {
-      file: File;
+      file?: File;
       confirm?: boolean;
       force?: boolean;
+      previewId?: string;
     }) => {
       const formData = new FormData();
-      formData.append("file", file);
+      if (file) formData.append("file", file);
       if (confirm) formData.append("confirm", "true");
       if (force) formData.append("force", "true");
+      if (previewId) formData.append("previewId", previewId);
 
       const response = await fetch("/api/upload", {
         method: "POST",
@@ -84,7 +63,7 @@ export function UploadZone() {
       return response.json() as Promise<UploadResponse>;
     },
     onSuccess: (data) => {
-      if (data.status === "preview" || data.status === "duplicate_warning") {
+      if (data.status === "preview") {
         setPreview(data);
       } else if (data.status === "success") {
         toast({
@@ -133,9 +112,13 @@ export function UploadZone() {
   };
 
   const handleConfirmImport = (force = false) => {
-    if (file && preview) {
+    if (preview?.preview?.previewId) {
       setUploadProgress(75);
-      uploadMutation.mutate({ file, confirm: true, force });
+      uploadMutation.mutate({
+        previewId: preview.preview.previewId,
+        confirm: true,
+        force,
+      });
     }
   };
 
@@ -230,14 +213,13 @@ export function UploadZone() {
       </Card>
 
       {/* Preview Section */}
-      {preview?.preview && (
+      {preview?.preview && !uploadMutation.data?.result && (
         <ImportPreview
           preview={preview.preview}
-          isDuplicate={preview.status === "duplicate_warning"}
-          onConfirm={() => handleConfirmImport(false)}
-          onForceImport={() => handleConfirmImport(true)}
+          isDuplicate={preview.isDuplicate}
+          onConfirm={() => handleConfirmImport(preview.isDuplicate)}
           onCancel={resetUpload}
-          isProcessing={uploadMutation.isPending}
+          isLoading={uploadMutation.isPending}
         />
       )}
 

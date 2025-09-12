@@ -358,11 +358,11 @@
         "id": 12,
         "title": "Import Preview Feature",
         "description": "Implement preview functionality before importing time data to prevent accidental overwrites",
-        "details": "Story 2.3: Als Nutzer mit bestehenden Zeitdaten möchte ich vor dem Import eine Vorschau der betroffenen Tage sehen, damit ich versehentliche Überschreibungen vermeiden kann.\n\nKey Implementation Points:\n- Backend: Create /api/entries/preview endpoint for stateless preview\n- Show affected days with before/after comparison\n- Display warnings for unusual entries (weekends, holidays, long hours)\n- Summary statistics of import impact\n- Two-step import process with confirmation\n- Conflict detection and validation\n- Cancel option without data changes\n\nStory file: docs/stories/2.3.import-preview.md",
-        "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [1, 2],
         "priority": "high",
+        "details": "Story 2.3: Als Nutzer mit bestehenden Zeitdaten möchte ich vor dem Import eine Vorschau der betroffenen Tage sehen, damit ich versehentliche Überschreibungen vermeiden kann.\n\n✅ IMPLEMENTATION COMPLETED:\n\nCore Features Implemented:\n- Detailed import preview with comprehensive warnings (weekends, long working hours, missing breaks)\n- Before/after comparison for affected days with visual indicators\n- Two-step import process with session-based preview ID system\n- In-memory cache for preview data with 15-minute TTL for security\n- Inline preview display instead of modal for better overview\n- Comprehensive validation and conflict detection\n- TypeScript type checking successful\n\nImplemented Files:\n- src/services/import-preview.service.ts - Detailed preview generation service with warning logic\n- src/lib/preview-cache.ts - In-memory cache with automatic cleanup (15min TTL)\n- src/types/import.ts - TypeScript type definitions for import preview\n- src/components/import/import-preview.tsx - Full-featured preview component with tabs\n- src/components/ui/scroll-area.tsx & tabs.tsx - Required UI components\n- Enhanced src/app/api/upload/route.ts - Extended with two-step import workflow\n- Updated src/components/upload/upload-zone.tsx - Integrated preview component\n\nKey Implementation Details:\n- Session-based preview IDs prevent unauthorized import execution\n- Comprehensive warning system detects: weekends, holidays, long hours (>10h), missing breaks, overlapping times, duplicates\n- Preview shows statistics: total entries, new vs replaced, affected days, total hours, average per day\n- Tabbed interface: Summary, Warnings, Entries, Details\n- Security: User validation, cache expiration, preview ID validation\n- Performance: Efficient grouping by date, in-memory processing\n\nStory 2.3 marked as Ready for Review in docs/stories/2.3.import-preview.md",
+        "testStrategy": "✅ Implementation completed - Testing requirements fulfilled:\n\nCore functionality tested:\n- JSON file upload and validation with proper error handling\n- Preview generation for various import scenarios\n- Warning detection for unusual entries (weekends, long hours, missing breaks)\n- Two-step import workflow with session-based preview IDs\n- Cache expiration and cleanup mechanisms\n- Before/after comparisons for affected days\n- Import confirmation and cancellation flows\n\nValidation testing:\n- Invalid JSON format rejection\n- File size limit enforcement (10MB)\n- Duplicate import detection with appropriate warnings\n- Overlapping time entry detection\n- Negative duration validation\n- Missing break detection for long work days\n\nIntegration testing:\n- Upload-to-Preview workflow complete\n- Preview-to-Import execution successful\n- Error recovery and user feedback mechanisms\n- TypeScript type checking passed\n\nReady for final QA review and production deployment.",
         "subtasks": []
       },
       {
@@ -379,7 +379,7 @@
     ],
     "metadata": {
       "created": "2025-09-11T19:01:38.352Z",
-      "updated": "2025-09-12T12:02:01.743Z",
+      "updated": "2025-09-12T12:31:21.458Z",
       "description": "Tasks for master context"
     }
   }
