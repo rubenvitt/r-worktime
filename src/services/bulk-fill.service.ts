@@ -138,14 +138,18 @@ export class BulkFillService {
       }
       // Erstelle Eintrag
       else {
-        const entryDate = new Date(currentDate);
-        entryDate.setHours(0, 0, 0, 0);
+        // Erstelle Daten in UTC für konsistente Speicherung
+        const year = currentDate.getUTCFullYear();
+        const month = currentDate.getUTCMonth();
+        const day = currentDate.getUTCDate();
 
-        const entryStartTime = new Date(currentDate);
-        entryStartTime.setHours(startHour, startMinute, 0, 0);
-
-        const entryEndTime = new Date(currentDate);
-        entryEndTime.setHours(endHour, endMinute, 0, 0);
+        const entryDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+        const entryStartTime = new Date(
+          Date.UTC(year, month, day, startHour, startMinute, 0, 0),
+        );
+        const entryEndTime = new Date(
+          Date.UTC(year, month, day, endHour, endMinute, 0, 0),
+        );
 
         entriesToCreate.push({
           userId,

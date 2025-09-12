@@ -23,6 +23,63 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
 
+    // Check if this is a confirmation request (two-step import)
+    const previewId = formData.get("previewId") as string | null;
+    const shouldConfirm = formData.get("confirm") === "true";
+
+    // Get user from database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    if (previewId && shouldConfirm) {
+      // Retrieve cached preview data
+      const cached = previewCache.get(previewId, user.id);
+
+      if (!cached) {
+        return NextResponse.json(
+          {
+            error:
+              "Preview expired or not found. Please upload the file again.",
+          },
+          { status: 400 },
+        );
+      }
+
+      // Process the import with the cached data
+      const importService = new ImportService();
+
+      // Generate fileHash from cached data for consistency
+      const fileHash = crypto
+        .createHash("sha256")
+        .update(JSON.stringify(cached.timingData))
+        .digest("hex");
+
+      const result = await importService.processTimingExport(
+        session.user.email,
+        cached.timingData,
+        {
+          fileName: cached.preview.metadata?.fileName || "import.json",
+          fileHash,
+          force: formData.get("force") === "true",
+        },
+      );
+
+      // Clean up the preview cache
+      previewCache.delete(previewId);
+
+      return NextResponse.json({
+        status: "success",
+        message: "Import completed successfully",
+        result,
+      });
+    }
+
+    // For new uploads, validate file presence and format
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
@@ -91,55 +148,6 @@ export async function POST(request: NextRequest) {
         { error: "No entries found in the file" },
         { status: 400 },
       );
-    }
-
-    // Get user from database
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    // Check if this is a confirmation request (two-step import)
-    const previewId = formData.get("previewId") as string | null;
-    const shouldConfirm = formData.get("confirm") === "true";
-
-    if (previewId && shouldConfirm) {
-      // Retrieve cached preview data
-      const cached = previewCache.get(previewId, user.id);
-
-      if (!cached) {
-        return NextResponse.json(
-          {
-            error:
-              "Preview expired or not found. Please upload the file again.",
-          },
-          { status: 400 },
-        );
-      }
-
-      // Process the import with the cached data
-      const importService = new ImportService();
-      const result = await importService.processTimingExport(
-        session.user.email,
-        cached.timingData,
-        {
-          fileName: file?.name || "import.json",
-          fileHash,
-          force: formData.get("force") === "true",
-        },
-      );
-
-      // Clean up the preview cache
-      previewCache.delete(previewId);
-
-      return NextResponse.json({
-        status: "success",
-        message: "Import completed successfully",
-        result,
-      });
     }
 
     // Generate detailed preview

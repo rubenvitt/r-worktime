@@ -371,7 +371,7 @@
         "description": "Implement comprehensive data management including viewing, deleting, exporting, and backing up time entries",
         "details": "Story 2.4: Als angemeldeter Nutzer möchte ich meine gespeicherten Zeiteinträge verwalten können, damit ich fehlerhafte Daten korrigieren und meine Zeiterfassung sauber halten kann.\n\nKey Implementation Points:\n- List view of all time entries with filtering and sorting\n- Single and bulk delete operations with confirmation\n- Export functionality (JSON, CSV, Excel formats)\n- Backup and restore capabilities\n- Advanced filtering by date, type, project\n- Pagination for large datasets\n- Safety measures: confirmations, undo option, automatic backups\n\nStory file: docs/stories/2.4.data-management.md",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [1, 2, 3],
         "priority": "medium",
         "subtasks": []
@@ -379,7 +379,7 @@
     ],
     "metadata": {
       "created": "2025-09-11T19:01:38.352Z",
-      "updated": "2025-09-12T12:53:50.906Z",
+      "updated": "2025-09-12T13:09:09.081Z",
       "description": "Tasks for master context"
     }
   }

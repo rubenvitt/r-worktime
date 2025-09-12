@@ -4,6 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { overtimeService } from "@/services/overtime.service";
 
 const adjustmentSchema = z.object({
   date: z.string().transform((val) => new Date(val)),
@@ -45,6 +46,9 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // Invalidiere Cache nach Adjustment Update
+      overtimeService.invalidateCache(session.user.id);
+
       return NextResponse.json({
         message: "Adjustment entry updated",
         entry: updated,
@@ -62,6 +66,9 @@ export async function POST(request: NextRequest) {
           description: validatedData.description,
         },
       });
+
+      // Invalidiere Cache nach Adjustment Creation
+      overtimeService.invalidateCache(session.user.id);
 
       return NextResponse.json({
         message: "Adjustment entry created",

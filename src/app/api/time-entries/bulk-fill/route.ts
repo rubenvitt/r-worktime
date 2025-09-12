@@ -46,9 +46,9 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data;
 
-    // Konvertiere String-Dates zu Date-Objekten
-    const startDate = new Date(data.startDate);
-    const endDate = new Date(data.endDate);
+    // Konvertiere String-Dates zu Date-Objekten (UTC um Zeitzone-Shift zu vermeiden)
+    const startDate = new Date(`${data.startDate}T12:00:00Z`);
+    const endDate = new Date(`${data.endDate}T12:00:00Z`);
 
     // Zusätzliche Validierung
     if (startDate > endDate) {

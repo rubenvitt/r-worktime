@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CalendarPlus, Info, Loader2 } from "lucide-react";
+import { CalendarPlus, Info } from "lucide-react";
 import { useState } from "react";
 import { BulkFillDialog } from "@/components/settings/bulk-fill-dialog";
 import { UserSettingsForm } from "@/components/settings/user-settings-form";
