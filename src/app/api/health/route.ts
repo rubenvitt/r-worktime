@@ -1,16 +1,23 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Ensure Prisma runs on Node runtime and route is always dynamic
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     // Basic database connectivity check
     await prisma.$queryRaw`SELECT 1`;
 
-    return NextResponse.json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      database: "connected",
-    });
+    return NextResponse.json(
+      {
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        database: "connected",
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     console.error("Health check failed:", error);
 
@@ -19,9 +26,9 @@ export async function GET() {
         status: "unhealthy",
         timestamp: new Date().toISOString(),
         database: "disconnected",
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "database_unavailable",
       },
-      { status: 503 },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
 }
