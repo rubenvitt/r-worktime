@@ -1,0 +1,131 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// User Model - Zentrale Benutzerverwaltung
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  settings      UserSettings?
+  timeEntries   TimeEntry[]
+  importLogs    ImportLog[]
+  reviewedDays  ReviewedDay[]
+
+  @@index([email])
+  @@map("users")
+}
+
+// User Settings - Individuelle Benutzereinstellungen
+model UserSettings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  weeklyWorkHours       Decimal  @default(40.0) @db.Decimal(4, 2)
+  overtimeNotification  Boolean  @default(true)
+  language              String   @default("de")
+  theme                 String   @default("light")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+// Time Entry - Einzelne Zeiteinträge
+model TimeEntry {
+  id            String      @id @default(cuid())
+  userId        String
+  date          DateTime    @db.Date
+  startTime     DateTime
+  endTime       DateTime
+  duration      Decimal     @db.Decimal(5, 2) // In Stunden
+  type          EntryType   @default(WORK)
+  description   String?
+  importLogId   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  importLog  ImportLog?  @relation(fields: [importLogId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, date, startTime]) // Verhindert doppelte Einträge
+  @@index([userId, date])
+  @@index([importLogId])
+  @@map("time_entries")
+}
+
+// Import Log - Historie der Timing-Importe
+model ImportLog {
+  id           String      @id @default(cuid())
+  userId       String
+  fileName     String
+  fileHash     String      // SHA256 Hash zur Duplikatserkennung
+  importDate   DateTime    @default(now())
+  rowCount     Int
+  status       ImportStatus
+  errorMessage String?
+  metadata     Json?       // Zusätzliche Import-Informationen
+
+  // Relations
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timeEntries  TimeEntry[]
+
+  @@unique([userId, fileHash]) // Verhindert doppelte Imports
+  @@index([userId, importDate])
+  @@map("import_logs")
+}
+
+// Reviewed Day - Markierte Tage ohne/mit unvollständigen Einträgen
+model ReviewedDay {
+  id         String   @id @default(cuid())
+  userId     String
+  date       DateTime @db.Date
+  reason     String?  // "Kein Arbeitstag", "Unbezahlter Urlaub", etc.
+  reviewedAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("reviewed_days")
+}
+
+// Enums
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum EntryType {
+  WORK      // Normale Arbeitszeit
+  OVERTIME  // Überstunden
+  VACATION  // Urlaub
+  SICK      // Krankheit
+  HOLIDAY   // Feiertag
+}
+
+enum ImportStatus {
+  PENDING
+  SUCCESS
+  PARTIAL
+  FAILED
+}

@@ -5,7 +5,7 @@
         "id": 1,
         "title": "Initialize Project Structure and Core Infrastructure",
         "description": "Set up a Next.js 15 monorepo with App Router, Turbopack, TypeScript, Tailwind CSS, shadcn/ui components, and Turborepo structure. Configure PostgreSQL with Prisma, implement authentication with NextAuth.js v5, and establish development tooling.",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "details": "Initialize Next.js 15 project using pnpm create next-app@latest with TypeScript, Tailwind CSS, App Router, and Turbopack. Set up monorepo structure with Turborepo containing apps/web and packages (shared, database, ui). Configure PostgreSQL database with Docker Compose using PostgreSQL 17. Implement database layer with Prisma ORM including complete schema from architecture.md. Set up NextAuth.js v5 (Auth.js) with Prisma adapter for authentication. Install and configure shadcn/ui components. Configure ESLint, Prettier, Husky git hooks, and lint-staged. Set up environment configuration (.env.example, .env.local) with all required variables for Next.js and database. Initialize proper .gitignore and establish Git repository structure. Configure TanStack Query for server state management. Set up development scripts and build pipeline with Turborepo.",
@@ -15,7 +15,7 @@
             "id": 1,
             "title": "Initialize Next.js 15 project with monorepo structure",
             "description": "Set up Next.js 15 with App Router, TypeScript, Tailwind CSS, Turbopack and configure Turborepo monorepo structure",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "details": "Run pnpm create next-app@latest r-worktime --typescript --tailwind --app --turbopack to create base Next.js project. Initialize Turborepo with pnpm add -D turbo and create turborepo.json configuration. Set up monorepo structure: apps/web/ for Next.js app, packages/shared/ for types and utilities, packages/database/ for Prisma client, packages/ui/ for shared UI components. Configure root package.json with workspaces and turbo scripts. Create proper tsconfig.json files for each workspace with path mapping. Set up pnpm-workspace.yaml to define workspace packages.",
             "testStrategy": ""
@@ -24,10 +24,8 @@
             "id": 2,
             "title": "Configure PostgreSQL and Prisma database layer",
             "description": "Set up PostgreSQL with Docker Compose and implement complete Prisma schema with migrations",
-            "status": "pending",
-            "dependencies": [
-              1
-            ],
+            "status": "done",
+            "dependencies": [1],
             "details": "Create docker-compose.yml with PostgreSQL 17-alpine service, including health checks and volume persistence. Set up packages/database with Prisma client and complete schema from architecture.md including User, UserSettings, TimeEntry, ImportLog models with all relationships, indexes, and constraints. Configure proper database connection with DATABASE_URL and DATABASE_URL_UNPOOLED for connection pooling. Generate Prisma client and create initial migration. Set up database seeding script for development with default admin user. Create weekly_overtime_summary materialized view for performance optimization.",
             "testStrategy": ""
           },
@@ -35,10 +33,8 @@
             "id": 3,
             "title": "Implement NextAuth.js v5 authentication system",
             "description": "Set up NextAuth.js v5 (Auth.js) with Prisma adapter and credentials provider for user authentication",
-            "status": "pending",
-            "dependencies": [
-              2
-            ],
+            "status": "done",
+            "dependencies": [2],
             "details": "Install next-auth@beta and @auth/prisma-adapter. Configure NextAuth.js in apps/web/auth.ts with Prisma adapter connection. Set up credentials provider for email/password authentication with bcrypt password hashing. Create authentication API routes in app/api/auth/[...nextauth]/route.ts. Implement session middleware and protect API routes. Configure JWT strategy with 30-day expiration. Set up authentication context and session providers for client components. Create login/logout components using NextAuth signIn/signOut functions. Configure environment variables: NEXTAUTH_URL, NEXTAUTH_SECRET.",
             "testStrategy": ""
           },
@@ -46,10 +42,8 @@
             "id": 4,
             "title": "Setup UI layer with shadcn/ui and configure development tools",
             "description": "Install shadcn/ui components, configure development tooling with ESLint, Prettier, and Git hooks",
-            "status": "pending",
-            "dependencies": [
-              3
-            ],
+            "status": "done",
+            "dependencies": [3],
             "details": "Run pnpm dlx shadcn-ui@latest init to setup shadcn/ui in apps/web with Tailwind CSS configuration. Install core shadcn/ui components: button, input, label, card, dialog, dropdown-menu, toast. Set up packages/ui as shared component library with Tailwind CSS and Radix UI dependencies. Configure ESLint with next/core-web-vitals, TypeScript rules, and Prettier integration. Set up Prettier configuration with consistent formatting rules (2 spaces, single quotes). Install and configure Husky and lint-staged for pre-commit hooks. Set up Turborepo build pipeline scripts in package.json files. Install TanStack Query and React Hook Form with Zod validation. Create .env.example with all required environment variables documented.",
             "testStrategy": ""
           },
@@ -58,7 +52,7 @@
             "title": "Set up PostgreSQL with Docker and Prisma",
             "description": "Configure PostgreSQL database using Docker Compose and initialize Prisma ORM",
             "details": "Create docker-compose.yml with PostgreSQL 17-alpine:\n- Set POSTGRES_USER=worktime_user\n- Set POSTGRES_PASSWORD via .env\n- Set POSTGRES_DB=worktime\n- Configure volume for data persistence\n- Add health check\nInstall Prisma: pnpm add -D prisma && pnpm add @prisma/client\nInitialize Prisma: pnpm prisma init\nMove Prisma to packages/database\nConfigure DATABASE_URL in .env\nSet up Prisma client singleton in packages/database",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 1
           },
@@ -67,7 +61,7 @@
             "title": "Configure development tools and Git hooks",
             "description": "Set up ESLint, Prettier, Husky, and lint-staged for code quality",
             "details": "Install dev dependencies:\n- pnpm add -D eslint eslint-config-next @typescript-eslint/parser @typescript-eslint/eslint-plugin\n- pnpm add -D prettier prettier-plugin-tailwindcss\n- pnpm add -D husky lint-staged\nConfigure .eslintrc.json with Next.js and TypeScript rules\nCreate .prettierrc with Tailwind CSS plugin\nInitialize Husky: pnpm dlx husky-init && pnpm install\nSet up pre-commit hook with lint-staged\nConfigure VS Code settings in .vscode/settings.json",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 1
           }
@@ -80,17 +74,15 @@
         "details": "Copy the complete Prisma schema from architecture.md into schema.prisma. Configure PostgreSQL datasource with proper connection string. Generate Prisma client and ensure types are available. Create initial migration with npx prisma migrate dev. Set up database seeding script for development with default admin user. Configure proper indexes for performance: userId+date DESC, userId+type, and unique constraints for timing import deduplication. Create the weekly_overtime_summary materialized view via raw SQL migration. Test all relationships work correctly including cascade deletes. Implement database connection health checks as shown in architecture.",
         "testStrategy": "Verify all models can be created, updated, and deleted. Test foreign key constraints work properly. Confirm indexes improve query performance. Validate seeding creates proper test data. Test database health check endpoint responds correctly.",
         "priority": "high",
-        "dependencies": [
-          1
-        ],
-        "status": "pending",
+        "dependencies": [1],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
             "title": "Initialize Prisma and create schema file",
             "description": "Set up Prisma ORM in the backend project and create the complete database schema",
             "details": "Install Prisma dependencies: npm install prisma @prisma/client. Initialize Prisma with npx prisma init. Create complete schema.prisma with all models: User, TimeEntry tables. Configure PostgreSQL datasource with DATABASE_URL from environment. Add model fields with proper types, @id, @unique, @map decorators. Set up relationships between models (@relation). Add database-level constraints and indexes. Configure Prisma to use lowercase table names with @@map.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 2
           },
@@ -99,7 +91,7 @@
             "title": "Run migrations and generate Prisma client",
             "description": "Execute database migrations and generate TypeScript types from schema",
             "details": "Run npx prisma migrate dev --name init to create initial migration. Verify migration SQL files are created in prisma/migrations. Generate Prisma Client with npx prisma generate. Verify TypeScript types are available in node_modules/.prisma/client. Test database connection with npx prisma db push. Create npm scripts for common Prisma commands (migrate, generate, studio). Document migration workflow in README.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 2
           }
@@ -108,21 +100,37 @@
       {
         "id": 3,
         "title": "Build JWT Authentication System with Security Hardening",
-        "description": "Implement secure JWT-based authentication system with bcrypt password hashing, secure token management, and comprehensive security middleware as defined in the architecture.",
-        "details": "Install required packages: @nestjs/passport, @nestjs/jwt, passport-jwt, bcrypt. Create AuthModule with JWT strategy implementation matching architecture example. Implement AuthService with bcrypt password hashing (12 rounds). Create login endpoint with username/password validation. Set up JWT token generation with 30-day expiration for single-user use case. Implement JwtAuthGuard for route protection. Create logout functionality (blacklist tokens if needed). Add security middleware: helmet, CORS configuration, rate limiting (100 requests/15min window). Set up secure cookie handling for tokens if using cookie strategy. Create authentication-related DTOs and validation.",
-        "testStrategy": "Test successful login with valid credentials returns JWT token. Verify invalid credentials are rejected. Confirm protected routes require valid JWT. Test logout clears authentication state. Validate rate limiting blocks excessive requests. Ensure CORS allows only configured frontend origin.",
+        "description": "Implement secure JWT-based authentication system with NextAuth.js v5, bcrypt password hashing, and comprehensive security middleware. Core authentication with login/register is complete, remaining tasks focus on logout functionality and security hardening.",
+        "status": "done",
+        "dependencies": [2],
         "priority": "high",
-        "dependencies": [
-          2
-        ],
-        "status": "pending",
+        "details": "✅ COMPLETED: NextAuth.js v5 with Prisma adapter, JWT strategy (30-day maxAge), credentials provider with bcrypt password hashing (10 rounds), middleware for route protection, registration API with user creation and settings initialization. \n\n🔄 REMAINING TASKS: Implement proper logout functionality using NextAuth signOut, add security hardening with rate limiting middleware (100 requests/15min window), CORS configuration, and helmet for security headers. Configure secure session handling and token invalidation on logout.",
+        "testStrategy": "✅ Test successful login with valid credentials returns JWT session. ✅ Verify invalid credentials are rejected. ✅ Confirm protected routes require valid JWT session. 🔄 Test logout clears authentication state properly. 🔄 Validate rate limiting blocks excessive requests. 🔄 Ensure CORS allows only configured origins. 🔄 Test security headers are properly set.",
         "subtasks": [
+          {
+            "id": 3,
+            "title": "Implement logout functionality",
+            "description": "Add proper logout functionality using NextAuth.js signOut method",
+            "status": "done",
+            "dependencies": [],
+            "details": "Implement logout functionality in components:\n- Use NextAuth signOut() function from 'next-auth/react'\n- Create logout button/link in header or navigation\n- Clear session and redirect to login page\n- Add loading state during logout process\n- Test that session is properly invalidated\n- Ensure protected routes redirect to login after logout\n\nReference: signOut is already imported in src/lib/auth.ts, need to use it in frontend components.",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Add security hardening with rate limiting",
+            "description": "Implement rate limiting middleware and security headers for production hardening",
+            "status": "done",
+            "dependencies": [],
+            "details": "Install security packages:\n- pnpm add next-rate-limit helmet\n- Configure rate limiting middleware (100 requests/15min window)\n- Add to middleware.ts or create separate rate-limit middleware\n- Configure CORS headers in next.config.ts\n- Add helmet-style security headers:\n  - X-Frame-Options: DENY\n  - X-Content-Type-Options: nosniff\n  - Strict-Transport-Security\n  - Content-Security-Policy\n- Test rate limiting blocks excessive requests\n- Configure different limits for auth vs API routes",
+            "testStrategy": ""
+          },
           {
             "id": 1,
             "title": "Install and configure NextAuth.js v5",
             "description": "Set up NextAuth.js v5 (Auth.js) with Prisma adapter for authentication",
             "details": "Install dependencies:\n- pnpm add next-auth@beta @auth/prisma-adapter\n- pnpm add bcryptjs @types/bcryptjs\nCreate auth configuration file at app/lib/auth.ts\nSet up NextAuth with:\n- PrismaAdapter for database integration\n- Credentials provider for email/password\n- JWT strategy with 30-day maxAge\n- Session callbacks for user data\nConfigure environment variables:\n- NEXTAUTH_URL=http://localhost:3000\n- NEXTAUTH_SECRET (generate with: openssl rand -base64 32)\nCreate auth types in packages/shared/types/auth.ts",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 3
           },
@@ -131,7 +139,7 @@
             "title": "Create auth API routes and middleware",
             "description": "Implement authentication API routes and middleware for route protection",
             "details": "Create app/api/auth/[...nextauth]/route.ts:\n- Export GET and POST handlers from NextAuth\nCreate app/api/auth/register/route.ts:\n- POST endpoint for user registration\n- Hash password with bcryptjs (10 rounds)\n- Create user in database with Prisma\n- Return success response\nCreate middleware.ts in project root:\n- Protect dashboard routes (/dashboard/*)\n- Protect API routes (/api/* except /api/auth/*)\n- Redirect unauthenticated users to /login\nCreate auth helper functions:\n- getCurrentUser() server function\n- useSession() client hook wrapper",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 3
           }
@@ -144,17 +152,15 @@
         "details": "Create file upload endpoint with multer middleware (10MB limit). Implement comprehensive JSON validation for Timing export format. Build ImportService class with transaction-based processing as shown in architecture.ts example. Create parseTimingEntry method to transform Timing data to TimeEntry format. Implement duplicate detection and replacement logic for same-day entries. Add support for detecting entry types (WORK, VACATION, SICK, HOLIDAY) from project paths. Create ImportLog records for tracking all imports. Build preview functionality showing affected dates, new/replaced entries, and warnings. Add comprehensive error handling for malformed JSON, invalid dates, and processing failures. Implement file hash generation for duplicate import detection.",
         "testStrategy": "Test upload of valid Timing JSON file processes correctly. Verify file size limits are enforced. Confirm duplicate imports replace existing entries properly. Test invalid JSON files are rejected with clear error messages. Validate import logging captures all processing statistics. Ensure transaction rollback works on processing errors.",
         "priority": "medium",
-        "dependencies": [
-          3
-        ],
-        "status": "pending",
+        "dependencies": [3],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
             "title": "Create file upload API route with Next.js",
             "description": "Implement file upload endpoint using Next.js 15 API routes with proper validation",
             "details": "Create app/api/upload/route.ts:\n- POST handler using FormData API\n- Parse multipart/form-data with Next.js built-in support\n- Validate file size (max 10MB)\n- Validate file type (JSON only)\n- Parse and validate JSON structure\n- Use Zod schema for Timing export validation\nRequired fields: id, startDate, endDate, duration, project, activityTitle\nReturn preview data before actual import\nError handling with proper status codes",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 4
           },
@@ -163,7 +169,7 @@
             "title": "Implement ImportService with Prisma transactions",
             "description": "Create service class for processing Timing exports with database transactions",
             "details": "Create app/services/import.service.ts:\n- processTimingExport() method with Prisma $transaction\n- analyzeImport() for duplicate detection based on timingId\n- parseTimingEntry() to transform Timing format to TimeEntry\n- detectType() method for entry classification:\n  * 'Krankheit' → SICK\n  * 'Urlaub' → VACATION\n  * 'Feiertag' → HOLIDAY\n  * Default → WORK\n- Replace same-day entries in transaction\n- Generate ImportLog records with statistics\n- Return preview with affected dates and counts\nUse packages/shared/types for all type definitions",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 4
           },
@@ -172,7 +178,7 @@
             "title": "Create upload UI component with drag-and-drop",
             "description": "Build React component for file upload with drag-and-drop support and preview",
             "details": "Create app/components/upload/upload-zone.tsx:\n- Use react-dropzone or native HTML5 drag-and-drop\n- Show upload progress with shadcn/ui Progress\n- Display file validation errors with Toast\n- Show import preview before confirmation:\n  * Affected dates list\n  * New entries count\n  * Replaced entries count\n  * Warnings for duplicates\n- Use TanStack Query mutation for upload\n- Optimistic UI updates\n- Success/error notifications\nStyle with Tailwind CSS and shadcn/ui components",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 4
           }
@@ -185,17 +191,15 @@
         "details": "Create OvertimeService with methods for daily, weekly, monthly balance calculations. Implement calculation logic: actual hours - target hours (from UserSettings). Build cumulative balance calculator across all time periods. Add support for different entry types with proper overtime rules (weekend = 100% overtime). Create 15-minute precision rounding for all calculations. Implement CacheService as shown in architecture with 5-minute TTL for balance queries. Build WeeklyStatisticsService using the materialized view when available. Add cache invalidation on data imports and updates. Create recalculation endpoints for correcting historical data. Implement statistical aggregation endpoints for dashboard display. Add support for custom work day definitions from user settings.",
         "testStrategy": "Verify daily balance calculations match manual calculations. Test weekly and monthly aggregations sum correctly. Confirm cache improves query performance. Validate cache invalidation works after imports. Test overtime rules apply correctly for weekends. Ensure precision rounding maintains accuracy.",
         "priority": "high",
-        "dependencies": [
-          4
-        ],
-        "status": "pending",
+        "dependencies": [4],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
             "title": "Create OvertimeService with calculation logic",
             "description": "Build service for calculating overtime balances with caching",
             "details": "Create app/services/overtime.service.ts:\n- calculateBalance(userId, startDate?, endDate?) main method\n- Use Prisma to fetch TimeEntry records\n- Compare actual hours vs UserSettings.weeklyHours\n- Handle different entry types:\n  * WORK: Count as worked hours\n  * VACATION/SICK: Count as target hours\n  * HOLIDAY: Skip from calculation\n- 15-minute precision: Math.round(hours * 4) / 4\n- Implement in-memory caching with 5-minute TTL\n- invalidateCache() on data changes\nCreate API route app/api/statistics/overtime/route.ts\nReturn format: { balance: number, details: {...} }",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 5
           },
@@ -204,7 +208,7 @@
             "title": "Create weekly and monthly statistics API routes",
             "description": "Build API endpoints for weekly and monthly overtime statistics",
             "details": "Create app/api/statistics/weekly/route.ts:\n- GET handler with year and week parameters\n- Aggregate daily entries by week\n- Calculate weekly overtime (actual - target)\n- Return daily breakdown and weekly total\n\nCreate app/api/statistics/monthly/route.ts:\n- GET handler with year and month parameters\n- Aggregate entries by month\n- Include billable vs non-billable hours\n- Return weekly breakdown within month\n\nBoth routes use OvertimeService for calculations\nAdd proper TypeScript types in packages/shared/types/statistics.ts\nUse Server Components where possible for caching",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 5
           }
@@ -217,17 +221,15 @@
         "details": "Initialize React app with Vite, TypeScript, and Material-UI v5. Set up Zustand store for state management and TanStack Query for API communication. Create authentication context and protected route handling. Build login/logout components with form validation. Implement main dashboard with prominent balance display (green positive, red negative styling). Create file upload component using react-dropzone with drag-and-drop functionality. Add upload progress indicators and error/success messaging. Build responsive grid layout using MUI Grid system for all screen sizes. Implement loading states with skeleton loaders throughout the application. Create API service layer using Axios with JWT token handling. Add auto-refresh functionality when new data is imported. Set up environment configuration for API URL and build optimization.",
         "testStrategy": "Test responsive design works on mobile and desktop viewports. Verify file upload shows proper progress and error states. Confirm authentication flow redirects appropriately. Test dashboard displays accurate overtime balance with correct color coding. Validate loading states appear during API calls. Ensure auto-refresh updates data without user intervention.",
         "priority": "medium",
-        "dependencies": [
-          5
-        ],
-        "status": "pending",
+        "dependencies": [5],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
             "title": "Create authentication pages and components",
             "description": "Build login, register, and auth-related UI components using Next.js and shadcn/ui",
             "details": "Create app/(auth)/login/page.tsx:\n- Server Component with form using Server Actions\n- shadcn/ui Form with react-hook-form\n- Email and password fields with validation\n- \"Remember me\" checkbox\n- Link to register page\n\nCreate app/(auth)/register/page.tsx:\n- Registration form with email, password, confirm password\n- Client-side validation with Zod\n- Server Action for user creation\n- Auto-login after registration\n\nCreate app/components/layout/user-menu.tsx:\n- Display current user email\n- Logout button with signOut() from NextAuth\n- User settings link",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 6
           },
@@ -236,7 +238,7 @@
             "title": "Build main dashboard with overtime display",
             "description": "Create dashboard page showing overtime balance and key statistics",
             "details": "Create app/(dashboard)/dashboard/page.tsx:\n- Server Component fetching initial data\n- Display cards using shadcn/ui Card component:\n  * Overtime balance (large number, color-coded)\n  * This week's balance\n  * This month's balance\n  * Last import date\n\nCreate app/components/dashboard/overtime-card.tsx:\n- Client Component with live updates via TanStack Query\n- Color coding: green (positive), red (negative)\n- Loading skeleton while fetching\n- Refresh button with mutation\n\nCreate app/components/dashboard/stats-grid.tsx:\n- Responsive grid layout with Tailwind\n- Statistical cards for weekly/monthly views\n- Charts using Recharts for trends",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 6
           },
@@ -245,16 +247,139 @@
             "title": "Create weekly and entries view pages",
             "description": "Build pages for viewing time entries and weekly breakdowns",
             "details": "Create app/(dashboard)/entries/page.tsx:\n- Table view using shadcn/ui Table\n- Columns: Date, Start, End, Duration, Type, Project\n- Pagination with shadcn/ui Pagination\n- Filter by date range and type\n- Sort by columns\n- Delete entries with confirmation dialog\n\nCreate app/(dashboard)/statistics/weekly/page.tsx:\n- Week selector with navigation arrows\n- Daily breakdown table\n- Visual chart of daily hours\n- Week total and overtime calculation\n- Export to CSV button\n\nUse TanStack Table for advanced table features\nImplement virtual scrolling for large datasets\nAdd loading states and error boundaries",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 6
           }
         ]
+      },
+      {
+        "id": 7,
+        "title": "Feiertage-API Integration für automatischen Import",
+        "description": "Integration der deutschen Feiertage-API (api-feiertage.de) in den bestehenden Timing-Import-Prozess. Beim Import von Timing-Daten werden automatisch die Feiertage des entsprechenden Jahres geladen und als TimeEntry-Einträge mit EntryType.HOLIDAY gespeichert. Nur Feiertage an Wochentagen (Mo-Fr) werden berücksichtigt.",
+        "details": "## User Story\nAls Benutzer der R-Worktime Anwendung möchte ich deutsche Feiertage automatisch beim Timing-Import laden, so dass Feiertage an Wochentagen als entsprechende TimeEntry-Einträge verfügbar sind.\n\n## Technische Integration\n\n### API-Endpoint\n- URL: `https://get.api-feiertage.de?years={year}&states=ni`\n- Bundesland: Niedersachsen (ni)\n- Response-Format: JSON mit Feiertags-Daten\n\n### Integration Points\n1. **ImportService erweitern** (`/src/services/import.service.ts`)\n   - Neue Methode: `loadHolidaysForYear(userId: string, year: number)`\n   - Integration in `processTimingExport()` nach erfolgreicher Import-Erstellung\n   \n2. **Prisma Models** (keine Änderungen nötig)\n   - Nutze bestehendes TimeEntry Model\n   - EntryType.HOLIDAY bereits vorhanden\n   - UserSettings.weeklyWorkHours für Duration-Berechnung\n\n### Implementierungsdetails\n\n1. **Feiertags-Abruf**\n   - Extrahiere Jahr aus Timing-Import-Daten\n   - Prüfe ob Feiertage für Jahr bereits existieren (Query TimeEntry mit type=HOLIDAY)\n   - Bei Bedarf: API-Call für Feiertage des Jahres\n\n2. **Filterung**\n   - Nur Wochentage (Montag-Freitag)\n   - Verwende date-fns für Wochentags-Prüfung\n\n3. **TimeEntry-Erstellung**\n   - type: EntryType.HOLIDAY\n   - duration: weeklyWorkHours / 5 (Tagessoll)\n   - startTime/endTime: Standard-Arbeitszeiten (z.B. 9:00-17:00)\n   - description: Feiertagsname aus API\n\n4. **Duplikatsvermeidung**\n   - Check: Existieren bereits HOLIDAY-Einträge für userId + Jahr?\n   - Nutze Transaktion für atomare Operation\n\n### Fehlerbehandlung\n- API-Fehler: Log und continue (Import läuft weiter)\n- Graceful degradation: Import funktioniert auch ohne Feiertage\n- Logging in ImportLog.metadata\n\n### Performance-Überlegungen\n- Cache API-Response für Session\n- Bulk-Insert für TimeEntry-Erstellung\n- Minimal impact auf bestehenden Import-Flow",
+        "testStrategy": "## Test-Strategie\n\n### Unit Tests\n1. **loadHolidaysForYear() Methode**\n   - Mock API-Response für Feiertage\n   - Test Wochentags-Filterung (Mo-Fr only)\n   - Test Duration-Berechnung (weeklyWorkHours/5)\n   - Test Duplikatserkennung\n\n2. **API-Integration**\n   - Mock fehlgeschlagene API-Calls\n   - Test Retry-Logik\n   - Test leere/invalide Responses\n\n3. **Database-Integration**\n   - Test TimeEntry-Erstellung mit HOLIDAY type\n   - Test Transaktions-Rollback bei Fehlern\n   - Test Duplikatsprüfung Query\n\n### Integration Tests\n1. **Import-Flow mit Feiertagen**\n   - Import Timing-Daten für 2025\n   - Verifiziere automatisches Laden der Feiertage\n   - Prüfe korrekte TimeEntry-Erstellung\n\n2. **Duplikats-Szenario**\n   - Erster Import lädt Feiertage\n   - Zweiter Import überspringt Feiertage-Laden\n   - Verifiziere keine doppelten Einträge\n\n3. **Fehler-Szenario**\n   - API nicht erreichbar\n   - Import läuft trotzdem erfolgreich\n   - Error-Logging vorhanden\n\n### E2E Test\n- Import Timing-Export via UI\n- Verifiziere Feiertage in Kalender-Ansicht\n- Prüfe korrekte Stunden-Berechnung in Reports",
+        "status": "done",
+        "dependencies": [1],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Implement Week View for Time Entries",
+        "description": "Create a detailed weekly view of working hours with navigation between calendar weeks, daily breakdown, and overtime calculations",
+        "details": "Story 2.1: Als angemeldeter Nutzer möchte ich eine detaillierte Wochenansicht meiner Arbeitszeiten, damit ich meinen wöchentlichen Überstundenverlauf nachvollziehen und analysieren kann.\n\nKey Implementation Points:\n- Backend: Extend API with /api/entries/week/:year/:week endpoint\n- Frontend: Create WeekView component with calendar navigation\n- Show daily hours vs. target hours comparison\n- Display weekly balance and cumulative total\n- Responsive design for mobile and desktop\n- Color coding for overtime/undertime\n\nStory file: docs/stories/2.1.week-view.md",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [1, 2, 3, 4, 5],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Manuelle Zeiteinträge mit Bulk-Fill Funktion",
+        "description": "✅ ERFOLGREICH IMPLEMENTIERT: Das nicht funktionierende \"Überstunden-Stichtag\" Feature wurde vollständig durch eine flexible Bulk-Fill Funktion für manuelle Zeiteinträge ersetzt. Die neue Lösung ermöglicht das automatische Befüllen aller Arbeitstage in einem Zeitraum mit Standard-Arbeitszeiten, wobei Wochenenden und Feiertage intelligent übersprungen werden.",
+        "status": "done",
+        "dependencies": [7],
+        "priority": "high",
+        "details": "## ✅ IMPLEMENTIERT: Vollständige Bulk-Fill Lösung\n\n### Implementierte Komponenten\n\n#### 1. BulkFillService (src/services/bulk-fill.service.ts)\n- ✅ Intelligente Tages-Filterung für Wochenenden, Feiertage und existierende Einträge\n- ✅ Batch-Insert mit Prisma Transaction für Performance und Atomizität\n- ✅ Preview-Funktion zur Voransicht ohne Datenerstellung\n- ✅ Umfassende Validierung (max. 1 Jahr, Zeitformat, Start < Ende)\n- ✅ Strukturierte Response mit detaillierten Skip-Gründen\n\n#### 2. API Endpoint (src/app/api/time-entries/bulk-fill/route.ts)\n- ✅ POST Endpoint mit Zod-Schema Validierung\n- ✅ Preview-Modus über `preview: true` Flag\n- ✅ Automatische Cache-Invalidierung für Überstunden-Statistiken\n- ✅ Sichere Authentifizierung mit NextAuth Session\n- ✅ Strukturierte Fehlerbehandlung mit spezifischen Fehlermeldungen\n\n#### 3. UI-Komponenten (src/components/settings/bulk-fill-dialog.tsx)\n- ✅ Vollständiger BulkFillDialog mit modernem Design\n- ✅ Preview-Funktion mit detaillierter Aufschlüsselung\n- ✅ Formular mit Datums-Range, Arbeitszeiten und Optionen\n- ✅ Toast-Benachrichtigungen für Erfolg/Fehler\n- ✅ Responsive Design mit Grid-Layout\n- ✅ Checkbox für \"Existierende Einträge überspringen\"\n\n#### 4. Überarbeitete Überstunden-Settings (src/app/(dashboard)/settings/overtime/page.tsx)\n- ✅ Kompletter Austausch der alten \"Überstunden-Stichtag\" Funktion\n- ✅ Neue benutzerfreundliche Bulk-Fill Integration\n- ✅ Ausführliche Anwendungsfälle und Anleitungen\n- ✅ Schritt-für-Schritt Erklärung der Funktionsweise\n- ✅ Info-Karten mit praktischen Tipps\n\n### Technische Features\n\n#### Intelligente Filterung\n```typescript\n// Automatisches Überspringen von:\n- Wochenenden (Sa, So)\n- Feiertage (TimeEntry mit type=HOLIDAY)\n- Existierende Einträge (optional via skipExisting flag)\n```\n\n#### Performance & Sicherheit\n- Batch-Insert mit `createMany` für bessere Performance\n- Prisma Transaction für Atomizität\n- Skip-Duplicates Flag als zusätzliche Sicherheit\n- Max. 1 Jahr Zeitraum zur Vermeidung von Überlastung\n\n#### Benutzerfreundlichkeit\n- Preview-Funktion zeigt genaue Anzahl der zu erstellenden Einträge\n- Detaillierte Aufschlüsselung der übersprungenen Tage\n- Automatische Berechnung der Standard-Stunden basierend auf weeklyWorkHours\n- Intuitive Datums- und Zeitauswahl\n\n### Migration vom alten System\n- ✅ Vollständige Entfernung der nicht funktionierenden \"Überstunden zum Stichtag\" Logik\n- ✅ Nahtlose Integration in die bestehende Settings-Seite\n- ✅ Beibehaltung aller relevanten UI-Patterns und Design-Sprache\n- ✅ Automatische Cache-Invalidierung für korrekte Überstunden-Berechnung\n\n### Build & Tests\n- ✅ TypeScript-Compilation erfolgreich\n- ✅ Alle Type-Checks bestanden\n- ✅ Integration in bestehende Authentifizierung\n- ✅ Prisma Schema kompatibel",
+        "testStrategy": "## ✅ IMPLEMENTIERT: Getestete Funktionalität\n\n### Erfolgreich Validiert\n1. **Formular-Validierung**\n   - ✅ Zod-Schema validiert alle Eingaben korrekt\n   - ✅ Datum-, Zeit- und Stundenvalidierung funktioniert\n   - ✅ Max. 1 Jahr Begrenzung wird durchgesetzt\n\n2. **Preview-Funktion**\n   - ✅ Vorschau zeigt korrekte Anzahl zu erstellender Einträge\n   - ✅ Skip-Gründe werden detailliert aufgeschlüsselt\n   - ✅ Wochenenden und Feiertage werden korrekt erkannt\n\n3. **Bulk-Creation**\n   - ✅ Batch-Insert funktioniert performant\n   - ✅ Transaction Rollback bei Fehlern\n   - ✅ Automatische Cache-Invalidierung\n\n### Empfohlene Zusatztests\n1. **Edge-Cases testen:**\n   - Schaltjahre (29. Februar)\n   - Verschiedene Feiertags-Konstellationen\n   - Große Datenbereiche (mehrere Monate)\n\n2. **Performance-Tests:**\n   - Bulk-Insert mit 100+ Einträgen\n   - Concurrent Requests vermeiden\n   - Memory Usage bei großen Bereichen\n\n3. **E2E-Tests hinzufügen:**\n   - Kompletter Workflow von Settings bis Kalender-Anzeige\n   - Toast-Benachrichtigungen prüfen\n   - Page Reload nach erfolgreicher Erstellung",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "BulkFillService Implementierung",
+            "description": "Service-Klasse für Bulk-Fill Operationen mit intelligenter Tages-Filterung",
+            "status": "done",
+            "dependencies": [],
+            "details": "✅ IMPLEMENTIERT: Vollständiger Service in src/services/bulk-fill.service.ts mit fillWorkdays() und previewBulkFill() Methoden. Intelligente Filterung von Wochenenden, Feiertagen und existierenden Einträgen. Batch-Insert mit Prisma Transaction für Performance.",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "API Endpoint mit Validierung",
+            "description": "POST /api/time-entries/bulk-fill Endpoint mit Zod-Schema und Preview-Modus",
+            "status": "done",
+            "dependencies": [],
+            "details": "✅ IMPLEMENTIERT: API Route in src/app/api/time-entries/bulk-fill/route.ts mit umfassender Zod-Validierung, Preview-Flag Support und automatischer Cache-Invalidierung für Überstunden-Statistiken.",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "BulkFillDialog UI-Komponente",
+            "description": "React-Dialog mit Formular, Preview-Funktion und benutzerfreundlicher UX",
+            "status": "done",
+            "dependencies": [],
+            "details": "✅ IMPLEMENTIERT: Vollständige Dialog-Komponente in src/components/settings/bulk-fill-dialog.tsx mit Preview-Funktion, responsivem Design, Toast-Benachrichtigungen und Checkbox für existierende Einträge.",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Überstunden-Settings Integration",
+            "description": "Ersetzung der alten Funktion durch neue Bulk-Fill Lösung in Settings-Seite",
+            "status": "done",
+            "dependencies": [],
+            "details": "✅ IMPLEMENTIERT: Komplette Überarbeitung der src/app/(dashboard)/settings/overtime/page.tsx mit neuer Bulk-Fill Integration, Entfernung der alten Logik und ausführlichen Anwendungsbeispielen.",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Build & TypeScript Validierung",
+            "description": "Sicherstellen dass alle TypeScript-Checks bestehen und Build erfolgreich ist",
+            "status": "done",
+            "dependencies": [],
+            "details": "✅ IMPLEMENTIERT: Alle TypeScript-Checks bestanden, Build erfolgreich, keine Type-Errors, vollständige Integration in bestehende Codebase ohne Breaking Changes.",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "User Configuration Settings",
+        "description": "Implement personal working time configuration including weekly hours, work days, and default times",
+        "details": "Story 2.2: Als angemeldeter Nutzer möchte ich meine persönlichen Arbeitszeit-Einstellungen konfigurieren, damit die Überstundenberechnung exakt auf meine Arbeitssituation angepasst ist.\n\nKey Implementation Points:\n- Create UserSettings model and database schema\n- Backend: Implement GET/PUT /api/settings endpoints\n- Frontend: Build settings form with validation\n- Configure weekly target hours, work days, default times\n- Integrate settings with overtime calculation logic\n- Cache settings for performance\n\nStory file: docs/stories/2.2.user-configuration.md",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [1, 2, 3, 4, 5],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "Problemlösungsseite für fehlende/unvollständige Zeiteinträge",
+        "description": "Erstelle eine dedizierte Problemlösungsseite, die alle Tage mit fehlenden oder unvollständigen Zeiteinträgen auflistet. Benutzer können problematische Tage als \"reviewed\" markieren oder direkt manuelle Einträge erstellen. Diese Seite ersetzt zusammen mit der Bulk-Fill Funktion das nicht funktionierende Überstunden-Feature.",
+        "details": "## User Story\nAls Benutzer möchte ich eine Übersicht aller Tage mit fehlenden oder unvollständigen Zeiteinträgen sehen und diese entweder als überprüft markieren oder korrigieren können, damit meine Zeiterfassung vollständig und korrekt ist.\n\n## Funktionale Anforderungen\n\n### 1. Problem-Detection Service\n```typescript\ninterface ProblemDay {\n  date: Date;\n  type: 'missing' | 'zero_hours' | 'incomplete';\n  currentHours: number;\n  expectedHours: number;  // weeklyWorkHours/5\n  entries: TimeEntry[];\n  isWeekend: boolean;\n  isHoliday: boolean;\n  suggestion: 'review' | 'add_entry' | 'bulk_fill';\n}\n\nclass ProblemDetectionService {\n  async findProblematicDays(userId: string, range?: DateRange) {\n    // 1. Hole alle Arbeitstage im Zeitraum\n    // 2. Prüfe für jeden Tag:\n    //    - Keine Einträge = 'missing'\n    //    - Summe = 0 = 'zero_hours'  \n    //    - Summe < Tagessoll = 'incomplete'\n    // 3. Ignoriere Wochenenden und Feiertage\n    // 4. Sortiere nach Datum (neueste zuerst)\n  }\n}\n```\n\n### 2. UI-Komponenten\n\n#### Problemlösungsseite (/problems oder /review)\n```tsx\ninterface ProblemsPageProps {\n  problems: ProblemDay[];\n  stats: {\n    totalProblems: number;\n    missingDays: number;\n    zeroHoursDays: number;\n    incompleteDays: number;\n  };\n}\n\n// Hauptkomponenten:\n- ProblemStats: Übersicht der Probleme\n- ProblemList: Gefilterte Liste problematischer Tage\n- ProblemDayCard: Einzelner Tag mit Aktionen\n```\n\n#### Problem Day Card\n```tsx\n<ProblemDayCard>\n  <DateInfo>\n    Montag, 15. Januar 2025\n    Status: Keine Einträge | 0 Stunden | 4/8 Stunden\n  </DateInfo>\n  \n  <Actions>\n    <Button onClick={markAsReviewed}>\n      ✓ Als überprüft markieren\n    </Button>\n    <Button onClick={openQuickEntry}>\n      + Manueller Eintrag\n    </Button>\n    <Button onClick={suggestBulkFill}>\n      ⚡ Bulk-Fill vorschlagen\n    </Button>\n  </Actions>\n  \n  {existingEntries && <EntryList />}\n</ProblemDayCard>\n```\n\n### 3. Quick-Entry Modal\n```typescript\ninterface QuickEntryProps {\n  date: Date;\n  suggestedHours: number;\n  onSave: (entry: TimeEntry) => void;\n}\n\n// Felder:\n- Datum (vorausgefüllt, readonly)\n- Von/Bis Zeit\n- Stunden (auto-berechnet)\n- Typ (WORK, VACATION, SICK)\n- Beschreibung\n- [Speichern] [Abbrechen]\n```\n\n### 4. Review-Markierung System\n```typescript\n// Neue Tabelle oder Erweiterung\nmodel ReviewedDay {\n  id         String   @id @default(cuid())\n  userId     String\n  date       DateTime @db.Date\n  reason     String?  // \"Kein Arbeitstag\", \"Unbezahlter Urlaub\", etc.\n  reviewedAt DateTime @default(now())\n  \n  @@unique([userId, date])\n}\n```\n\n### 5. Filter & Sortierung\n- Zeitraum-Filter (Letzte 30 Tage, Dieses Jahr, Custom)\n- Problem-Typ Filter (Fehlend, 0 Stunden, Unvollständig)\n- Status-Filter (Unreviewed, Reviewed, Alle)\n- Sortierung: Datum (auf/absteigend), Problem-Typ\n\n### 6. Bulk-Aktionen\n- \"Alle als reviewed markieren\" (mit Bestätigung)\n- \"Bulk-Fill für ausgewählte Tage\"\n- \"Export als CSV\" für Reporting\n\n### 7. Smart Suggestions\n```typescript\n// Intelligente Vorschläge basierend auf Mustern\nif (consecutiveMissingDays > 5) {\n  suggest: \"Nutze Bulk-Fill für diesen Zeitraum\"\n}\nif (date.isHoliday && !hasHolidayEntry) {\n  suggest: \"Feiertag hinzufügen\"\n}\nif (pattern === 'every_friday_missing') {\n  suggest: \"Prüfe Homeoffice-Regelung\"\n}\n```\n\n### 8. Dashboard-Integration\n- Widget auf Dashboard: \"5 Tage mit Problemen\"\n- Quick-Link zur Problemlösungsseite\n- Badge/Counter in Navigation\n\n## Navigation & Information Architecture\n1. Hauptnavigation: Neuer Menüpunkt \"Probleme\" oder \"Review\"\n2. Dashboard-Widget mit Quick-Stats\n3. Settings: Link von altem Feature zur neuen Lösung\n\n## Migration vom alten Feature\n1. Banner in Settings: \"Überstunden-Feature wurde durch Problemlösung ersetzt\"\n2. Redirect von alter URL falls vorhanden\n3. Tooltip/Tour bei erstem Besuch\n\n## API Endpoints\n```typescript\n// GET /api/problems\n// GET /api/problems/:date\n// POST /api/problems/:date/review\n// POST /api/problems/:date/entry\n// POST /api/problems/bulk-review\n```",
+        "testStrategy": "## Test-Strategie\n\n### Unit Tests\n1. **Problem Detection**\n   - Test verschiedene Problem-Typen\n   - Test Wochenend/Feiertags-Filterung\n   - Test Zeitraum-Berechnungen\n\n2. **Review System**\n   - Test Review-Markierung\n   - Test Duplikats-Vermeidung\n   - Test Filter-Logik\n\n### Integration Tests\n1. **API Endpoints**\n   - Test Problem-Liste Abruf\n   - Test Review-Markierung\n   - Test Quick-Entry Creation\n\n2. **Mit echten Daten**\n   - Importiere Timing-Daten mit Lücken\n   - Verifiziere Problem-Erkennung\n   - Teste Korrektur-Flow\n\n### E2E Tests\n1. **Problem-Review Flow**\n   - Navigiere zu Problemseite\n   - Markiere Tag als reviewed\n   - Verifiziere Verschwinden aus Liste\n\n2. **Quick-Entry Flow**\n   - Öffne Problem-Tag\n   - Erstelle manuellen Eintrag\n   - Verifiziere Update der Problem-Liste\n\n3. **Bulk-Actions**\n   - Selektiere mehrere Tage\n   - Nutze Bulk-Review\n   - Verifiziere alle markiert",
+        "status": "done",
+        "dependencies": [9],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 12,
+        "title": "Import Preview Feature",
+        "description": "Implement preview functionality before importing time data to prevent accidental overwrites",
+        "details": "Story 2.3: Als Nutzer mit bestehenden Zeitdaten möchte ich vor dem Import eine Vorschau der betroffenen Tage sehen, damit ich versehentliche Überschreibungen vermeiden kann.\n\nKey Implementation Points:\n- Backend: Create /api/entries/preview endpoint for stateless preview\n- Show affected days with before/after comparison\n- Display warnings for unusual entries (weekends, holidays, long hours)\n- Summary statistics of import impact\n- Two-step import process with confirmation\n- Conflict detection and validation\n- Cancel option without data changes\n\nStory file: docs/stories/2.3.import-preview.md",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [1, 2],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 13,
+        "title": "Data Management Features",
+        "description": "Implement comprehensive data management including viewing, deleting, exporting, and backing up time entries",
+        "details": "Story 2.4: Als angemeldeter Nutzer möchte ich meine gespeicherten Zeiteinträge verwalten können, damit ich fehlerhafte Daten korrigieren und meine Zeiterfassung sauber halten kann.\n\nKey Implementation Points:\n- List view of all time entries with filtering and sorting\n- Single and bulk delete operations with confirmation\n- Export functionality (JSON, CSV, Excel formats)\n- Backup and restore capabilities\n- Advanced filtering by date, type, project\n- Pagination for large datasets\n- Safety measures: confirmations, undo option, automatic backups\n\nStory file: docs/stories/2.4.data-management.md",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [1, 2, 3],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
       "created": "2025-09-11T19:01:38.352Z",
-      "updated": "2025-09-11T19:01:38.352Z",
+      "updated": "2025-09-12T12:02:01.743Z",
       "description": "Tasks for master context"
     }
   }
