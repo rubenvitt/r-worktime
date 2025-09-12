@@ -1,0 +1,19 @@
+# Task ID: 5
+# Title: Develop Overtime Calculation Engine with Performance Optimization
+# Status: pending
+# Dependencies: 4
+# Priority: high
+# Description: Build the core overtime calculation system with daily, weekly, and monthly balance aggregation, including caching mechanisms and the materialized view integration from the architecture.
+# Details:
+Create OvertimeService with methods for daily, weekly, monthly balance calculations. Implement calculation logic: actual hours - target hours (from UserSettings). Build cumulative balance calculator across all time periods. Add support for different entry types with proper overtime rules (weekend = 100% overtime). Create 15-minute precision rounding for all calculations. Implement CacheService as shown in architecture with 5-minute TTL for balance queries. Build WeeklyStatisticsService using the materialized view when available. Add cache invalidation on data imports and updates. Create recalculation endpoints for correcting historical data. Implement statistical aggregation endpoints for dashboard display. Add support for custom work day definitions from user settings.
+
+# Test Strategy:
+Verify daily balance calculations match manual calculations. Test weekly and monthly aggregations sum correctly. Confirm cache improves query performance. Validate cache invalidation works after imports. Test overtime rules apply correctly for weekends. Ensure precision rounding maintains accuracy.
+
+# Subtasks:
+## 1. Create overtime calculation service with daily/weekly logic [pending]
+### Dependencies: None
+### Description: Build core calculation service for computing overtime balances
+### Details:
+Create services/overtime/overtime.service.ts file. Implement calculateDailyBalance method (actual - target hours). Build calculateWeeklyBalance aggregating daily balances. Create calculateMonthlyBalance for monthly summaries. Add support for different time entry types (WORK, VACATION, SICK). Implement weekend overtime rules (100% overtime on weekends). Add 15-minute precision rounding (Math.round(hours * 4) / 4). Create helper methods for date range queries.
+

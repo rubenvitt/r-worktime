@@ -1,0 +1,37 @@
+# Task ID: 1
+# Title: Initialize Project Structure and Core Infrastructure
+# Status: pending
+# Dependencies: None
+# Priority: high
+# Description: Set up the complete development environment with separate backend and frontend folders, initialize TypeScript configurations, and establish the foundational project structure as defined in the architecture documentation.
+# Details:
+Create backend/ and frontend/ directories. Initialize backend with NestJS CLI using TypeScript template. Set up frontend with Vite + React + TypeScript template. Configure PostgreSQL database with Docker Compose setup matching the architecture. Install and configure Prisma ORM with the complete schema from architecture.md. Set up ESLint, Prettier, and pre-commit hooks for both projects. Create environment configuration files (.env.example, .env.local) with all required variables. Initialize Git repository structure with proper .gitignore files. Configure Docker Compose with PostgreSQL 17-alpine and backend service definitions. Set up basic logging with Winston as specified in architecture.
+
+# Test Strategy:
+Verify both frontend and backend start without errors. Confirm database connection works. Test environment variable loading. Validate linting and formatting rules work correctly. Ensure Docker containers start and communicate properly.
+
+# Subtasks:
+## 1. Initialize backend with Node.js and TypeScript [pending]
+### Dependencies: None
+### Description: Set up Node.js backend project with Express, TypeScript configuration, and development tooling
+### Details:
+Create backend/ directory. Run npm init and install core dependencies: express, typescript, @types/node, @types/express, ts-node, nodemon. Configure tsconfig.json with strict mode, ES2022 target, and proper module resolution. Set up nodemon.json for development with TypeScript support. Create src/server.ts with basic Express server and health check endpoint. Configure package.json scripts for dev, build, and start commands. Set up proper folder structure: controllers/, services/, middleware/, routes/, utils/, types/.
+
+## 2. Create React frontend with Vite and TypeScript [pending]
+### Dependencies: None
+### Description: Initialize React frontend application using Vite build tool with TypeScript and Material-UI setup
+### Details:
+Create frontend/ directory. Run npm create vite@latest with React and TypeScript template. Install Material-UI dependencies: @mui/material, @mui/icons-material, @emotion/react, @emotion/styled. Configure tsconfig.json for React with jsx: react-jsx. Set up vite.config.ts with proxy configuration for backend API (proxy /api to localhost:3001). Install additional dependencies: axios, zustand, @tanstack/react-query, react-dropzone. Create src folder structure: components/, pages/, services/, store/, hooks/, utils/, types/. Set up basic App.tsx with Material-UI ThemeProvider.
+
+## 3. Set up Docker and PostgreSQL database [pending]
+### Dependencies: None
+### Description: Configure Docker Compose with PostgreSQL database and necessary environment setup
+### Details:
+Create docker-compose.yml in project root with PostgreSQL 14-alpine service. Configure database with environment variables: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB. Set up volume for data persistence. Add adminer service for database management UI on port 8080. Create .env.example with all required environment variables documented. Configure DATABASE_URL for Prisma connection. Ensure database is accessible on port 5432. Add health check configuration for database service. Create init scripts directory for database initialization if needed.
+
+## 4. Configure ESLint, Prettier and Git hooks [pending]
+### Dependencies: None
+### Description: Set up code quality tools and pre-commit hooks for consistent code style
+### Details:
+Install ESLint and Prettier dependencies for both frontend and backend. Configure .eslintrc.js with TypeScript rules and React plugin for frontend. Set up .prettierrc with consistent formatting rules (2 spaces, single quotes, no semicolons). Install husky and lint-staged for pre-commit hooks. Configure pre-commit hook to run linting and formatting on staged files. Create .editorconfig for IDE consistency. Add format and lint scripts to both package.json files. Ensure ESLint and Prettier work together without conflicts.
+

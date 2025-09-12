@@ -1,0 +1,25 @@
+# Task ID: 2
+# Title: Implement Database Schema and Prisma Setup
+# Status: pending
+# Dependencies: 1
+# Priority: high
+# Description: Implement the complete database schema using Prisma ORM with all models (User, UserSettings, TimeEntry, ImportLog) including relationships, indexes, and constraints as specified in the architecture documentation.
+# Details:
+Copy the complete Prisma schema from architecture.md into schema.prisma. Configure PostgreSQL datasource with proper connection string. Generate Prisma client and ensure types are available. Create initial migration with npx prisma migrate dev. Set up database seeding script for development with default admin user. Configure proper indexes for performance: userId+date DESC, userId+type, and unique constraints for timing import deduplication. Create the weekly_overtime_summary materialized view via raw SQL migration. Test all relationships work correctly including cascade deletes. Implement database connection health checks as shown in architecture.
+
+# Test Strategy:
+Verify all models can be created, updated, and deleted. Test foreign key constraints work properly. Confirm indexes improve query performance. Validate seeding creates proper test data. Test database health check endpoint responds correctly.
+
+# Subtasks:
+## 1. Initialize Prisma and create schema file [pending]
+### Dependencies: None
+### Description: Set up Prisma ORM in the backend project and create the complete database schema
+### Details:
+Install Prisma dependencies: npm install prisma @prisma/client. Initialize Prisma with npx prisma init. Create complete schema.prisma with all models: User, TimeEntry tables. Configure PostgreSQL datasource with DATABASE_URL from environment. Add model fields with proper types, @id, @unique, @map decorators. Set up relationships between models (@relation). Add database-level constraints and indexes. Configure Prisma to use lowercase table names with @@map.
+
+## 2. Run migrations and generate Prisma client [pending]
+### Dependencies: None
+### Description: Execute database migrations and generate TypeScript types from schema
+### Details:
+Run npx prisma migrate dev --name init to create initial migration. Verify migration SQL files are created in prisma/migrations. Generate Prisma Client with npx prisma generate. Verify TypeScript types are available in node_modules/.prisma/client. Test database connection with npx prisma db push. Create npm scripts for common Prisma commands (migrate, generate, studio). Document migration workflow in README.
+

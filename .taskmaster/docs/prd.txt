@@ -1,0 +1,100 @@
+PROJECT: Worktime Tracker - Personal Time Tracking and Overtime Management WebApp
+
+## Overview
+Develop a web application for personal time tracking with a focus on overtime calculation and visualization. The application will process JSON exports from the Timing app and provide clear insights into working hour balances.
+
+## Core Problem
+Manual overtime calculation from Timing exports is time-consuming and error-prone. There is no central overview of current hour balance and historical developments.
+
+## Solution
+A web application that:
+- Processes JSON exports from Timing automatically
+- Calculates overtime/undertime automatically
+- Displays current balance prominently
+- Analyzes and visualizes historical data
+
+## Phase 1 MVP Implementation Tasks
+
+### Task: Project Setup and Infrastructure
+Set up the complete development environment with React frontend and Node.js backend. Initialize project structure with separate frontend/backend folders. Configure TypeScript for both frontend and backend. Set up PostgreSQL database with Prisma ORM. Create initial database schema for users and time_entries tables. Configure development environment with hot-reloading. Set up environment variables and .env files. Configure ESLint, Prettier, and pre-commit hooks. Initialize Git repository with proper .gitignore. Create comprehensive README with setup instructions.
+
+### Task: User Authentication System
+Implement secure user authentication with JWT tokens. Create login page with username/password fields. Implement bcrypt password hashing with salt rounds of 12. Build JWT token generation with access and refresh tokens. Set up httpOnly cookies for secure token storage. Create logout functionality that clears sessions. Implement route protection with authentication middleware. Add session management with 24-hour default expiration. Create "Remember Me" option for 30-day sessions. Handle authentication errors with generic messages.
+
+### Task: File Upload Interface
+Create drag-and-drop JSON file upload interface. Build upload component with visual feedback on drag over. Implement file validation for JSON format and 10MB size limit. Add upload progress indicator during file processing. Create error messaging system for invalid files. Build success confirmation after successful upload. Enable sequential file uploads with session history. Ensure responsive design for mobile and desktop. Integrate with backend upload API endpoint.
+
+### Task: Data Processing and Storage
+Implement JSON parsing and database storage for Timing exports. Create TypeScript interfaces for Timing data structure. Build parsing logic with comprehensive error handling. Design time_entries table with appropriate indices. Implement duplicate detection based on date and time overlap. Create replace logic for overlapping time periods. Add data validation with plausibility checks (max 24h/day). Build transaction-based processing for data consistency. Create processing report with statistics.
+
+### Task: Overtime Calculation Engine
+Develop automatic overtime/undertime calculation system. Implement daily balance calculation (actual - target hours). Create weekly and monthly aggregation logic. Build cumulative balance calculator across all periods. Handle special time types (vacation, sick leave, holidays). Implement 15-minute precision rounding. Apply weekend overtime rules (100% overtime). Create holiday configuration and handling. Build recalculation feature from scratch. Set up calculation triggers on data import.
+
+### Task: Dashboard Overview Interface
+Create main dashboard displaying overtime balance. Build primary balance card with prominent display. Implement color coding (green positive, red negative). Add last update timestamp with relative time display. Create secondary metrics for week and month statistics. Build responsive grid layout for all screen sizes. Implement loading states with skeleton loaders. Add error handling with retry mechanism. Set up auto-refresh on new data imports.
+
+## Technical Stack
+
+### Backend
+- Node.js 18+ with TypeScript 5+
+- Express.js for API server
+- Prisma ORM for database
+- PostgreSQL 14+ database
+- bcrypt for password hashing
+- jsonwebtoken for JWT auth
+- Jest for testing
+
+### Frontend
+- React 18+ with TypeScript
+- Vite as build tool
+- Material-UI (MUI) v5 for components
+- Zustand for state management
+- TanStack Query for data fetching
+- Axios for HTTP requests
+- react-dropzone for file uploads
+
+## Database Schema
+
+### Users Table
+- id (UUID primary key)
+- username (unique string)
+- email (unique string)
+- passwordHash (encrypted string)
+- createdAt (timestamp)
+- updatedAt (timestamp)
+
+### TimeEntries Table
+- id (UUID primary key)
+- userId (foreign key to users)
+- date (date)
+- startTime (time)
+- endTime (time)
+- durationHours (decimal 4,2)
+- project (optional string)
+- task (optional string)
+- rawData (JSONB for original data)
+- createdAt (timestamp)
+- updatedAt (timestamp)
+
+## Success Criteria
+- Upload works for Timing JSON exports
+- Overtime calculation with 100% accuracy
+- Dashboard loads in under 2 seconds
+- Authentication is secure with JWT
+- Data processing handles duplicates correctly
+- All acceptance criteria from stories are met
+
+## Implementation Priority
+1. Project Setup and Infrastructure (foundation)
+2. User Authentication System (security)
+3. Data Processing and Storage (core logic)
+4. File Upload Interface (data input)
+5. Overtime Calculation Engine (core feature)
+6. Dashboard Overview Interface (user value)
+
+## Constraints
+- Single-user focus for MVP
+- Must handle existing Timing export format
+- 15-minute precision for time calculations
+- Mobile-responsive design required
+- GDPR-compliant data handling

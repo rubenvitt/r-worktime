@@ -1,0 +1,31 @@
+# Task ID: 6
+# Title: Build React Frontend Dashboard with Real-time Updates
+# Status: pending
+# Dependencies: 5
+# Priority: medium
+# Description: Create the complete React frontend application with Material-UI components, featuring the main dashboard, file upload interface, authentication views, and responsive design as specified in the PRD and architecture.
+# Details:
+Initialize React app with Vite, TypeScript, and Material-UI v5. Set up Zustand store for state management and TanStack Query for API communication. Create authentication context and protected route handling. Build login/logout components with form validation. Implement main dashboard with prominent balance display (green positive, red negative styling). Create file upload component using react-dropzone with drag-and-drop functionality. Add upload progress indicators and error/success messaging. Build responsive grid layout using MUI Grid system for all screen sizes. Implement loading states with skeleton loaders throughout the application. Create API service layer using Axios with JWT token handling. Add auto-refresh functionality when new data is imported. Set up environment configuration for API URL and build optimization.
+
+# Test Strategy:
+Test responsive design works on mobile and desktop viewports. Verify file upload shows proper progress and error states. Confirm authentication flow redirects appropriately. Test dashboard displays accurate overtime balance with correct color coding. Validate loading states appear during API calls. Ensure auto-refresh updates data without user intervention.
+
+# Subtasks:
+## 1. Create authentication components and context [pending]
+### Dependencies: None
+### Description: Build login/logout UI and authentication state management
+### Details:
+Create AuthContext with useAuth hook for global auth state. Build LoginPage component with Material-UI form (TextField, Button). Implement form validation with error messages. Create PrivateRoute component for protected routes. Set up axios interceptor to add JWT token to requests. Handle 401 responses with redirect to login. Store token in localStorage or httpOnly cookie. Create logout functionality that clears auth state.
+
+## 2. Build main dashboard with overtime balance display [pending]
+### Dependencies: None
+### Description: Create the main dashboard component showing current overtime balance and statistics
+### Details:
+Create DashboardPage component with Material-UI Grid layout. Build BalanceCard component with large number display for total balance. Implement color coding: green (positive), red (negative), gray (zero). Add secondary cards for week and month statistics. Use TanStack Query for data fetching with auto-refresh. Implement loading skeletons during data fetch. Add last update timestamp with relative time (e.g., '2 hours ago'). Create responsive breakpoints for mobile/tablet/desktop views.
+
+## 3. Implement file upload component with drag-and-drop [pending]
+### Dependencies: None
+### Description: Create the file upload interface for Timing JSON exports
+### Details:
+Install and configure react-dropzone for drag-and-drop functionality. Create FileUploadZone component with visual feedback on drag over. Implement file validation (JSON only, max 10MB). Add upload progress bar using axios onUploadProgress. Create success/error notifications with Material-UI Snackbar. Show file preview with name and size before upload. Handle multiple file uploads sequentially. Add click-to-browse as fallback option. Style drop zone with dashed border and upload icon.
+

@@ -1,0 +1,254 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Initialize Project Structure and Core Infrastructure",
+        "description": "Set up the complete development environment with separate backend and frontend folders, initialize TypeScript configurations, and establish the foundational project structure as defined in the architecture documentation.",
+        "details": "Create backend/ and frontend/ directories. Initialize backend with NestJS CLI using TypeScript template. Set up frontend with Vite + React + TypeScript template. Configure PostgreSQL database with Docker Compose setup matching the architecture. Install and configure Prisma ORM with the complete schema from architecture.md. Set up ESLint, Prettier, and pre-commit hooks for both projects. Create environment configuration files (.env.example, .env.local) with all required variables. Initialize Git repository structure with proper .gitignore files. Configure Docker Compose with PostgreSQL 17-alpine and backend service definitions. Set up basic logging with Winston as specified in architecture.",
+        "testStrategy": "Verify both frontend and backend start without errors. Confirm database connection works. Test environment variable loading. Validate linting and formatting rules work correctly. Ensure Docker containers start and communicate properly.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Initialize backend with Node.js and TypeScript",
+            "description": "Set up Node.js backend project with Express, TypeScript configuration, and development tooling",
+            "details": "Create backend/ directory. Run npm init and install core dependencies: express, typescript, @types/node, @types/express, ts-node, nodemon. Configure tsconfig.json with strict mode, ES2022 target, and proper module resolution. Set up nodemon.json for development with TypeScript support. Create src/server.ts with basic Express server and health check endpoint. Configure package.json scripts for dev, build, and start commands. Set up proper folder structure: controllers/, services/, middleware/, routes/, utils/, types/.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 1
+          },
+          {
+            "id": 2,
+            "title": "Create React frontend with Vite and TypeScript",
+            "description": "Initialize React frontend application using Vite build tool with TypeScript and Material-UI setup",
+            "details": "Create frontend/ directory. Run npm create vite@latest with React and TypeScript template. Install Material-UI dependencies: @mui/material, @mui/icons-material, @emotion/react, @emotion/styled. Configure tsconfig.json for React with jsx: react-jsx. Set up vite.config.ts with proxy configuration for backend API (proxy /api to localhost:3001). Install additional dependencies: axios, zustand, @tanstack/react-query, react-dropzone. Create src folder structure: components/, pages/, services/, store/, hooks/, utils/, types/. Set up basic App.tsx with Material-UI ThemeProvider.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 1
+          },
+          {
+            "id": 3,
+            "title": "Set up Docker and PostgreSQL database",
+            "description": "Configure Docker Compose with PostgreSQL database and necessary environment setup",
+            "details": "Create docker-compose.yml in project root with PostgreSQL 14-alpine service. Configure database with environment variables: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB. Set up volume for data persistence. Add adminer service for database management UI on port 8080. Create .env.example with all required environment variables documented. Configure DATABASE_URL for Prisma connection. Ensure database is accessible on port 5432. Add health check configuration for database service. Create init scripts directory for database initialization if needed.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 1
+          },
+          {
+            "id": 4,
+            "title": "Configure ESLint, Prettier and Git hooks",
+            "description": "Set up code quality tools and pre-commit hooks for consistent code style",
+            "details": "Install ESLint and Prettier dependencies for both frontend and backend. Configure .eslintrc.js with TypeScript rules and React plugin for frontend. Set up .prettierrc with consistent formatting rules (2 spaces, single quotes, no semicolons). Install husky and lint-staged for pre-commit hooks. Configure pre-commit hook to run linting and formatting on staged files. Create .editorconfig for IDE consistency. Add format and lint scripts to both package.json files. Ensure ESLint and Prettier work together without conflicts.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 1
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Implement Database Schema and Prisma Setup",
+        "description": "Implement the complete database schema using Prisma ORM with all models (User, UserSettings, TimeEntry, ImportLog) including relationships, indexes, and constraints as specified in the architecture documentation.",
+        "details": "Copy the complete Prisma schema from architecture.md into schema.prisma. Configure PostgreSQL datasource with proper connection string. Generate Prisma client and ensure types are available. Create initial migration with npx prisma migrate dev. Set up database seeding script for development with default admin user. Configure proper indexes for performance: userId+date DESC, userId+type, and unique constraints for timing import deduplication. Create the weekly_overtime_summary materialized view via raw SQL migration. Test all relationships work correctly including cascade deletes. Implement database connection health checks as shown in architecture.",
+        "testStrategy": "Verify all models can be created, updated, and deleted. Test foreign key constraints work properly. Confirm indexes improve query performance. Validate seeding creates proper test data. Test database health check endpoint responds correctly.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Initialize Prisma and create schema file",
+            "description": "Set up Prisma ORM in the backend project and create the complete database schema",
+            "details": "Install Prisma dependencies: npm install prisma @prisma/client. Initialize Prisma with npx prisma init. Create complete schema.prisma with all models: User, TimeEntry tables. Configure PostgreSQL datasource with DATABASE_URL from environment. Add model fields with proper types, @id, @unique, @map decorators. Set up relationships between models (@relation). Add database-level constraints and indexes. Configure Prisma to use lowercase table names with @@map.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 2
+          },
+          {
+            "id": 2,
+            "title": "Run migrations and generate Prisma client",
+            "description": "Execute database migrations and generate TypeScript types from schema",
+            "details": "Run npx prisma migrate dev --name init to create initial migration. Verify migration SQL files are created in prisma/migrations. Generate Prisma Client with npx prisma generate. Verify TypeScript types are available in node_modules/.prisma/client. Test database connection with npx prisma db push. Create npm scripts for common Prisma commands (migrate, generate, studio). Document migration workflow in README.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 2
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Build JWT Authentication System with Security Hardening",
+        "description": "Implement secure JWT-based authentication system with bcrypt password hashing, secure token management, and comprehensive security middleware as defined in the architecture.",
+        "details": "Install required packages: @nestjs/passport, @nestjs/jwt, passport-jwt, bcrypt. Create AuthModule with JWT strategy implementation matching architecture example. Implement AuthService with bcrypt password hashing (12 rounds). Create login endpoint with username/password validation. Set up JWT token generation with 30-day expiration for single-user use case. Implement JwtAuthGuard for route protection. Create logout functionality (blacklist tokens if needed). Add security middleware: helmet, CORS configuration, rate limiting (100 requests/15min window). Set up secure cookie handling for tokens if using cookie strategy. Create authentication-related DTOs and validation.",
+        "testStrategy": "Test successful login with valid credentials returns JWT token. Verify invalid credentials are rejected. Confirm protected routes require valid JWT. Test logout clears authentication state. Validate rate limiting blocks excessive requests. Ensure CORS allows only configured frontend origin.",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Install authentication dependencies and create auth module",
+            "description": "Set up all required authentication packages and create the basic auth module structure",
+            "details": "Install packages: npm install bcrypt jsonwebtoken passport passport-jwt passport-local @types/bcrypt @types/passport-jwt. Create auth/ directory in backend/src. Create auth.module.ts, auth.service.ts, auth.controller.ts files. Set up JWT module configuration with secret and expiration time from environment. Create strategies/ folder for JWT and local strategies. Configure auth module imports and providers.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 3
+          },
+          {
+            "id": 2,
+            "title": "Implement login/logout endpoints and JWT generation",
+            "description": "Create authentication endpoints with JWT token generation and validation",
+            "details": "Create POST /api/auth/login endpoint accepting username/password. Implement password validation using bcrypt.compare() with hashed password from database. Generate JWT token with user payload and 24h expiration (30d for remember me). Create POST /api/auth/logout endpoint to invalidate sessions. Implement refresh token mechanism for token renewal. Add GET /api/auth/me endpoint to get current user info. Return user data without password hash in responses.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 3
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Create File Upload and JSON Processing System",
+        "description": "Implement the drag-and-drop file upload interface with comprehensive JSON validation, parsing, and the Timing data import pipeline as detailed in the architecture documentation.",
+        "details": "Create file upload endpoint with multer middleware (10MB limit). Implement comprehensive JSON validation for Timing export format. Build ImportService class with transaction-based processing as shown in architecture.ts example. Create parseTimingEntry method to transform Timing data to TimeEntry format. Implement duplicate detection and replacement logic for same-day entries. Add support for detecting entry types (WORK, VACATION, SICK, HOLIDAY) from project paths. Create ImportLog records for tracking all imports. Build preview functionality showing affected dates, new/replaced entries, and warnings. Add comprehensive error handling for malformed JSON, invalid dates, and processing failures. Implement file hash generation for duplicate import detection.",
+        "testStrategy": "Test upload of valid Timing JSON file processes correctly. Verify file size limits are enforced. Confirm duplicate imports replace existing entries properly. Test invalid JSON files are rejected with clear error messages. Validate import logging captures all processing statistics. Ensure transaction rollback works on processing errors.",
+        "priority": "medium",
+        "dependencies": [
+          3
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create file upload endpoint with multer middleware",
+            "description": "Implement the backend endpoint for handling file uploads with proper middleware configuration, file size limits, and error handling",
+            "dependencies": [],
+            "details": "Create POST /api/uploads/timing endpoint using multer middleware with 10MB file size limit. Configure multer for single file upload with file type validation (.json only). Add proper error handling for oversized files, invalid file types, and malformed requests. Include request logging and security headers. Implement temporary file storage with automatic cleanup after processing. Ensure proper CORS configuration for frontend requests.",
+            "status": "pending",
+            "testStrategy": "Unit tests for file size enforcement, MIME type validation, and error scenarios. Integration tests with actual file uploads including edge cases."
+          },
+          {
+            "id": 2,
+            "title": "Build comprehensive JSON validation for Timing export format",
+            "description": "Create validation system to verify uploaded JSON files match expected Timing export structure and contain valid data",
+            "dependencies": [
+              "4.1"
+            ],
+            "details": "Implement validation using Zod schemas based on architecture.md Timing export format. Validate required fields: id, startDate, endDate, duration, project, activityTitle. Check data types and constraints (positive duration, valid dates, string fields). Handle nested structures and arrays properly. Create detailed error messages for specific validation failures. Support both single entries and batch arrays. Add file hash generation for duplicate import detection.",
+            "status": "pending",
+            "testStrategy": "Test valid Timing JSON files pass validation. Verify invalid JSON structures are rejected with clear error messages. Test edge cases like empty files, malformed dates, and missing required fields."
+          },
+          {
+            "id": 3,
+            "title": "Implement ImportService class with transaction-based processing",
+            "description": "Create core service class to handle the complete import pipeline with database transactions and error recovery",
+            "dependencies": [
+              "4.2"
+            ],
+            "details": "Build ImportService class following architecture.ts example with processTimingExport method. Implement transaction-based processing using Prisma $transaction. Create analyzeImport method for duplicate detection and preview generation. Add parseTimingEntry method to transform Timing data to TimeEntry format. Include comprehensive error handling for malformed JSON, invalid dates, and processing failures. Implement proper rollback mechanisms on transaction failures. Add import statistics tracking and logging.",
+            "status": "pending",
+            "testStrategy": "Test successful imports complete within transactions. Verify rollback behavior on failures. Test partial failure scenarios don't corrupt existing data. Validate import statistics are accurately tracked."
+          },
+          {
+            "id": 4,
+            "title": "Create duplicate detection and entry type classification system",
+            "description": "Implement logic to detect duplicate imports, classify entry types from project paths, and handle same-day entry replacements",
+            "dependencies": [
+              "4.3"
+            ],
+            "details": "Implement duplicate detection based on timingId and date combinations. Create detectType method to classify entries as WORK, VACATION, SICK, or HOLIDAY from project paths (German keywords: 'Krankheit', 'Urlaub', 'Feiertag'). Build replacement logic for same-day entries that removes existing entries before inserting new ones. Add support for billable/non-billable classification. Implement extractProjectName and extractTime helper methods. Create comprehensive logging for all classification decisions.",
+            "status": "pending",
+            "testStrategy": "Test duplicate imports are properly detected and handled. Verify entry type classification works correctly for different German project path patterns. Confirm same-day replacement logic maintains data integrity."
+          },
+          {
+            "id": 5,
+            "title": "Build import preview and logging system",
+            "description": "Create preview functionality and comprehensive ImportLog records for tracking all import operations",
+            "dependencies": [
+              "4.4"
+            ],
+            "details": "Implement preview functionality showing affected dates, new/replaced entries count, and warnings before actual import. Create ImportLog model records with fileName, fileHash, importDate, affectedDates, and statistics (replacedEntries, newEntries, skippedEntries). Add import status tracking (SUCCESS, PARTIAL, FAILED) with detailed error messages. Build user-friendly preview interface data with warnings for large replacements or data inconsistencies. Include metadata storage for additional import context and debugging information.",
+            "status": "pending",
+            "testStrategy": "Test preview accurately shows import impact before processing. Verify ImportLog records capture all processing statistics correctly. Confirm warning system alerts users to potential data issues."
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Develop Overtime Calculation Engine with Performance Optimization",
+        "description": "Build the core overtime calculation system with daily, weekly, and monthly balance aggregation, including caching mechanisms and the materialized view integration from the architecture.",
+        "details": "Create OvertimeService with methods for daily, weekly, monthly balance calculations. Implement calculation logic: actual hours - target hours (from UserSettings). Build cumulative balance calculator across all time periods. Add support for different entry types with proper overtime rules (weekend = 100% overtime). Create 15-minute precision rounding for all calculations. Implement CacheService as shown in architecture with 5-minute TTL for balance queries. Build WeeklyStatisticsService using the materialized view when available. Add cache invalidation on data imports and updates. Create recalculation endpoints for correcting historical data. Implement statistical aggregation endpoints for dashboard display. Add support for custom work day definitions from user settings.",
+        "testStrategy": "Verify daily balance calculations match manual calculations. Test weekly and monthly aggregations sum correctly. Confirm cache improves query performance. Validate cache invalidation works after imports. Test overtime rules apply correctly for weekends. Ensure precision rounding maintains accuracy.",
+        "priority": "high",
+        "dependencies": [
+          4
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create overtime calculation service with daily/weekly logic",
+            "description": "Build core calculation service for computing overtime balances",
+            "details": "Create services/overtime/overtime.service.ts file. Implement calculateDailyBalance method (actual - target hours). Build calculateWeeklyBalance aggregating daily balances. Create calculateMonthlyBalance for monthly summaries. Add support for different time entry types (WORK, VACATION, SICK). Implement weekend overtime rules (100% overtime on weekends). Add 15-minute precision rounding (Math.round(hours * 4) / 4). Create helper methods for date range queries.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 5
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Build React Frontend Dashboard with Real-time Updates",
+        "description": "Create the complete React frontend application with Material-UI components, featuring the main dashboard, file upload interface, authentication views, and responsive design as specified in the PRD and architecture.",
+        "details": "Initialize React app with Vite, TypeScript, and Material-UI v5. Set up Zustand store for state management and TanStack Query for API communication. Create authentication context and protected route handling. Build login/logout components with form validation. Implement main dashboard with prominent balance display (green positive, red negative styling). Create file upload component using react-dropzone with drag-and-drop functionality. Add upload progress indicators and error/success messaging. Build responsive grid layout using MUI Grid system for all screen sizes. Implement loading states with skeleton loaders throughout the application. Create API service layer using Axios with JWT token handling. Add auto-refresh functionality when new data is imported. Set up environment configuration for API URL and build optimization.",
+        "testStrategy": "Test responsive design works on mobile and desktop viewports. Verify file upload shows proper progress and error states. Confirm authentication flow redirects appropriately. Test dashboard displays accurate overtime balance with correct color coding. Validate loading states appear during API calls. Ensure auto-refresh updates data without user intervention.",
+        "priority": "medium",
+        "dependencies": [
+          5
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create authentication components and context",
+            "description": "Build login/logout UI and authentication state management",
+            "details": "Create AuthContext with useAuth hook for global auth state. Build LoginPage component with Material-UI form (TextField, Button). Implement form validation with error messages. Create PrivateRoute component for protected routes. Set up axios interceptor to add JWT token to requests. Handle 401 responses with redirect to login. Store token in localStorage or httpOnly cookie. Create logout functionality that clears auth state.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 6
+          },
+          {
+            "id": 2,
+            "title": "Build main dashboard with overtime balance display",
+            "description": "Create the main dashboard component showing current overtime balance and statistics",
+            "details": "Create DashboardPage component with Material-UI Grid layout. Build BalanceCard component with large number display for total balance. Implement color coding: green (positive), red (negative), gray (zero). Add secondary cards for week and month statistics. Use TanStack Query for data fetching with auto-refresh. Implement loading skeletons during data fetch. Add last update timestamp with relative time (e.g., '2 hours ago'). Create responsive breakpoints for mobile/tablet/desktop views.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 6
+          },
+          {
+            "id": 3,
+            "title": "Implement file upload component with drag-and-drop",
+            "description": "Create the file upload interface for Timing JSON exports",
+            "details": "Install and configure react-dropzone for drag-and-drop functionality. Create FileUploadZone component with visual feedback on drag over. Implement file validation (JSON only, max 10MB). Add upload progress bar using axios onUploadProgress. Create success/error notifications with Material-UI Snackbar. Show file preview with name and size before upload. Handle multiple file uploads sequentially. Add click-to-browse as fallback option. Style drop zone with dashed border and upload icon.",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 6
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "created": "2025-09-11T19:01:38.352Z",
+      "updated": "2025-09-11T19:01:38.352Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

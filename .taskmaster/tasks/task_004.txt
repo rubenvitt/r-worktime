@@ -1,0 +1,43 @@
+# Task ID: 4
+# Title: Create File Upload and JSON Processing System
+# Status: pending
+# Dependencies: 3
+# Priority: medium
+# Description: Implement the drag-and-drop file upload interface with comprehensive JSON validation, parsing, and the Timing data import pipeline as detailed in the architecture documentation.
+# Details:
+Create file upload endpoint with multer middleware (10MB limit). Implement comprehensive JSON validation for Timing export format. Build ImportService class with transaction-based processing as shown in architecture.ts example. Create parseTimingEntry method to transform Timing data to TimeEntry format. Implement duplicate detection and replacement logic for same-day entries. Add support for detecting entry types (WORK, VACATION, SICK, HOLIDAY) from project paths. Create ImportLog records for tracking all imports. Build preview functionality showing affected dates, new/replaced entries, and warnings. Add comprehensive error handling for malformed JSON, invalid dates, and processing failures. Implement file hash generation for duplicate import detection.
+
+# Test Strategy:
+Test upload of valid Timing JSON file processes correctly. Verify file size limits are enforced. Confirm duplicate imports replace existing entries properly. Test invalid JSON files are rejected with clear error messages. Validate import logging captures all processing statistics. Ensure transaction rollback works on processing errors.
+
+# Subtasks:
+## 1. Create file upload endpoint with multer middleware [pending]
+### Dependencies: None
+### Description: Implement the backend endpoint for handling file uploads with proper middleware configuration, file size limits, and error handling
+### Details:
+Create POST /api/uploads/timing endpoint using multer middleware with 10MB file size limit. Configure multer for single file upload with file type validation (.json only). Add proper error handling for oversized files, invalid file types, and malformed requests. Include request logging and security headers. Implement temporary file storage with automatic cleanup after processing. Ensure proper CORS configuration for frontend requests.
+
+## 2. Build comprehensive JSON validation for Timing export format [pending]
+### Dependencies: 4.1
+### Description: Create validation system to verify uploaded JSON files match expected Timing export structure and contain valid data
+### Details:
+Implement validation using Zod schemas based on architecture.md Timing export format. Validate required fields: id, startDate, endDate, duration, project, activityTitle. Check data types and constraints (positive duration, valid dates, string fields). Handle nested structures and arrays properly. Create detailed error messages for specific validation failures. Support both single entries and batch arrays. Add file hash generation for duplicate import detection.
+
+## 3. Implement ImportService class with transaction-based processing [pending]
+### Dependencies: 4.2
+### Description: Create core service class to handle the complete import pipeline with database transactions and error recovery
+### Details:
+Build ImportService class following architecture.ts example with processTimingExport method. Implement transaction-based processing using Prisma $transaction. Create analyzeImport method for duplicate detection and preview generation. Add parseTimingEntry method to transform Timing data to TimeEntry format. Include comprehensive error handling for malformed JSON, invalid dates, and processing failures. Implement proper rollback mechanisms on transaction failures. Add import statistics tracking and logging.
+
+## 4. Create duplicate detection and entry type classification system [pending]
+### Dependencies: 4.3
+### Description: Implement logic to detect duplicate imports, classify entry types from project paths, and handle same-day entry replacements
+### Details:
+Implement duplicate detection based on timingId and date combinations. Create detectType method to classify entries as WORK, VACATION, SICK, or HOLIDAY from project paths (German keywords: 'Krankheit', 'Urlaub', 'Feiertag'). Build replacement logic for same-day entries that removes existing entries before inserting new ones. Add support for billable/non-billable classification. Implement extractProjectName and extractTime helper methods. Create comprehensive logging for all classification decisions.
+
+## 5. Build import preview and logging system [pending]
+### Dependencies: 4.4
+### Description: Create preview functionality and comprehensive ImportLog records for tracking all import operations
+### Details:
+Implement preview functionality showing affected dates, new/replaced entries count, and warnings before actual import. Create ImportLog model records with fileName, fileHash, importDate, affectedDates, and statistics (replacedEntries, newEntries, skippedEntries). Add import status tracking (SUCCESS, PARTIAL, FAILED) with detailed error messages. Build user-friendly preview interface data with warnings for large replacements or data inconsistencies. Include metadata storage for additional import context and debugging information.
+
