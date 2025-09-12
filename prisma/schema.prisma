@@ -36,6 +36,11 @@ model UserSettings {
   id                    String   @id @default(cuid())
   userId                String   @unique
   weeklyWorkHours       Decimal  @default(40.0) @db.Decimal(4, 2)
+  workDays              Int[]    @default([1, 2, 3, 4, 5]) // 0=Sonntag, 1=Montag, ..., 6=Samstag
+  defaultStartTime      String   @default("09:00") // Format: HH:mm
+  defaultEndTime        String   @default("17:00") // Format: HH:mm
+  breakDuration         Decimal  @default(0.5) @db.Decimal(3, 2) // In Stunden
+  timezone              String   @default("Europe/Berlin")
   overtimeNotification  Boolean  @default(true)
   language              String   @default("de")
   theme                 String   @default("light")

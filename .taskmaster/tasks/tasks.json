@@ -270,7 +270,7 @@
         "description": "Create a detailed weekly view of working hours with navigation between calendar weeks, daily breakdown, and overtime calculations",
         "details": "Story 2.1: Als angemeldeter Nutzer möchte ich eine detaillierte Wochenansicht meiner Arbeitszeiten, damit ich meinen wöchentlichen Überstundenverlauf nachvollziehen und analysieren kann.\n\nKey Implementation Points:\n- Backend: Extend API with /api/entries/week/:year/:week endpoint\n- Frontend: Create WeekView component with calendar navigation\n- Show daily hours vs. target hours comparison\n- Display weekly balance and cumulative total\n- Responsive design for mobile and desktop\n- Color coding for overtime/undertime\n\nStory file: docs/stories/2.1.week-view.md",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [1, 2, 3, 4, 5],
         "priority": "high",
         "subtasks": []
@@ -338,7 +338,7 @@
         "description": "Implement personal working time configuration including weekly hours, work days, and default times",
         "details": "Story 2.2: Als angemeldeter Nutzer möchte ich meine persönlichen Arbeitszeit-Einstellungen konfigurieren, damit die Überstundenberechnung exakt auf meine Arbeitssituation angepasst ist.\n\nKey Implementation Points:\n- Create UserSettings model and database schema\n- Backend: Implement GET/PUT /api/settings endpoints\n- Frontend: Build settings form with validation\n- Configure weekly target hours, work days, default times\n- Integrate settings with overtime calculation logic\n- Cache settings for performance\n\nStory file: docs/stories/2.2.user-configuration.md",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [1, 2, 3, 4, 5],
         "priority": "high",
         "subtasks": []
@@ -379,7 +379,7 @@
     ],
     "metadata": {
       "created": "2025-09-11T19:01:38.352Z",
-      "updated": "2025-09-12T12:31:21.458Z",
+      "updated": "2025-09-12T12:53:50.906Z",
       "description": "Tasks for master context"
     }
   }

@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { ProblemDay, ProblemStats } from "@/types/problem";
 
 export function ProblemsWidget() {
   const { data, isLoading } = useQuery({
@@ -39,8 +40,13 @@ export function ProblemsWidget() {
     refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
-  const problems = data?.problems || [];
-  const stats = data?.stats || { totalProblems: 0 };
+  const problems: ProblemDay[] = data?.problems || [];
+  const stats: ProblemStats = data?.stats || {
+    totalProblems: 0,
+    missingDays: 0,
+    zeroHoursDays: 0,
+    incompleteDays: 0,
+  };
   const recentProblems = problems.slice(0, 5);
 
   if (isLoading) {

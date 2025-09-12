@@ -1,7 +1,7 @@
-import { Calendar } from "lucide-react";
 import { OvertimeCard } from "@/components/dashboard/overtime-card";
 import { OvertimeYearSelector } from "@/components/dashboard/overtime-year-selector";
 import { ProblemsWidget } from "@/components/dashboard/problems-widget";
+import { WeekHoursCard } from "@/components/dashboard/week-hours-card";
 import {
   Card,
   CardContent,
@@ -33,16 +33,8 @@ export default async function DashboardPage() {
         {/* Yearly Overtime Selector */}
         <OvertimeYearSelector />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Wochenstunden</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">0h</div>
-            <p className="text-xs text-muted-foreground">von 40h Sollzeit</p>
-          </CardContent>
-        </Card>
+        {/* Week Hours Card with Navigation */}
+        <WeekHoursCard />
       </div>
 
       {/* Problems and Activity Grid */}

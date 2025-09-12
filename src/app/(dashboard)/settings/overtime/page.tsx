@@ -1,8 +1,10 @@
 "use client";
 
-import { CalendarPlus, Info } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { CalendarPlus, Info, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { BulkFillDialog } from "@/components/settings/bulk-fill-dialog";
+import { UserSettingsForm } from "@/components/settings/user-settings-form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,17 +14,36 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type { UserSettingsResponse } from "@/types/settings";
 
 export default function OvertimeSettingsPage() {
   const [bulkFillOpen, setBulkFillOpen] = useState(false);
 
+  // Fetch user settings for BulkFillDialog
+  const { data: settings } = useQuery({
+    queryKey: ["user-settings"],
+    queryFn: async () => {
+      const response = await fetch("/api/settings");
+      if (!response.ok) {
+        throw new Error("Fehler beim Laden der Einstellungen");
+      }
+      const data = await response.json();
+      return data.data as UserSettingsResponse;
+    },
+  });
+
   return (
-    <div className="container max-w-2xl py-6">
+    <div className="container max-w-4xl py-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold">Überstunden-Einstellungen</h1>
         <p className="text-muted-foreground">
           Verwalte deine Arbeitszeiten und Überstunden
         </p>
+      </div>
+
+      {/* User Settings Form */}
+      <div className="mb-8">
+        <UserSettingsForm />
       </div>
 
       {/* Bulk-Fill Funktion */}
@@ -137,7 +158,7 @@ export default function OvertimeSettingsPage() {
       <BulkFillDialog
         open={bulkFillOpen}
         onOpenChange={setBulkFillOpen}
-        weeklyWorkHours={40} // TODO: Get from user settings
+        weeklyWorkHours={settings?.weeklyWorkHours || 40}
       />
     </div>
   );

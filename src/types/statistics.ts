@@ -72,3 +72,48 @@ export interface StatisticsApiResponse<T> {
     calculatedAt: Date;
   };
 }
+
+// Week View Types
+export interface WeekData {
+  year: number;
+  week: number;
+  weekStartDate: Date;
+  weekEndDate: Date;
+  days: DayData[];
+  summary: WeekSummary;
+}
+
+export interface DayData {
+  date: Date;
+  dayOfWeek: string;
+  entries: TimeEntryData[];
+  totalHours: number;
+  targetHours: number;
+  difference: number;
+  isWeekend: boolean;
+}
+
+export interface TimeEntryData {
+  id: string;
+  startTime: Date;
+  endTime: Date;
+  duration: number;
+  type: EntryType;
+  description: string | null;
+}
+
+export interface WeekSummary {
+  totalWorkHours: number;
+  targetHours: number;
+  weekBalance: number;
+  cumulativeBalance: number;
+}
+
+export interface WeekDataResponse {
+  data: WeekData;
+  metadata: {
+    year: number;
+    week: number;
+    calculatedAt: Date;
+  };
+}

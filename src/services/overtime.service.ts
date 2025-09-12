@@ -100,11 +100,12 @@ export class OvertimeService {
       };
     }
 
-    // Konvertiere Decimal zu number
+    // Konvertiere Decimal zu number und nutze die neuen workDays
+    const workDaysCount = settings.workDays.length || 5;
     return {
       weeklyHours: settings.weeklyWorkHours.toNumber(),
-      dailyHours: settings.weeklyWorkHours.toNumber() / 5, // Annahme: 5 Arbeitstage
-      workDays: [1, 2, 3, 4, 5], // Default Arbeitstage
+      dailyHours: settings.weeklyWorkHours.toNumber() / workDaysCount,
+      workDays: settings.workDays || [1, 2, 3, 4, 5],
     };
   }
 
