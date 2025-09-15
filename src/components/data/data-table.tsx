@@ -227,12 +227,13 @@ export function DataTable({
           </Button>
         ),
         cell: ({ row }) => {
+          const { formatHoursToTime } = require("@/lib/utils");
           const duration = row.getValue("duration");
           const durationNum =
             typeof duration === "number"
               ? duration
               : parseFloat(duration?.toString() || "0");
-          return `${durationNum.toFixed(2)}h`;
+          return formatHoursToTime(durationNum);
         },
         size: 100,
       },

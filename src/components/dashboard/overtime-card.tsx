@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatHoursToTime, formatOvertimeHours } from "@/lib/utils";
 
 interface OvertimeData {
   balance: number;
@@ -52,14 +52,6 @@ export function OvertimeCard() {
     return () => clearInterval(interval);
   }, [fetchOvertimeData]);
 
-  const formatHours = (hours: number) => {
-    const absHours = Math.abs(hours);
-    const wholeHours = Math.floor(absHours);
-    const minutes = Math.round((absHours - wholeHours) * 60);
-    const sign = hours < 0 ? "-" : "+";
-    return `${sign}${wholeHours}h ${minutes}m`;
-  };
-
   const isPositive = overtimeData?.balance ? overtimeData.balance >= 0 : true;
 
   return (
@@ -93,18 +85,21 @@ export function OvertimeCard() {
                 isPositive ? "text-green-600" : "text-red-600",
               )}
             >
-              {formatHours(overtimeData.balance)}
+              {formatOvertimeHours(overtimeData.balance)}
             </div>
             {overtimeData.details && (
               <div className="mt-4 space-y-1 text-sm text-muted-foreground">
                 <div>
-                  Gearbeitet: {overtimeData.details.actualHours.toFixed(2)}h
+                  Gearbeitet:{" "}
+                  {formatHoursToTime(overtimeData.details.actualHours)}
                 </div>
                 <div>
-                  Sollzeit: {overtimeData.details.targetHours.toFixed(2)}h
+                  Sollzeit:{" "}
+                  {formatHoursToTime(overtimeData.details.targetHours)}
                 </div>
                 <div>
-                  Differenz: {formatHours(overtimeData.details.overtimeHours)}
+                  Differenz:{" "}
+                  {formatOvertimeHours(overtimeData.details.overtimeHours)}
                 </div>
               </div>
             )}

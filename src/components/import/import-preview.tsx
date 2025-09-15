@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatHoursToTime } from "@/lib/utils";
 import type { DetailedImportPreview } from "@/types/import";
 
 interface ImportPreviewProps {
@@ -175,7 +176,7 @@ export function ImportPreview({
                       Gesamtstunden:
                     </span>
                     <span className="font-medium">
-                      {preview.summary.totalHours.toFixed(2)} h
+                      {formatHoursToTime(preview.summary.totalHours)}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -183,7 +184,7 @@ export function ImportPreview({
                       Durchschnitt/Tag:
                     </span>
                     <span className="font-medium">
-                      {preview.summary.averageHoursPerDay.toFixed(2)} h
+                      {formatHoursToTime(preview.summary.averageHoursPerDay)}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -304,7 +305,7 @@ export function ImportPreview({
                               Vorher:
                             </span>{" "}
                             <span className="font-medium">
-                              {entry.totalHoursBefore.toFixed(2)} h
+                              {formatHoursToTime(entry.totalHoursBefore)}
                             </span>
                           </div>
                         )}
@@ -313,7 +314,7 @@ export function ImportPreview({
                             Nachher:
                           </span>{" "}
                           <span className="font-medium">
-                            {entry.totalHoursAfter.toFixed(2)} h
+                            {formatHoursToTime(entry.totalHoursAfter)}
                           </span>
                         </div>
                       </div>

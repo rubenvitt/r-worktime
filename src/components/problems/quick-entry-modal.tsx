@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { formatHoursToTime } from "@/lib/utils";
 
 interface QuickEntryModalProps {
   open: boolean;
@@ -140,7 +141,7 @@ export function QuickEntryModal({
             {format(new Date(date), "dd.MM.yyyy")}
             {suggestedHours > 0 && (
               <span className="block mt-1 text-sm">
-                Empfohlene Stunden: {suggestedHours.toFixed(1)}h
+                Empfohlene Stunden: {formatHoursToTime(suggestedHours)}
               </span>
             )}
           </DialogDescription>

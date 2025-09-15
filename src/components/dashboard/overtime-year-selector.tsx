@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, formatHoursToTime, formatOvertimeHours } from "@/lib/utils";
 
 interface YearlyOvertimeData {
   balance: number;
@@ -59,14 +59,6 @@ export function OvertimeYearSelector() {
   useEffect(() => {
     fetchYearlyOvertime(selectedYear);
   }, [selectedYear, fetchYearlyOvertime]);
-
-  const formatHours = (hours: number) => {
-    const absHours = Math.abs(hours);
-    const wholeHours = Math.floor(absHours);
-    const minutes = Math.round((absHours - wholeHours) * 60);
-    const sign = hours < 0 ? "-" : "+";
-    return `${sign}${wholeHours}h ${minutes}m`;
-  };
 
   const isPositive = overtimeData?.balance ? overtimeData.balance >= 0 : true;
 
@@ -114,15 +106,17 @@ export function OvertimeYearSelector() {
                 isPositive ? "text-green-600" : "text-red-600",
               )}
             >
-              {formatHours(overtimeData.balance)}
+              {formatOvertimeHours(overtimeData.balance)}
             </div>
             {overtimeData.details && (
               <div className="space-y-1 text-xs text-muted-foreground">
                 <div>
-                  Gearbeitet: {overtimeData.details.actualHours.toFixed(1)}h
+                  Gearbeitet:{" "}
+                  {formatHoursToTime(overtimeData.details.actualHours)}
                 </div>
                 <div>
-                  Sollzeit: {overtimeData.details.targetHours.toFixed(1)}h
+                  Sollzeit:{" "}
+                  {formatHoursToTime(overtimeData.details.targetHours)}
                 </div>
               </div>
             )}
