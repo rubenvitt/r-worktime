@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatHoursToTime } from "@/lib/utils";
 import type { ProblemDay, ProblemStats } from "@/types/problem";
 
 export function ProblemsWidget() {
@@ -153,8 +154,8 @@ export function ProblemsWidget() {
                       )}
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {problem.currentHours.toFixed(1)}/
-                      {problem.expectedHours.toFixed(1)}h
+                      {formatHoursToTime(problem.currentHours)}/
+                      {formatHoursToTime(problem.expectedHours)}
                     </span>
                   </div>
                 );

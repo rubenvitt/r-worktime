@@ -8,7 +8,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatHoursToTime, formatOvertimeHours } from "@/lib/utils";
 import type { WeekSummary } from "@/types/statistics";
 
 interface WeekSummaryCardProps {
@@ -33,7 +33,7 @@ export function WeekSummaryCard({ summary }: WeekSummaryCardProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">
-            {summary.totalWorkHours.toFixed(2)}h
+            {formatHoursToTime(summary.totalWorkHours)}
           </div>
           <p className="text-xs text-muted-foreground">
             Diese Woche gearbeitet
@@ -49,7 +49,7 @@ export function WeekSummaryCard({ summary }: WeekSummaryCardProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">
-            {summary.targetHours.toFixed(2)}h
+            {formatHoursToTime(summary.targetHours)}
           </div>
           <p className="text-xs text-muted-foreground">Wöchentliches Ziel</p>
         </CardContent>
@@ -75,8 +75,7 @@ export function WeekSummaryCard({ summary }: WeekSummaryCardProps) {
               isNegativeWeekBalance && "text-red-600",
             )}
           >
-            {isPositiveWeekBalance && "+"}
-            {summary.weekBalance.toFixed(2)}h
+            {formatOvertimeHours(summary.weekBalance)}
           </div>
           <p className="text-xs text-muted-foreground">Differenz diese Woche</p>
         </CardContent>
@@ -102,8 +101,7 @@ export function WeekSummaryCard({ summary }: WeekSummaryCardProps) {
               isNegativeCumulative && "text-red-600",
             )}
           >
-            {isPositiveCumulative && "+"}
-            {summary.cumulativeBalance.toFixed(2)}h
+            {formatOvertimeHours(summary.cumulativeBalance)}
           </div>
           <p className="text-xs text-muted-foreground">
             Kumuliert bis KW {new Date().getFullYear()}

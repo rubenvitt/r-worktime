@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { formatHoursToTime } from "@/lib/utils";
 import { EntryType } from "@/types/database";
 
 const entryTypeLabels: Record<EntryType, string> = {
@@ -291,7 +292,7 @@ export function EditEntryDialog({
                         form.watch("endTime"),
                         form.watch("date"),
                       );
-                      return `${duration.toFixed(2)}h`;
+                      return formatHoursToTime(duration);
                     })()}
                   </div>
                 )}

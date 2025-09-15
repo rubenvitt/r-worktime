@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, formatHoursToTime, formatOvertimeHours } from "@/lib/utils";
 
 interface OvertimeData {
   balance: number;
@@ -221,14 +221,6 @@ export default function OvertimePage() {
     staleTime: 2 * 60 * 1000, // 2 minutes for history data
   });
 
-  const formatHours = (hours: number) => {
-    const absHours = Math.abs(hours);
-    const wholeHours = Math.floor(absHours);
-    const minutes = Math.round((absHours - wholeHours) * 60);
-    const sign = hours < 0 ? "-" : "+";
-    return `${sign}${wholeHours}h ${minutes}m`;
-  };
-
   const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - i);
   const monthOptions = [
     "Januar",
@@ -293,20 +285,20 @@ export default function OvertimePage() {
                       : "text-red-600",
                   )}
                 >
-                  {formatHours(totalOvertime.balance)}
+                  {formatOvertimeHours(totalOvertime.balance)}
                 </div>
                 {totalOvertime.details && (
                   <div className="mt-2 space-y-1">
                     <p className="text-sm text-muted-foreground">
                       Gearbeitet:{" "}
                       <span className="font-medium">
-                        {totalOvertime.details.actualHours.toFixed(1)}h
+                        {formatHoursToTime(totalOvertime.details.actualHours)}
                       </span>
                     </p>
                     <p className="text-sm text-muted-foreground">
                       Sollzeit:{" "}
                       <span className="font-medium">
-                        {totalOvertime.details.targetHours.toFixed(1)}h
+                        {formatHoursToTime(totalOvertime.details.targetHours)}
                       </span>
                     </p>
                   </div>
@@ -339,12 +331,12 @@ export default function OvertimePage() {
                       : "text-red-600",
                   )}
                 >
-                  {formatHours(yearlyOvertime.balance)}
+                  {formatOvertimeHours(yearlyOvertime.balance)}
                 </div>
                 {yearlyOvertime.details && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    {yearlyOvertime.details.actualHours.toFixed(1)}h von{" "}
-                    {yearlyOvertime.details.targetHours.toFixed(1)}h
+                    {formatHoursToTime(yearlyOvertime.details.actualHours)} von{" "}
+                    {formatHoursToTime(yearlyOvertime.details.targetHours)}
                   </p>
                 )}
               </>
@@ -385,12 +377,12 @@ export default function OvertimePage() {
                       : "text-red-600",
                   )}
                 >
-                  {formatHours(monthlyOvertime.balance)}
+                  {formatOvertimeHours(monthlyOvertime.balance)}
                 </div>
                 {monthlyOvertime.details && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    {monthlyOvertime.details.actualHours.toFixed(1)}h von{" "}
-                    {monthlyOvertime.details.targetHours.toFixed(1)}h
+                    {formatHoursToTime(monthlyOvertime.details.actualHours)} von{" "}
+                    {formatHoursToTime(monthlyOvertime.details.targetHours)}
                   </p>
                 )}
               </>
@@ -467,10 +459,10 @@ export default function OvertimePage() {
                     <div className="flex items-center gap-4">
                       <div className="w-24 font-medium">{month.month}</div>
                       <div className="text-sm text-muted-foreground">
-                        Gearbeitet: {month.actualHours.toFixed(1)}h
+                        Gearbeitet: {formatHoursToTime(month.actualHours)}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Soll: {month.targetHours.toFixed(1)}h
+                        Soll: {formatHoursToTime(month.targetHours)}
                       </div>
                     </div>
                     <div
@@ -481,7 +473,7 @@ export default function OvertimePage() {
                           : "text-red-600",
                       )}
                     >
-                      {formatHours(month.overtimeHours)}
+                      {formatOvertimeHours(month.overtimeHours)}
                     </div>
                   </div>
                 );

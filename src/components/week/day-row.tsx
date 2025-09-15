@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { Clock, TrendingDown, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatHoursToTime, formatOvertimeHours } from "@/lib/utils";
 import type { DayData } from "@/types/statistics";
 
 interface DayRowProps {
@@ -38,10 +38,12 @@ export function DayRow({ day }: DayRowProps) {
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm">
-              <span className="font-medium">{day.totalHours.toFixed(2)}h</span>
+              <span className="font-medium">
+                {formatHoursToTime(day.totalHours)}
+              </span>
               <span className="text-muted-foreground">
                 {" "}
-                / {day.targetHours}h
+                / {formatHoursToTime(day.targetHours)}
               </span>
             </span>
           </div>
@@ -66,7 +68,7 @@ export function DayRow({ day }: DayRowProps) {
           <>
             <TrendingUp className="h-4 w-4 text-green-600" />
             <span className="font-medium text-green-600">
-              +{day.difference.toFixed(2)}h
+              {formatOvertimeHours(day.difference)}
             </span>
           </>
         )}
@@ -74,12 +76,12 @@ export function DayRow({ day }: DayRowProps) {
           <>
             <TrendingDown className="h-4 w-4 text-red-600" />
             <span className="font-medium text-red-600">
-              {day.difference.toFixed(2)}h
+              {formatOvertimeHours(day.difference)}
             </span>
           </>
         )}
         {day.difference === 0 && (
-          <span className="font-medium text-muted-foreground">±0.00h</span>
+          <span className="font-medium text-muted-foreground">±00:00</span>
         )}
       </div>
     </div>
