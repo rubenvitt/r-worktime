@@ -4,6 +4,7 @@ import { ChevronDownIcon, MenuIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -128,6 +129,7 @@ export function Navigation({ userEmail, onLogout }: NavigationProps) {
           <div className="flex items-center space-x-4">
             {/* Desktop User Info */}
             <div className="hidden md:flex items-center space-x-3">
+              <ThemeToggle />
               <span className="text-sm text-gray-700 dark:text-gray-300">
                 {userEmail}
               </span>
@@ -229,16 +231,19 @@ export function Navigation({ userEmail, onLogout }: NavigationProps) {
                   <span className="text-sm text-gray-700 dark:text-gray-300">
                     {userEmail}
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      onLogout();
-                      setIsMobileMenuOpen(false);
-                    }}
-                  >
-                    Abmelden
-                  </Button>
+                  <div className="flex items-center space-x-2">
+                    <ThemeToggle />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        onLogout();
+                        setIsMobileMenuOpen(false);
+                      }}
+                    >
+                      Abmelden
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

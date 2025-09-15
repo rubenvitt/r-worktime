@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { overtimeEvents } from "@/components/dashboard/overtime-card";
 import { ImportPreview } from "@/components/import/import-preview";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,7 @@ export function UploadZone() {
 
       return response.json() as Promise<UploadResponse>;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       if (data.status === "preview") {
         setPreview(data);
       } else if (data.status === "success") {
@@ -70,6 +71,21 @@ export function UploadZone() {
           title: "Import erfolgreich",
           description: `${data.result?.processedEntries} Einträge wurden verarbeitet`,
         });
+
+        // Invalidiere Server-Cache für Überstunden
+        try {
+          await fetch("/api/statistics/overtime", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "invalidateCache" }),
+          });
+
+          // Trigger Client-Side Cache Refresh
+          overtimeEvents.emit();
+        } catch (error) {
+          console.error("Failed to invalidate overtime cache:", error);
+        }
+
         resetUpload();
       }
       setUploadProgress(100);
