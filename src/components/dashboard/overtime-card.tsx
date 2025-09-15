@@ -11,6 +11,20 @@ import {
 } from "@/components/ui/card";
 import { cn, formatHoursToTime, formatOvertimeHours } from "@/lib/utils";
 
+// Global event emitter for cache invalidation
+export const overtimeEvents = {
+  listeners: new Set<() => void>(),
+  emit() {
+    this.listeners.forEach((listener) => {
+      listener();
+    });
+  },
+  subscribe(listener: () => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  },
+};
+
 interface OvertimeData {
   balance: number;
   details?: {
@@ -47,9 +61,17 @@ export function OvertimeCard() {
 
   useEffect(() => {
     fetchOvertimeData();
+
+    // Subscribe to cache invalidation events
+    const unsubscribe = overtimeEvents.subscribe(fetchOvertimeData);
+
     // Refresh every 5 minutes
     const interval = setInterval(fetchOvertimeData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
   }, [fetchOvertimeData]);
 
   const isPositive = overtimeData?.balance ? overtimeData.balance >= 0 : true;
