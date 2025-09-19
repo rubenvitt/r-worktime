@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# r-worktime
 
-## Getting Started
+**Zeiterfassung & Überstundenverwaltung** - Importiert Timing JSON-Exports und trackt automatisch deine Überstunden.
 
-First, run the development server:
+## Features
+
+- 📊 **Import** - JSON-Daten aus Timing App importieren
+- ⏰ **Überstunden** - Automatische Berechnung von Plus-/Minusstunden
+- 📅 **Wochenansicht** - Detaillierte Aufschlüsselung nach Kalenderwochen
+- 📈 **Statistiken** - Historische Trends und Monatsübersichten
+- 🌙 **Dark Mode** - Augenschonendes UI für späte Arbeitsstunden
+
+## Tech Stack
+
+Next.js 15 • TypeScript • Prisma • PostgreSQL • Tailwind CSS • NextAuth
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+# Installation
+pnpm install
+
+# Datenbank einrichten
+pnpm db:push
+pnpm db:seed
+
+# Entwicklung
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Umgebungsvariablen
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+DATABASE_URL="postgresql://..."
+NEXTAUTH_SECRET="..."
+NEXTAUTH_URL="http://localhost:3000"
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Verwendung
 
-## Learn More
+1. **Login/Registrierung** über `/login`
+2. **Timing-Export hochladen** unter `/upload`
+3. **Überstunden prüfen** im Dashboard
+4. **Arbeitszeiten konfigurieren** in den Einstellungen
 
-To learn more about Next.js, take a look at the following resources:
+## Projekt-Struktur
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/          # Next.js App Router & API Routes
+├── components/   # React Komponenten
+├── services/     # Business Logic
+├── lib/          # Utils & Helpers
+└── types/        # TypeScript Definitionen
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Status:** In aktiver Entwicklung
+**Lizenz:** Private
