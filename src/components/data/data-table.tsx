@@ -60,6 +60,7 @@ interface TimeEntryRow {
   duration: string | number; // Can be Decimal from Prisma or number
   type: EntryType;
   description: string | null;
+  billingStatus: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -271,6 +272,21 @@ export function DataTable({
           );
         },
         size: 200,
+      },
+      {
+        accessorKey: "billingStatus",
+        header: "Abrechnung",
+        cell: ({ row }) => {
+          const billingStatus = row.getValue("billingStatus") as string | null;
+          if (!billingStatus)
+            return <span className="text-muted-foreground">-</span>;
+          return (
+            <Badge variant="outline" className="text-xs">
+              {billingStatus}
+            </Badge>
+          );
+        },
+        size: 120,
       },
       {
         id: "actions",

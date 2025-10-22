@@ -2,13 +2,14 @@ import { z } from "zod";
 
 // Schema für einen einzelnen Timing Export Eintrag
 export const timingEntrySchema = z.object({
-  id: z.string(),
+  id: z.string().optional(),
   startDate: z.string(), // ISO 8601 format with timezone
   endDate: z.string(),
   duration: z.string(), // Format: "H:MM:SS" or "MM:SS"
   project: z.string(), // Path with ▸ separators
   activityTitle: z.string(),
   activityType: z.string().optional(),
+  billingStatus: z.string().optional(),
   notes: z.string().optional(),
   isRunning: z.boolean().optional(),
 });

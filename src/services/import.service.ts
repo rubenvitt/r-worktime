@@ -306,7 +306,9 @@ export class ImportService {
               createdEntries++;
               processedEntries++;
             } catch (entryError) {
-              const error = `Failed to process entry ${entry.id}: ${
+              const entryIdentifier =
+                entry.id || entry.activityTitle || "unknown";
+              const error = `Failed to process entry ${entryIdentifier}: ${
                 entryError instanceof Error
                   ? entryError.message
                   : "Unknown error"
@@ -388,6 +390,7 @@ export class ImportService {
       duration,
       type,
       description,
+      billingStatus: entry.billingStatus || null,
       importLogId,
     };
   }
