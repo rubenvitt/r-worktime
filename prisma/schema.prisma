@@ -63,6 +63,7 @@ model TimeEntry {
   duration      Decimal     @db.Decimal(5, 2) // In Stunden
   type          EntryType   @default(WORK)
   description   String?
+  billingStatus String?     // Abrechnungsstatus aus Timing Import
   importLogId   String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt

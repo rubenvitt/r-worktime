@@ -26,6 +26,7 @@ type TimeEntryExport = {
   duration: Prisma.Decimal;
   type: EntryType;
   description: string | null;
+  billingStatus: string | null;
   createdAt: Date;
 };
 
@@ -40,6 +41,7 @@ const convertToCSV = (entries: TimeEntryExport[]): string => {
     "Duration (Hours)",
     "Type",
     "Description",
+    "Billing Status",
   ];
   const csvRows = [headers.join(",")];
 
@@ -51,6 +53,7 @@ const convertToCSV = (entries: TimeEntryExport[]): string => {
       entry.duration.toString(),
       entry.type,
       entry.description ? `"${entry.description.replace(/"/g, '""')}"` : "",
+      entry.billingStatus ? `"${entry.billingStatus.replace(/"/g, '""')}"` : "",
     ];
     csvRows.push(row.join(","));
   });
@@ -70,6 +73,7 @@ const convertToTimingJSON = (
     type: entry.type,
     projectName: entry.description || "",
     description: entry.description || "",
+    billingStatus: entry.billingStatus || "",
     entryId: entry.id,
   }));
 };
@@ -128,6 +132,7 @@ export async function GET(request: NextRequest) {
         duration: true,
         type: true,
         description: true,
+        billingStatus: true,
         createdAt: true,
       },
       orderBy: { date: "asc" },

@@ -74,6 +74,7 @@ interface TimeEntryData {
   duration: string | number;
   type: EntryType;
   description: string | null;
+  billingStatus: string | null;
 }
 
 interface EditEntryDialogProps {
@@ -350,6 +351,16 @@ export function EditEntryDialog({
                   </FormItem>
                 )}
               />
+
+              {/* Billing Status (read-only) */}
+              {_entryData?.billingStatus && (
+                <div className="rounded-md border p-3 bg-muted/50">
+                  <div className="text-sm font-medium mb-1">
+                    Abrechnungsstatus
+                  </div>
+                  <Badge variant="outline">{_entryData.billingStatus}</Badge>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={handleClose}>
