@@ -98,8 +98,8 @@ export function ImportPreview({
       <CardContent className="space-y-4">
         {/* Duplicate Warning */}
         {isDuplicate && (
-          <Alert className="border-yellow-200 bg-yellow-50">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <Alert className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800">
+            <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
             <AlertTitle>Duplikat erkannt</AlertTitle>
             <AlertDescription>
               Diese Datei wurde bereits importiert. Sie können den Import
@@ -182,8 +182,8 @@ export function ImportPreview({
         {preview.duplicateWarnings.length > 0 && (
           <>
             <Separator />
-            <Alert className="border-orange-200 bg-orange-50">
-              <RefreshCw className="h-4 w-4 text-orange-600" />
+            <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-800">
+              <RefreshCw className="h-4 w-4 text-orange-600 dark:text-orange-400" />
               <AlertTitle>Einträge werden ersetzt</AlertTitle>
               <AlertDescription>
                 <ul className="mt-2 space-y-1 text-sm">

@@ -242,8 +242,8 @@ export function UploadZone() {
       {/* Success Message */}
       {uploadMutation.isSuccess &&
         uploadMutation.data?.status === "success" && (
-          <Alert className="border-green-200 bg-green-50">
-            <CheckCircle className="h-4 w-4 text-green-600" />
+          <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800">
+            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
             <AlertTitle>Import erfolgreich abgeschlossen</AlertTitle>
             <AlertDescription>
               {uploadMutation.data.result && (
