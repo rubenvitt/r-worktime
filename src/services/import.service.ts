@@ -1,13 +1,12 @@
-import { type EntryType, ImportStatus, PrismaClient } from "@prisma/client";
+import { type EntryType, ImportStatus } from "@prisma/client";
 import { parseISO } from "date-fns";
+import { prisma } from "@/lib/prisma";
 import {
   detectEntryType,
   parseDurationToHours,
   type TimingEntry,
   type TimingExport,
 } from "@/lib/schemas/timing-import";
-
-const prisma = new PrismaClient();
 
 export interface ImportPreview {
   totalEntries: number;

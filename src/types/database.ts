@@ -1,4 +1,4 @@
-import type { Decimal } from "@prisma/client/runtime/library";
+import type { Prisma } from "@prisma/client";
 
 export enum EntryType {
   WORK = "WORK",
@@ -14,7 +14,7 @@ export interface TimeEntry {
   date: Date;
   startTime: Date;
   endTime: Date;
-  duration: Decimal; // In Stunden
+  duration: Prisma.Decimal; // In Stunden
   type: EntryType;
   description?: string | null;
   importLogId?: string | null;
@@ -36,7 +36,7 @@ export interface User {
 export interface UserSettings {
   id: string;
   userId: string;
-  weeklyWorkHours: Decimal; // Standard Arbeitsstunden pro Woche
+  weeklyWorkHours: Prisma.Decimal; // Standard Arbeitsstunden pro Woche
   overtimeNotification: boolean;
   language: string;
   theme: string;

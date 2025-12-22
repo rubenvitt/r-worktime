@@ -1,5 +1,4 @@
 import { EntryType } from "@prisma/client";
-import { Decimal } from "@prisma/client/runtime/library";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
@@ -40,7 +39,7 @@ export async function POST(request: NextRequest) {
         where: { id: existingAdjustment.id },
         data: {
           date: validatedData.date,
-          duration: new Decimal(validatedData.hours),
+          duration: validatedData.hours,
           startTime: validatedData.date,
           endTime: validatedData.date,
         },
@@ -61,7 +60,7 @@ export async function POST(request: NextRequest) {
           date: validatedData.date,
           startTime: validatedData.date,
           endTime: validatedData.date,
-          duration: new Decimal(validatedData.hours),
+          duration: validatedData.hours,
           type: EntryType.OVERTIME,
           description: validatedData.description,
         },
