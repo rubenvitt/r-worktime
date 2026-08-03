@@ -7,7 +7,7 @@ export const timingEntrySchema = z.object({
   endDate: z.string(),
   duration: z.string(), // Format: "H:MM:SS" or "MM:SS"
   project: z.string(), // Path with ▸ separators
-  activityTitle: z.string(),
+  activityTitle: z.string().optional(), // Fehlt bei Einträgen ohne Titel (z.B. Urlaub)
   activityType: z.string().optional(),
   billingStatus: z.string().optional(),
   notes: z.string().optional(),

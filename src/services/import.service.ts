@@ -376,10 +376,9 @@ export class ImportService {
     const type = detectEntryType(entry.project);
 
     // Build description from activity title and notes
-    let description = entry.activityTitle;
-    if (entry.notes) {
-      description += ` - ${entry.notes}`;
-    }
+    // Beide Felder sind optional – fehlen sie, bleibt description null
+    const description =
+      [entry.activityTitle, entry.notes].filter(Boolean).join(" - ") || null;
 
     return {
       userId,
