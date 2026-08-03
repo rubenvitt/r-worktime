@@ -322,7 +322,10 @@ export default function WeeklyStatisticsPage() {
                     <XAxis dataKey="name" />
                     <YAxis />
                     <Tooltip
-                      formatter={(value: number) => [formatHours(value), ""]}
+                      formatter={(value) => [
+                        formatHours(typeof value === "number" ? value : 0),
+                        "",
+                      ]}
                       labelStyle={{ color: "#374151" }}
                     />
                     <Bar dataKey="Sollzeit" fill="#e5e7eb" />

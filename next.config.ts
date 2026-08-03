@@ -4,6 +4,12 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker
   output: "standalone",
 
+  // TypeScript 7 (native) does not expose the classic compiler API —
+  // use the TypeScript CLI for type checking during builds instead.
+  experimental: {
+    useTypeScriptCli: true,
+  },
+
   // Security headers configuration
   async headers() {
     return [

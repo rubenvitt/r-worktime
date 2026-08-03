@@ -78,10 +78,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate backup format
-    if (
-      !backupData.backupInfo ||
-      backupData.backupInfo.format !== "r-worktime-backup"
-    ) {
+    if (backupData.backupInfo?.format !== "r-worktime-backup") {
       return NextResponse.json(
         { error: "Invalid backup format" },
         { status: 400 },
@@ -273,10 +270,7 @@ export async function PUT(request: NextRequest) {
     const { backupData }: { backupData: BackupData } = body;
 
     // Validate backup format
-    if (
-      !backupData.backupInfo ||
-      backupData.backupInfo.format !== "r-worktime-backup"
-    ) {
+    if (backupData.backupInfo?.format !== "r-worktime-backup") {
       return NextResponse.json(
         { error: "Invalid backup format" },
         { status: 400 },

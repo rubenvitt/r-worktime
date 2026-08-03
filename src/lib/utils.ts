@@ -1,5 +1,4 @@
 import { type ClassValue, clsx } from "clsx";
-import { format } from "date-fns";
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
@@ -12,7 +11,7 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function formatHoursToTime(hours: number): string {
   // Handle non-finite inputs
-  if (!isFinite(hours)) {
+  if (!Number.isFinite(hours)) {
     return "--:--";
   }
 
