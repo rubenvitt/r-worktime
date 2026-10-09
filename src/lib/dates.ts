@@ -122,3 +122,12 @@ export function monthRange(month: string): MonthRange {
     end: berlinDayStart(lastKey),
   };
 }
+
+/**
+ * Letzter Kalendertag eines Monats (monthIndex 0–11) als "YYYY-MM-DD".
+ * Reine Kalenderrechnung, unabhängig von der Zeitzone des Browsers.
+ */
+export function monthEndKey(year: number, monthIndex: number): string {
+  return monthRange(`${year}-${String(monthIndex + 1).padStart(2, "0")}`)
+    .lastKey;
+}
