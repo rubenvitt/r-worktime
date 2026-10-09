@@ -5,10 +5,10 @@ import { WeekViewSkeleton } from "@/components/week/week-view-skeleton";
 import { auth } from "@/lib/auth";
 
 interface WeekPageProps {
-  params: {
+  params: Promise<{
     year: string;
     week: string;
-  };
+  }>;
 }
 
 export default async function WeekPage({ params }: WeekPageProps) {
@@ -18,8 +18,10 @@ export default async function WeekPage({ params }: WeekPageProps) {
     redirect("/login");
   }
 
-  const year = parseInt(params.year, 10);
-  const week = parseInt(params.week, 10);
+  // Next 16: params ist ein Promise
+  const { year: yearParam, week: weekParam } = await params;
+  const year = parseInt(yearParam, 10);
+  const week = parseInt(weekParam, 10);
 
   // Validierung
   if (Number.isNaN(year) || Number.isNaN(week) || week < 1 || week > 53) {

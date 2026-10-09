@@ -1,5 +1,10 @@
+import type { EntrySource } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import {
+  keepMissingSyncFields,
+  resolveRestoreSource,
+} from "@/lib/backup-restore";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
 import { EntryType } from "@/types/database";
@@ -50,6 +55,12 @@ interface BackupData {
       duration: string;
       type: EntryType;
       description?: string | null;
+      title?: string | null;
+      notes?: string | null;
+      projectPath?: string | null;
+      externalId?: string | null;
+      source?: EntrySource | null;
+      billingStatus?: string | null;
       createdAt?: string;
       updatedAt?: string;
     }>;
@@ -195,6 +206,10 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          // Ältere Backups kennen source noch nicht → Regeln der Migration
+          const source = resolveRestoreSource(entry);
+          const externalId = entry.externalId || null;
+
           const entryData = {
             userId: session.user.id,
             date: new Date(entry.date),
@@ -203,9 +218,30 @@ export async function POST(request: NextRequest) {
             duration: parseFloat(entry.duration),
             type: entry.type,
             description: entry.description || null,
+            title: entry.title || null,
+            notes: entry.notes || null,
+            projectPath: entry.projectPath || null,
+            externalId,
+            source,
+            billingStatus: entry.billingStatus || null,
           };
 
-          if (replaceExisting || !entry.id) {
+          // Gleiche externe ID → vorhandenen Eintrag aktualisieren (Unique-Key)
+          const existingByExternalId = externalId
+            ? await tx.timeEntry.findUnique({
+                where: {
+                  userId_externalId: { userId: session.user.id, externalId },
+                },
+              })
+            : null;
+
+          if (existingByExternalId) {
+            await tx.timeEntry.update({
+              where: { id: existingByExternalId.id },
+              data: entryData,
+            });
+            results.entriesUpdated++;
+          } else if (replaceExisting || !entry.id) {
             // Create new entry
             await tx.timeEntry.create({
               data: entryData,
@@ -224,7 +260,7 @@ export async function POST(request: NextRequest) {
             if (existingEntry) {
               await tx.timeEntry.update({
                 where: { id: existingEntry.id },
-                data: entryData,
+                data: keepMissingSyncFields(entryData, entry, existingEntry),
               });
               results.entriesUpdated++;
             } else {

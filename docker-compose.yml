@@ -12,6 +12,8 @@ services:
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:${APP_PORT:-3000}}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:${APP_PORT:-3000}}
+      - TIMING_TOKEN_ENCRYPTION_KEY=${TIMING_TOKEN_ENCRYPTION_KEY:-}
+      - TIMING_SYNC_SCHEDULER=${TIMING_SYNC_SCHEDULER:-on}
     depends_on:
       postgres:
         condition: service_healthy

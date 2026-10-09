@@ -1,5 +1,6 @@
 "use client";
 
+import { getISOWeek, getISOWeekYear } from "date-fns";
 import { ChevronDownIcon, MenuIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -21,6 +22,9 @@ interface NavigationProps {
 export function Navigation({ userEmail, onLogout }: NavigationProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const now = new Date();
+  // ISO-Wochenjahr, sonst landet KW 1 am Jahreswechsel im falschen Jahr
+  const currentWeekHref = `/week/${getISOWeekYear(now)}/${getISOWeek(now)}`;
 
   const isActiveLink = (href: string): boolean => {
     return pathname === href || pathname.startsWith(`${href}/`);
@@ -89,6 +93,11 @@ export function Navigation({ userEmail, onLogout }: NavigationProps) {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Stundenzettel */}
+            <Link href="/timesheet" className={linkClasses("/timesheet")}>
+              Stundenzettel
+            </Link>
+
             {/* Berichte Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -96,7 +105,8 @@ export function Navigation({ userEmail, onLogout }: NavigationProps) {
                   variant="ghost"
                   className={`inline-flex items-center ${
                     pathname.includes("/overtime") ||
-                    pathname.includes("/statistics")
+                    pathname.includes("/statistics") ||
+                    pathname.startsWith("/week")
                       ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
                       : "text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                   }`}
@@ -106,6 +116,11 @@ export function Navigation({ userEmail, onLogout }: NavigationProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
+                <DropdownMenuItem asChild>
+                  <Link href={currentWeekHref} className="w-full">
+                    Wochenansicht
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href="/overtime" className="w-full">
                     Überstunden
@@ -195,11 +210,27 @@ export function Navigation({ userEmail, onLogout }: NavigationProps) {
                 </Link>
               </div>
 
+              {/* Stundenzettel */}
+              <Link
+                href="/timesheet"
+                className={`block ${linkClasses("/timesheet")}`}
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Stundenzettel
+              </Link>
+
               {/* Berichte Section */}
               <div className="py-2">
                 <div className="text-sm font-semibold text-gray-500 dark:text-gray-400 px-3 py-1 uppercase tracking-wide">
                   Berichte
                 </div>
+                <Link
+                  href={currentWeekHref}
+                  className={`block ml-3 ${linkClasses("/week")}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Wochenansicht
+                </Link>
                 <Link
                   href="/overtime"
                   className={`block ml-3 ${linkClasses("/overtime")}`}

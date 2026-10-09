@@ -1,5 +1,6 @@
-import { type EntryType, ImportStatus } from "@prisma/client";
+import { EntrySource, type EntryType, ImportStatus } from "@prisma/client";
 import { parseISO } from "date-fns";
+import { berlinDayStart, dateKeyFromIsoTimestamp } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import {
   detectEntryType,
@@ -7,16 +8,7 @@ import {
   type TimingEntry,
   type TimingExport,
 } from "@/lib/schemas/timing-import";
-
-export interface ImportPreview {
-  totalEntries: number;
-  newEntries: number;
-  replacedEntries: number;
-  affectedDates: string[];
-  duplicateWarnings: string[];
-  entryTypeBreakdown: Record<EntryType, number>;
-  estimatedHours: number;
-}
+import { joinTitleChain, splitProjectPath } from "@/lib/timing/project-path";
 
 export interface ImportResult {
   importLogId: string;
@@ -31,6 +23,100 @@ export interface ImportOptions {
   fileName: string;
   fileHash: string;
   force?: boolean;
+}
+
+/** Quellen, die ein Datei-Import pro Tag ersetzen darf. */
+export const REPLACEABLE_IMPORT_SOURCES: EntrySource[] = [
+  EntrySource.FILE_IMPORT,
+  EntrySource.TIMING_SYNC,
+];
+
+export class DuplicateImportError extends Error {
+  constructor() {
+    super("Duplicate import detected. Use force option to override.");
+    this.name = "DuplicateImportError";
+  }
+}
+
+export interface MappedTimingEntry {
+  dateKey: string;
+  userId: string;
+  date: Date;
+  startTime: Date;
+  endTime: Date;
+  duration: number;
+  type: EntryType;
+  description: string | null;
+  title: string | null;
+  notes: string | null;
+  projectPath: string | null;
+  externalId: string | null;
+  source: EntrySource;
+  billingStatus: string | null;
+  importLogId: string | null;
+}
+
+/**
+ * Wandelt einen Eintrag aus dem Timing-JSON-Export in einen TimeEntry-Datensatz.
+ * Tag = Berlin-Kalendertag des Starts.
+ */
+export function mapTimingEntry(
+  entry: TimingEntry,
+  userId: string,
+  importLogId: string | null,
+): MappedTimingEntry {
+  const startTime = parseISO(entry.startDate);
+  const endTime = parseISO(entry.endDate);
+  if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+    throw new Error(`Invalid start or end date: ${entry.startDate}`);
+  }
+
+  const dateKey = dateKeyFromIsoTimestamp(entry.startDate);
+  const title = entry.activityTitle?.trim() || null;
+  const notes = entry.notes?.trim() || null;
+  const projectPath = joinTitleChain(splitProjectPath(entry.project)) || null;
+
+  return {
+    dateKey,
+    userId,
+    date: berlinDayStart(dateKey),
+    startTime,
+    endTime,
+    duration: parseDurationToHours(entry.duration),
+    type: detectEntryType(entry.project),
+    // Kompatibilität: Suche und Anzeige nutzen weiterhin description
+    description: [title, notes].filter(Boolean).join(" - ") || null,
+    title,
+    notes,
+    projectPath,
+    externalId: entry.id?.trim() || null,
+    source: EntrySource.FILE_IMPORT,
+    billingStatus: entry.billingStatus || null,
+    importLogId,
+  };
+}
+
+/** Berlin-Tag eines Export-Eintrags; null, wenn der Zeitstempel unbrauchbar ist. */
+export function timingEntryDateKey(entry: TimingEntry): string | null {
+  try {
+    return dateKeyFromIsoTimestamp(entry.startDate);
+  } catch {
+    return null;
+  }
+}
+
+/** Lässt Zeilen weg, deren Timing-ID schon an einem geschützten Eintrag hängt. */
+export function skipProtectedEntries<T extends { externalId: string | null }>(
+  rows: T[],
+  protectedIds: Array<string | null>,
+): T[] {
+  const ids = new Set(protectedIds.filter((id): id is string => !!id));
+  if (ids.size === 0) return rows;
+  return rows.filter((row) => !row.externalId || !ids.has(row.externalId));
+}
+
+export function getTimingEntries(timingData: TimingExport): TimingEntry[] {
+  return Array.isArray(timingData) ? timingData : timingData.entries;
 }
 
 export class ImportService {
@@ -62,97 +148,9 @@ export class ImportService {
   }
 
   /**
-   * Analyze import data without persisting to database
-   */
-  async analyzeImport(
-    userEmail: string,
-    timingData: TimingExport,
-  ): Promise<ImportPreview> {
-    const user = await prisma.user.findUnique({
-      where: { email: userEmail },
-    });
-
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    const affectedDatesSet = new Set<string>();
-    const entryTypeBreakdown: Record<EntryType, number> = {
-      WORK: 0,
-      OVERTIME: 0,
-      VACATION: 0,
-      SICK: 0,
-      HOLIDAY: 0,
-    };
-    let estimatedHours = 0;
-    const duplicateWarnings: string[] = [];
-
-    // Handle both array and object format
-    const entries = Array.isArray(timingData) ? timingData : timingData.entries;
-
-    // Analyze each entry
-    for (const entry of entries) {
-      // Use just the date portion from the ISO string to avoid timezone issues
-      const dateStr = entry.startDate.split("T")[0]; // "2025-09-01"
-      affectedDatesSet.add(dateStr);
-
-      const entryType = detectEntryType(entry.project);
-      entryTypeBreakdown[entryType]++;
-
-      estimatedHours += parseDurationToHours(entry.duration);
-    }
-
-    // Check for existing entries on affected dates
-    const existingEntries = await prisma.timeEntry.findMany({
-      where: {
-        userId: user.id,
-        date: {
-          in: Array.from(affectedDatesSet).map((d) => new Date(d)),
-        },
-      },
-      select: {
-        date: true,
-        startTime: true,
-        endTime: true,
-      },
-    });
-
-    // Group existing entries by date for counting
-    const existingByDate = new Map<string, number>();
-    let totalExistingEntries = 0;
-
-    existingEntries.forEach((entry) => {
-      const dateKey = entry.date.toISOString().split("T")[0];
-      existingByDate.set(dateKey, (existingByDate.get(dateKey) || 0) + 1);
-      totalExistingEntries++;
-    });
-
-    // Calculate replacements - all existing entries for these dates will be replaced
-    const replacedEntries = totalExistingEntries;
-
-    // Generate warnings for dates with existing entries
-    affectedDatesSet.forEach((date) => {
-      const existing = existingByDate.get(date) || 0;
-      if (existing > 0) {
-        duplicateWarnings.push(
-          `${date}: ${existing} existing entries will be replaced`,
-        );
-      }
-    });
-
-    return {
-      totalEntries: entries.length,
-      newEntries: entries.length - replacedEntries,
-      replacedEntries,
-      affectedDates: Array.from(affectedDatesSet).sort(),
-      duplicateWarnings,
-      entryTypeBreakdown,
-      estimatedHours: Number(estimatedHours.toFixed(2)),
-    };
-  }
-
-  /**
-   * Process Timing export with transaction
+   * Process Timing export with transaction.
+   * Ersetzt pro Tag nur Einträge aus Datei-Import oder Timing-Sync –
+   * manuelle Einträge, Feiertage, Bulk-Fill und Saldo bleiben erhalten.
    */
   async processTimingExport(
     userEmail: string,
@@ -174,20 +172,14 @@ export class ImportService {
         options.fileHash,
       );
       if (isDuplicate) {
-        throw new Error(
-          "Duplicate import detected. Use force option to override.",
-        );
+        throw new DuplicateImportError();
       }
     }
 
     const errors: string[] = [];
-    let processedEntries = 0;
-    let createdEntries = 0;
-    let replacedEntries = 0;
     let skippedEntries = 0;
 
-    // Handle both array and object format
-    const entries = Array.isArray(timingData) ? timingData : timingData.entries;
+    const entries = getTimingEntries(timingData);
     const metadata = Array.isArray(timingData)
       ? {}
       : {
@@ -196,200 +188,144 @@ export class ImportService {
           exportedAt: timingData.exportedAt,
         };
 
-    // Execute in transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Create or update import log
-      let importLog: Awaited<ReturnType<typeof tx.importLog.create>>;
-
-      if (options.force) {
-        // When forcing, update existing import log or create new one
-        importLog = await tx.importLog.upsert({
-          where: {
-            userId_fileHash: {
-              userId: user.id,
-              fileHash: options.fileHash,
-            },
-          },
-          update: {
-            fileName: options.fileName,
-            rowCount: entries.length,
-            status: ImportStatus.PENDING,
-            importDate: new Date(),
-            metadata,
-          },
-          create: {
-            userId: user.id,
-            fileName: options.fileName,
-            fileHash: options.fileHash,
-            rowCount: entries.length,
-            status: ImportStatus.PENDING,
-            metadata,
-          },
-        });
-      } else {
-        // Normal import - create new log
-        importLog = await tx.importLog.create({
-          data: {
-            userId: user.id,
-            fileName: options.fileName,
-            fileHash: options.fileHash,
-            rowCount: entries.length,
-            status: ImportStatus.PENDING,
-            metadata,
-          },
-        });
-      }
-
-      // Group entries by date for batch processing
-      const entriesByDate = new Map<string, TimingEntry[]>();
-      const allDatesInImport = new Set<string>();
-
-      for (const entry of entries) {
-        // Use just the date portion from the ISO string to avoid timezone issues
-        const dateStr = entry.startDate.split("T")[0]; // "2025-09-01"
-        allDatesInImport.add(dateStr);
-        if (!entriesByDate.has(dateStr)) {
-          entriesByDate.set(dateStr, []);
+    // Erst alles mappen (reines JS): DB-Fehler brechen die Transaktion ohnehin
+    // komplett ab, deshalb dort kein Fangen pro Eintrag.
+    const mapped: MappedTimingEntry[] = [];
+    const seenExternalIds = new Set<string>();
+    for (const entry of entries) {
+      try {
+        const row = mapTimingEntry(entry, user.id, null);
+        if (row.externalId) {
+          if (seenExternalIds.has(row.externalId)) {
+            throw new Error("duplicate id in file");
+          }
+          seenExternalIds.add(row.externalId);
         }
-        entriesByDate.get(dateStr)?.push(entry);
+        mapped.push(row);
+      } catch (entryError) {
+        const entryIdentifier = entry.id || entry.activityTitle || "unknown";
+        errors.push(
+          `Failed to process entry ${entryIdentifier}: ${
+            entryError instanceof Error ? entryError.message : "Unknown error"
+          }`,
+        );
+        skippedEntries++;
       }
+    }
 
-      // When forcing, first delete ALL existing entries for ALL dates in this import
-      if (options.force && allDatesInImport.size > 0) {
-        const deleted = await tx.timeEntry.deleteMany({
-          where: {
-            userId: user.id,
-            date: {
-              in: Array.from(allDatesInImport).map((d) => new Date(d)),
-            },
-          },
-        });
+    const dateKeys = Array.from(new Set(mapped.map((row) => row.dateKey)));
+    const externalIds = Array.from(seenExternalIds);
 
-        if (deleted.count > 0) {
-          replacedEntries = deleted.count;
-        }
-      }
+    const { importLogId, replacedEntries, createdEntries, keptEntries } =
+      await prisma.$transaction(async (tx) => {
+        const logData = {
+          fileName: options.fileName,
+          rowCount: entries.length,
+          status: ImportStatus.PENDING,
+          metadata,
+        };
 
-      // Process each date
-      for (const [dateStr, dateEntries] of entriesByDate) {
-        const date = new Date(dateStr);
-
-        try {
-          // For non-force imports, delete existing entries for this date
-          if (!options.force) {
-            const deleted = await tx.timeEntry.deleteMany({
+        const importLog = options.force
+          ? await tx.importLog.upsert({
               where: {
+                userId_fileHash: {
+                  userId: user.id,
+                  fileHash: options.fileHash,
+                },
+              },
+              update: { ...logData, importDate: new Date() },
+              create: {
+                ...logData,
                 userId: user.id,
-                date,
+                fileHash: options.fileHash,
+              },
+            })
+          : await tx.importLog.create({
+              data: {
+                ...logData,
+                userId: user.id,
+                fileHash: options.fileHash,
               },
             });
 
-            if (deleted.count > 0) {
-              replacedEntries += deleted.count;
-            }
-          }
-
-          // Create new entries for this specific date
-          for (const entry of dateEntries) {
-            try {
-              const timeEntry = this.parseTimingEntry(
-                entry,
-                user.id,
-                importLog.id,
-              );
-
-              await tx.timeEntry.create({
-                data: timeEntry,
-              });
-
-              createdEntries++;
-              processedEntries++;
-            } catch (entryError) {
-              const entryIdentifier =
-                entry.id || entry.activityTitle || "unknown";
-              const error = `Failed to process entry ${entryIdentifier}: ${
-                entryError instanceof Error
-                  ? entryError.message
-                  : "Unknown error"
-              }`;
-              errors.push(error);
-              skippedEntries++;
-            }
-          }
-        } catch (dateError) {
-          const error = `Failed to process date ${dateStr}: ${
-            dateError instanceof Error ? dateError.message : "Unknown error"
-          }`;
-          errors.push(error);
-          skippedEntries += entries.length;
+        let replaced = 0;
+        if (dateKeys.length > 0) {
+          const deleted = await tx.timeEntry.deleteMany({
+            where: {
+              userId: user.id,
+              source: { in: REPLACEABLE_IMPORT_SOURCES },
+              date: { in: dateKeys.map(berlinDayStart) },
+            },
+          });
+          replaced += deleted.count;
         }
-      }
 
-      // Update import log status
-      const finalStatus =
-        errors.length === 0
-          ? ImportStatus.SUCCESS
-          : processedEntries > 0
-            ? ImportStatus.PARTIAL
-            : ImportStatus.FAILED;
+        // Gleiche ID an anderem Tag (in Timing verschoben) ebenfalls ersetzen,
+        // sonst kollidiert der Unique-Key (userId, externalId).
+        if (externalIds.length > 0) {
+          const moved = await tx.timeEntry.deleteMany({
+            where: {
+              userId: user.id,
+              source: { in: REPLACEABLE_IMPORT_SOURCES },
+              externalId: { in: externalIds },
+            },
+          });
+          replaced += moved.count;
+        }
 
-      await tx.importLog.update({
-        where: { id: importLog.id },
-        data: {
-          status: finalStatus,
-          errorMessage: errors.length > 0 ? errors.join("; ") : null,
-        },
+        // Was jetzt noch eine der IDs trägt, ist geschützt (z. B. manuell
+        // korrigierter Timing-Eintrag): behalten statt doppelt anlegen.
+        let toCreate = mapped;
+        if (externalIds.length > 0) {
+          const kept = await tx.timeEntry.findMany({
+            where: { userId: user.id, externalId: { in: externalIds } },
+            select: { externalId: true },
+          });
+          toCreate = skipProtectedEntries(
+            mapped,
+            kept.map((row) => row.externalId),
+          );
+        }
+
+        if (toCreate.length > 0) {
+          await tx.timeEntry.createMany({
+            data: toCreate.map(({ dateKey: _dateKey, ...row }) => ({
+              ...row,
+              importLogId: importLog.id,
+            })),
+          });
+        }
+
+        const finalStatus =
+          errors.length === 0
+            ? ImportStatus.SUCCESS
+            : mapped.length > 0
+              ? ImportStatus.PARTIAL
+              : ImportStatus.FAILED;
+
+        await tx.importLog.update({
+          where: { id: importLog.id },
+          data: {
+            status: finalStatus,
+            errorMessage: errors.length > 0 ? errors.join("; ") : null,
+          },
+        });
+
+        return {
+          importLogId: importLog.id,
+          replacedEntries: replaced,
+          createdEntries: toCreate.length,
+          keptEntries: mapped.length - toCreate.length,
+        };
       });
 
-      return importLog;
-    });
-
     return {
-      importLogId: result.id,
-      processedEntries,
+      importLogId,
+      processedEntries: mapped.length,
       createdEntries,
       replacedEntries,
-      skippedEntries,
+      skippedEntries: skippedEntries + keptEntries,
       errors,
-    };
-  }
-
-  /**
-   * Parse Timing entry to database format
-   */
-  private parseTimingEntry(
-    entry: TimingEntry,
-    userId: string,
-    importLogId: string,
-  ) {
-    const startTime = parseISO(entry.startDate);
-    const endTime = parseISO(entry.endDate);
-
-    // Use the date from the LOCAL perspective, not UTC
-    // If the entry starts at 04:09 UTC on Sept 1st, it's actually Aug 31st at 06:09 in CEST
-    // But we want to store it as Sept 1st (the date shown in Timing)
-    // So we extract just the date portion from the ISO string
-    const dateStr = entry.startDate.split("T")[0]; // "2025-09-01"
-    const date = parseISO(`${dateStr}T00:00:00.000Z`);
-
-    const duration = parseDurationToHours(entry.duration);
-    const type = detectEntryType(entry.project);
-
-    // Build description from activity title and notes
-    // Beide Felder sind optional – fehlen sie, bleibt description null
-    const description =
-      [entry.activityTitle, entry.notes].filter(Boolean).join(" - ") || null;
-
-    return {
-      userId,
-      date,
-      startTime,
-      endTime,
-      duration,
-      type,
-      description,
-      billingStatus: entry.billingStatus || null,
-      importLogId,
     };
   }
 }

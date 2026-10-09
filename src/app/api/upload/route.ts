@@ -2,11 +2,19 @@ import crypto from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { berlinDayStart } from "@/lib/dates";
 import { previewCache } from "@/lib/preview-cache";
 import { prisma } from "@/lib/prisma";
 import { timingExportSchema } from "@/lib/schemas/timing-import";
-import { ImportService } from "@/services/import.service";
+import {
+  DuplicateImportError,
+  getTimingEntries,
+  ImportService,
+  REPLACEABLE_IMPORT_SOURCES,
+  timingEntryDateKey,
+} from "@/services/import.service";
 import { ImportPreviewService } from "@/services/import-preview.service";
+import { overtimeService } from "@/services/overtime.service";
 
 // 10MB file size limit
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -53,24 +61,34 @@ export async function POST(request: NextRequest) {
       // Process the import with the cached data
       const importService = new ImportService();
 
-      // Generate fileHash from cached data for consistency
-      const fileHash = crypto
-        .createHash("sha256")
-        .update(JSON.stringify(cached.timingData))
-        .digest("hex");
-
-      const result = await importService.processTimingExport(
-        session.user.email,
-        cached.timingData,
-        {
-          fileName: cached.preview.metadata?.fileName || "import.json",
-          fileHash,
-          force: formData.get("force") === "true",
-        },
-      );
+      let result: Awaited<ReturnType<ImportService["processTimingExport"]>>;
+      try {
+        // Derselbe Hash (Rohtext) wie in der Vorschau
+        result = await importService.processTimingExport(
+          session.user.email,
+          cached.timingData,
+          {
+            fileName: cached.preview.metadata?.fileName || "import.json",
+            fileHash: cached.fileHash,
+            force: formData.get("force") === "true",
+          },
+        );
+      } catch (error) {
+        if (error instanceof DuplicateImportError) {
+          return NextResponse.json(
+            {
+              error: "Diese Datei wurde bereits importiert.",
+              code: "DUPLICATE_IMPORT",
+            },
+            { status: 409 },
+          );
+        }
+        throw error;
+      }
 
       // Clean up the preview cache
       previewCache.delete(previewId);
+      overtimeService.invalidateCache(user.id);
 
       return NextResponse.json({
         status: "success",
@@ -162,18 +180,18 @@ export async function POST(request: NextRequest) {
 
     // Get existing entries for comparison
     const affectedDates = new Set<string>();
-    const entries = Array.isArray(timingData) ? timingData : timingData.entries;
+    for (const entry of getTimingEntries(timingData)) {
+      const dateKey = timingEntryDateKey(entry);
+      if (dateKey) affectedDates.add(dateKey);
+    }
 
-    entries.forEach((entry) => {
-      const dateStr = entry.startDate.split("T")[0];
-      affectedDates.add(dateStr);
-    });
-
+    // Nur Einträge, die der Import tatsächlich ersetzt
     const existingEntries = await prisma.timeEntry.findMany({
       where: {
         userId: user.id,
+        source: { in: REPLACEABLE_IMPORT_SOURCES },
         date: {
-          in: Array.from(affectedDates).map((d) => new Date(d)),
+          in: Array.from(affectedDates).map(berlinDayStart),
         },
       },
       orderBy: {
@@ -198,7 +216,7 @@ export async function POST(request: NextRequest) {
         date: "",
         message: "Diese Datei wurde bereits importiert",
         severity: "warning",
-        details: "Verwenden Sie 'force' um trotzdem zu importieren",
+        details: "Beim Bestätigen wird sie erneut importiert.",
       });
     }
 
@@ -206,6 +224,7 @@ export async function POST(request: NextRequest) {
     previewCache.set(detailedPreview.previewId, {
       preview: detailedPreview,
       timingData,
+      fileHash,
       userId: user.id,
     });
 

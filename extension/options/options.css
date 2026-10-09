@@ -1,0 +1,130 @@
+/* Allgemeine Stile */
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  background-color: #f5f5f5;
+  color: #333;
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-top: 20px;
+}
+
+h1 {
+  font-size: 20px;
+  margin-bottom: 20px;
+  color: #444;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+/* Formular-Elemente */
+.form-group {
+  margin-bottom: 20px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+input[type="text"]:focus {
+  border-color: #0066cc;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+}
+
+.help-text {
+  font-size: 12px;
+  color: #666;
+  margin-top: 5px;
+}
+
+/* Buttons */
+.button-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.button.primary {
+  background-color: #0066cc;
+  color: white;
+}
+
+.button.primary:hover {
+  background-color: #0055aa;
+}
+
+.button.secondary {
+  background-color: #f1f1f1;
+  color: #333;
+}
+
+.button.secondary:hover {
+  background-color: #e5e5e5;
+}
+
+/* Status-Meldungen */
+.status {
+  padding: 10px;
+  border-radius: 3px;
+  margin-top: 10px;
+}
+
+.status.success {
+  background-color: #e6f7e6;
+  color: #2e7d32;
+}
+
+.status.error {
+  background-color: #fce8e8;
+  color: #c62828;
+}
+
+.status.info {
+  background-color: #e3f2fd;
+  color: #0277bd;
+}
+.permission-status {
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.permission-status.granted {
+  color: #2e7d32;
+}
+
+.permission-status.missing {
+  color: #c62828;
+}

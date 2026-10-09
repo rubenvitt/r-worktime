@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { EntryType } from "@prisma/client";
+import { type EntrySource, EntryType } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -26,9 +26,17 @@ type TimeEntryExport = {
   duration: Prisma.Decimal;
   type: EntryType;
   description: string | null;
+  title: string | null;
+  notes: string | null;
+  projectPath: string | null;
+  externalId: string | null;
+  source: EntrySource;
   billingStatus: string | null;
   createdAt: Date;
 };
+
+const csvText = (value: string | null): string =>
+  value ? `"${value.replace(/"/g, '""')}"` : "";
 
 // Helper function to convert to CSV
 const convertToCSV = (entries: TimeEntryExport[]): string => {
@@ -42,6 +50,10 @@ const convertToCSV = (entries: TimeEntryExport[]): string => {
     "Type",
     "Description",
     "Billing Status",
+    "Title",
+    "Notes",
+    "Project",
+    "Source",
   ];
   const csvRows = [headers.join(",")];
 
@@ -52,8 +64,12 @@ const convertToCSV = (entries: TimeEntryExport[]): string => {
       entry.endTime ? formatTimeForCSV(new Date(entry.endTime)) : "",
       entry.duration.toString(),
       entry.type,
-      entry.description ? `"${entry.description.replace(/"/g, '""')}"` : "",
-      entry.billingStatus ? `"${entry.billingStatus.replace(/"/g, '""')}"` : "",
+      csvText(entry.description),
+      csvText(entry.billingStatus),
+      csvText(entry.title),
+      csvText(entry.notes),
+      csvText(entry.projectPath),
+      entry.source,
     ];
     csvRows.push(row.join(","));
   });
@@ -71,8 +87,13 @@ const convertToTimingJSON = (
     endTime: entry.endTime ? formatTimeForCSV(new Date(entry.endTime)) : "",
     duration: parseFloat(entry.duration.toString()),
     type: entry.type,
-    projectName: entry.description || "",
+    projectName: entry.projectPath ?? entry.description ?? "",
     description: entry.description || "",
+    title: entry.title ?? "",
+    notes: entry.notes ?? "",
+    projectPath: entry.projectPath ?? "",
+    source: entry.source,
+    externalId: entry.externalId ?? "",
     billingStatus: entry.billingStatus || "",
     entryId: entry.id,
   }));
@@ -132,6 +153,11 @@ export async function GET(request: NextRequest) {
         duration: true,
         type: true,
         description: true,
+        title: true,
+        notes: true,
+        projectPath: true,
+        externalId: true,
+        source: true,
         billingStatus: true,
         createdAt: true,
       },

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INNOQ Timesheet Import</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>INNOQ Timesheet Import</h1>
+
+        <div class="status-container">
+            <div id="status" class="status">Bereit für Import</div>
+            <div id="origin" class="origin"></div>
+            <div id="data-preview" class="data-preview"></div>
+        </div>
+
+        <button type="button" id="importButton" class="button primary">Aus Zwischenablage importieren</button>
+        <button type="button" id="fillTableButton" class="button secondary" disabled>In Tabelle eintragen</button>
+        <button type="button" id="discardButton" class="button discard" hidden>Verwerfen</button>
+        <button type="button" id="openRTimeButton" class="button rtime">R-Time App öffnen</button>
+
+        <div class="footer">
+            <div class="info">Die Daten kommen per Zwischenablage (R-Times-JSON-Format) oder direkt aus R-Worktime.</div>
+            <div class="settings-link">
+                <a href="../options/options.html" id="openSettingsLink">Einstellungen</a>
+            </div>
+        </div>
+    </div>
+    <script src="../lib/timesheet-schema.js"></script>
+    <script src="popup.js"></script>
+</body>
+
+</html>

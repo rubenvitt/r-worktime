@@ -8,6 +8,15 @@ export enum EntryType {
   HOLIDAY = "HOLIDAY",
 }
 
+export enum EntrySource {
+  MANUAL = "MANUAL",
+  FILE_IMPORT = "FILE_IMPORT",
+  TIMING_SYNC = "TIMING_SYNC",
+  BULK_FILL = "BULK_FILL",
+  HOLIDAY = "HOLIDAY",
+  ADJUSTMENT = "ADJUSTMENT",
+}
+
 export interface TimeEntry {
   id: string;
   userId: string;
@@ -17,6 +26,12 @@ export interface TimeEntry {
   duration: Prisma.Decimal; // In Stunden
   type: EntryType;
   description?: string | null;
+  title?: string | null;
+  notes?: string | null;
+  projectPath?: string | null;
+  externalId?: string | null;
+  source: EntrySource;
+  billingStatus?: string | null;
   importLogId?: string | null;
   createdAt: Date;
   updatedAt: Date;

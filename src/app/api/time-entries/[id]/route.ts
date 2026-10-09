@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { keepExactTimes, manualEditOverrides } from "@/lib/manual-edit";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
 import { EntryType } from "@/types/database";
@@ -128,16 +129,21 @@ export async function PUT(
       );
     }
 
+    const edit = keepExactTimes(existingEntry, {
+      date: new Date(body.date),
+      startTime: new Date(body.startTime),
+      endTime: new Date(body.endTime),
+      duration: parseFloat(body.duration.toString()),
+      type: body.type,
+      description: (body.description || null) as string | null,
+    });
+
     // Update the entry
     const updatedEntry = await prisma.timeEntry.update({
       where: { id },
       data: {
-        date: new Date(body.date),
-        startTime: new Date(body.startTime),
-        endTime: new Date(body.endTime),
-        duration: parseFloat(body.duration.toString()),
-        type: body.type,
-        description: body.description || null,
+        ...edit,
+        ...manualEditOverrides(existingEntry, edit),
         updatedAt: new Date(),
       },
     });

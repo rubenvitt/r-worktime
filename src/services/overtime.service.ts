@@ -8,6 +8,7 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
+import { excludeAdjustmentFilter, findAdjustmentEntry } from "@/lib/adjustment";
 import { prisma } from "@/lib/prisma";
 import { EntryType } from "@/types/database";
 import type {
@@ -126,15 +127,7 @@ export class OvertimeService {
     }
 
     // Prüfe ob es einen Anfangssaldo gibt
-    const adjustmentEntry = await prisma.timeEntry.findFirst({
-      where: {
-        userId,
-        description: {
-          contains: "Anfangs-Überstunden-Saldo",
-        },
-      },
-      orderBy: { date: "asc" },
-    });
+    const adjustmentEntry = await findAdjustmentEntry(userId);
 
     // Bestimme den Zeitraum für die Berechnung
     // Wenn es einen Anfangssaldo gibt, starte die Sollzeit-Berechnung erst ab dem Tag NACH dem Adjustment
@@ -177,12 +170,8 @@ export class OvertimeService {
         gte: adjustmentEntry ? adjustmentEntry.date : calculationStartDate,
         lte: calculationEndDate,
       },
-      // Schließe den Anfangssaldo-Eintrag aus
-      NOT: {
-        description: {
-          contains: "Anfangs-Überstunden-Saldo",
-        },
-      },
+      // Anfangssaldo ausschließen, Einträge ohne description behalten
+      ...excludeAdjustmentFilter(),
     };
 
     const entries = await prisma.timeEntry.findMany({

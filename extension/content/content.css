@@ -1,0 +1,120 @@
+/* biome-ignore-start lint/complexity/noImportantStyles: muss Odoo-Styles überschreiben */
+.innoq-highlight {
+  border: 2px solid #4caf50 !important;
+  transition: border-color 0.3s ease;
+  background-color: rgba(76, 175, 80, 0.1) !important;
+}
+
+.innoq-error {
+  border: 2px solid #f44336 !important;
+  transition: border-color 0.3s ease;
+}
+/* biome-ignore-end lint/complexity/noImportantStyles: Ende */
+
+.innoq-import-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.innoq-import-modal {
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
+  width: 80%;
+  max-width: 500px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.innoq-import-modal h2 {
+  margin-top: 0;
+  color: #00695c;
+}
+
+.innoq-import-modal .progress {
+  margin: 16px 0;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.innoq-import-modal .progress-bar {
+  height: 100%;
+  background-color: #00695c;
+  transition: width 0.3s ease;
+}
+
+.innoq-import-modal .status {
+  margin: 16px 0;
+}
+
+.innoq-import-modal .success {
+  color: #2e7d32;
+}
+
+.innoq-import-modal .error {
+  color: #d32f2f;
+}
+
+/* Direktversand aus r-worktime: schwebender Button */
+.innoq-rwt-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 9998;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  max-width: 420px;
+  padding: 12px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-size: 14px;
+}
+
+.innoq-rwt-fab button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.innoq-rwt-fab .innoq-rwt-fab-fill {
+  background-color: #00695c;
+  color: white;
+}
+
+.innoq-rwt-fab .innoq-rwt-fab-fill:disabled {
+  background-color: #9e9e9e;
+  cursor: not-allowed;
+}
+
+.innoq-rwt-fab .innoq-rwt-fab-discard {
+  background-color: #f1f1f1;
+  color: #333;
+}
+
+.innoq-rwt-fab .meta {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: #555;
+}
+
+.innoq-rwt-fab .meta:empty {
+  display: none;
+}
+
+.innoq-rwt-fab .meta.warning {
+  color: #d32f2f;
+}

@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { EntrySource, type Prisma } from "@prisma/client";
 import { addDays, endOfDay, format, isWeekend, startOfDay } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { EntryType } from "@/types/database";
@@ -159,6 +159,7 @@ export class BulkFillService {
           duration: dailyHours,
           type: EntryType.WORK,
           description,
+          source: EntrySource.BULK_FILL,
         });
       }
 

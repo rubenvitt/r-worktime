@@ -1,6 +1,7 @@
-import { EntryType } from "@prisma/client";
+import { EntrySource, EntryType } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { findAdjustmentEntry } from "@/lib/adjustment";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
@@ -24,14 +25,7 @@ export async function POST(request: NextRequest) {
     const validatedData = adjustmentSchema.parse(body);
 
     // Check if an adjustment entry already exists for this user
-    const existingAdjustment = await prisma.timeEntry.findFirst({
-      where: {
-        userId: session.user.id,
-        description: {
-          contains: "Anfangs-Überstunden-Saldo",
-        },
-      },
-    });
+    const existingAdjustment = await findAdjustmentEntry(session.user.id);
 
     if (existingAdjustment) {
       // Update existing adjustment
@@ -42,6 +36,8 @@ export async function POST(request: NextRequest) {
           duration: validatedData.hours,
           startTime: validatedData.date,
           endTime: validatedData.date,
+          // Altdaten (nur Text-Marker) bekommen die echte Quelle
+          source: EntrySource.ADJUSTMENT,
         },
       });
 
@@ -63,6 +59,7 @@ export async function POST(request: NextRequest) {
           duration: validatedData.hours,
           type: EntryType.OVERTIME,
           description: validatedData.description,
+          source: EntrySource.ADJUSTMENT,
         },
       });
 
@@ -100,14 +97,7 @@ export async function GET(_request: NextRequest) {
     }
 
     // Get existing adjustment entry
-    const adjustment = await prisma.timeEntry.findFirst({
-      where: {
-        userId: session.user.id,
-        description: {
-          contains: "Anfangs-Überstunden-Saldo",
-        },
-      },
-    });
+    const adjustment = await findAdjustmentEntry(session.user.id);
 
     if (!adjustment) {
       return NextResponse.json({ adjustment: null });

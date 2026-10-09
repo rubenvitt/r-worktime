@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { EntrySource, type Prisma } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -201,6 +201,7 @@ export async function POST(request: NextRequest) {
         duration: duration,
         type: type as EntryType,
         description: description || null,
+        source: EntrySource.MANUAL,
       },
       select: {
         id: true,

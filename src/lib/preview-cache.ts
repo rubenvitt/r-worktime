@@ -4,6 +4,8 @@ import type { DetailedImportPreview } from "@/services/import-preview.service";
 interface CachedPreview {
   preview: DetailedImportPreview;
   timingData: TimingExport;
+  /** SHA-256 über den Rohtext der Datei – identisch für Vorschau und Import */
+  fileHash: string;
   userId: string;
   createdAt: Date;
   expiresAt: Date;
@@ -30,6 +32,7 @@ class PreviewCache {
     data: {
       preview: DetailedImportPreview;
       timingData: TimingExport;
+      fileHash: string;
       userId: string;
     },
   ): void {
@@ -52,6 +55,7 @@ class PreviewCache {
   ): {
     preview: DetailedImportPreview;
     timingData: TimingExport;
+    fileHash: string;
   } | null {
     const cached = this.cache.get(previewId);
 
@@ -73,6 +77,7 @@ class PreviewCache {
     return {
       preview: cached.preview,
       timingData: cached.timingData,
+      fileHash: cached.fileHash,
     };
   }
 
