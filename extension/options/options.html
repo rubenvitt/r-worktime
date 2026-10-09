@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INNOQ Timesheet Import - Einstellungen</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>INNOQ Timesheet Import - Einstellungen</h1>
+
+        <div class="form-group">
+            <label for="odooUrl">Odoo URL:</label>
+            <input type="text" id="odooUrl" placeholder="https://odoo.innoq.io/innoq/users/username/timesheets/YYYYMM/">
+            <p class="help-text">Gib hier die URL zu deiner INNOQ Odoo Timesheet-Seite ein. Ersetze ggf. den Nutzernamen
+                und den Monat.</p>
+        </div>
+
+        <div class="form-group">
+            <label for="rTimeUrl">R-Time URL:</label>
+            <input type="text" id="rTimeUrl" placeholder="https://r-time.rubeen.dev">
+            <p class="help-text">URL zur R-Time App für das Erfassen deiner Timesheet-Daten.</p>
+        </div>
+
+        <div class="form-group">
+            <label for="rWorktimeUrl">R-Worktime URL:</label>
+            <input type="text" id="rWorktimeUrl" placeholder="https://worktime.example.org">
+            <p class="help-text">Adresse deiner R-Worktime-Instanz für den Direktversand der Stundenzettel. Beim
+                Speichern fragt der Browser nach der Berechtigung für genau diese Adresse. Leer lassen, wenn du nur
+                lokal (http://localhost:3000 oder :3002) arbeitest.</p>
+            <p id="rWorktimePermission" class="permission-status"></p>
+        </div>
+
+        <div class="button-group">
+            <button type="button" id="saveButton" class="button primary">Speichern</button>
+            <button type="button" id="resetButton" class="button secondary">Zurücksetzen</button>
+        </div>
+
+        <div id="status" class="status"></div>
+    </div>
+    <script src="../lib/timesheet-schema.js"></script>
+    <script src="options.js"></script>
+</body>
+
+</html>

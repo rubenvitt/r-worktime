@@ -25,6 +25,7 @@ model User {
   timeEntries   TimeEntry[]
   importLogs    ImportLog[]
   reviewedDays  ReviewedDay[]
+  timingIntegration TimingIntegration?
 
   @@index([email])
   @@map("users")
@@ -61,7 +62,12 @@ model TimeEntry {
   endTime       DateTime
   duration      Decimal     @db.Decimal(5, 2) // In Stunden
   type          EntryType   @default(WORK)
-  description   String?
+  description   String?     // Kompatibilität: [title, notes].join(" - ")
+  title         String?     // Aktivitätstitel aus Timing
+  notes         String?     // Notizen aus Timing
+  projectPath   String?     // Projektpfad, Segmente mit " ▸ " verbunden
+  externalId    String?     // Stabile ID der Quelle (z. B. Timing "self")
+  source        EntrySource @default(MANUAL)
   billingStatus String?     // Abrechnungsstatus aus Timing Import
   importLogId   String?
   createdAt     DateTime    @default(now())
@@ -71,8 +77,10 @@ model TimeEntry {
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   importLog  ImportLog?  @relation(fields: [importLogId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, date, startTime]) // Verhindert doppelte Einträge
+  @@unique([userId, externalId]) // NULLs mehrfach erlaubt
+  @@index([userId, date, startTime])
   @@index([userId, date])
+  @@index([userId, source])
   @@index([importLogId])
   @@map("time_entries")
 }
@@ -114,6 +122,29 @@ model ReviewedDay {
   @@map("reviewed_days")
 }
 
+// Timing Integration - REST-Sync-Konfiguration (bewusst getrennt von UserSettings,
+// damit Backup/Export den Token nicht mitnehmen)
+model TimingIntegration {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  apiTokenEnc         String?   // AES-256-GCM, Format v1:<iv>:<tag>:<ciphertext>
+  projectRoots        String[]  @default(["Work"])
+  syncEnabled         Boolean   @default(false)
+  syncIntervalMinutes Int       @default(60)
+  syncWindowDays      Int       @default(35)
+  lastSyncAt          DateTime?
+  lastSyncStatus      String?
+  lastSyncError       String?
+  lastSyncStats       Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("timing_integrations")
+}
+
 // Enums
 enum UserRole {
   USER
@@ -126,6 +157,15 @@ enum EntryType {
   VACATION  // Urlaub
   SICK      // Krankheit
   HOLIDAY   // Feiertag
+}
+
+enum EntrySource {
+  MANUAL       // Manuell angelegt (CRUD, Quick-Entry)
+  FILE_IMPORT  // Timing-JSON-Datei
+  TIMING_SYNC  // Timing REST-Sync
+  BULK_FILL    // Massen-Auffüllung
+  HOLIDAY      // Feiertagsimport
+  ADJUSTMENT   // Anfangs-Überstunden-Saldo
 }
 
 enum ImportStatus {

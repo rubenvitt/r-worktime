@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "INNOQ Timesheet Import",
+  "version": "1.1.0",
+  "description": "Importiert Timesheet-Daten aus der Zwischenablage oder direkt aus R-Worktime in die INNOQ odoo Tabelle",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "permissions": ["clipboardRead", "activeTab", "storage", "tabs", "scripting"],
+  "optional_host_permissions": ["https://*/*"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.odoo.innoq.io/*"],
+      "js": ["lib/timesheet-schema.js", "content/content.js"],
+      "css": ["content/content.css"]
+    },
+    {
+      "matches": ["http://localhost:3000/*", "http://localhost:3002/*"],
+      "js": ["lib/timesheet-schema.js", "content/rwt-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["lib/timesheet-schema.js", "background.js"]
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  }
+}

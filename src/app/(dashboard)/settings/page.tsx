@@ -1,4 +1,4 @@
-import { Bell, Clock, Shield, User } from "lucide-react";
+import { Bell, Clock, RefreshCw, Shield, User } from "lucide-react";
 import Link from "next/link";
 import {
   Card,
@@ -14,6 +14,12 @@ export default function SettingsPage() {
       description: "Anfangs-Saldo und Berechnungsregeln",
       icon: Clock,
       href: "/settings/overtime",
+    },
+    {
+      title: "Timing-Sync",
+      description: "Zeiteinträge automatisch aus Timing übernehmen",
+      icon: RefreshCw,
+      href: "/settings/timing",
     },
     {
       title: "Profil",

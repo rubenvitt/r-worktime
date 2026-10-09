@@ -7,6 +7,7 @@ import {
   type TimingEntry,
   type TimingExport,
 } from "@/lib/schemas/timing-import";
+import { timingEntryDateKey } from "@/services/import.service";
 
 export type WarningType =
   | "WEEKEND"
@@ -363,7 +364,9 @@ export class ImportPreviewService {
     const grouped = new Map<string, TimingEntry[]>();
 
     entries.forEach((entry) => {
-      const dateStr = entry.startDate.split("T")[0];
+      // Berlin-Tag wie beim eigentlichen Import; unbrauchbare Zeitstempel
+      // landen unter ihrem Rohpräfix (der Import überspringt sie)
+      const dateStr = timingEntryDateKey(entry) ?? entry.startDate.slice(0, 10);
       if (!grouped.has(dateStr)) {
         grouped.set(dateStr, []);
       }

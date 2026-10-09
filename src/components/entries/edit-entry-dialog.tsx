@@ -75,6 +75,18 @@ interface TimeEntryData {
   type: EntryType;
   description: string | null;
   billingStatus: string | null;
+  source?: string;
+  externalId?: string | null;
+}
+
+function syncEditHint(entry: TimeEntryData | null): string | null {
+  if (!entry) return null;
+  if (entry.source === "TIMING_SYNC" || entry.source === "FILE_IMPORT") {
+    return entry.externalId
+      ? "Dieser Eintrag stammt aus Timing. Nach einer Änderung gilt er als manuell: Sync und Datei-Import überschreiben ihn nicht mehr."
+      : "Dieser Eintrag stammt aus einem Timing-Import. Ein späterer Sync oder Import dieses Tages ersetzt deine Änderung.";
+  }
+  return null;
 }
 
 interface EditEntryDialogProps {
@@ -92,7 +104,7 @@ export function EditEntryDialog({
 }: EditEntryDialogProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [_entryData, setEntryData] = useState<TimeEntryData | null>(null);
+  const [entryData, setEntryData] = useState<TimeEntryData | null>(null);
 
   const form = useForm<EditEntryFormData>({
     resolver: zodResolver(editEntrySchema),
@@ -169,8 +181,10 @@ export function EditEntryDialog({
 
       const updateData = {
         date: data.date,
-        startTime: `${data.date}T${data.startTime}:00.000Z`,
-        endTime: `${data.date}T${data.endTime}:00.000Z`,
+        // Lokale Zeit wie in der Anzeige (format/parseISO), sonst verschiebt
+        // schon ein Speichern ohne Änderung den Eintrag um den UTC-Offset
+        startTime: new Date(`${data.date}T${data.startTime}`).toISOString(),
+        endTime: new Date(`${data.date}T${data.endTime}`).toISOString(),
         duration: duration,
         type: data.type,
         description: data.description || null,
@@ -199,6 +213,8 @@ export function EditEntryDialog({
     }
   };
 
+  const editHint = syncEditHint(entryData);
+
   const handleClose = () => {
     form.reset();
     setEntryData(null);
@@ -216,6 +232,9 @@ export function EditEntryDialog({
           <DialogDescription>
             Bearbeiten Sie die Details des ausgewählten Zeiteintrags.
           </DialogDescription>
+          {editHint && (
+            <p className="text-sm text-muted-foreground">{editHint}</p>
+          )}
         </DialogHeader>
 
         {loading ? (
@@ -353,12 +372,12 @@ export function EditEntryDialog({
               />
 
               {/* Billing Status (read-only) */}
-              {_entryData?.billingStatus && (
+              {entryData?.billingStatus && (
                 <div className="rounded-md border p-3 bg-muted/50">
                   <div className="text-sm font-medium mb-1">
                     Abrechnungsstatus
                   </div>
-                  <Badge variant="outline">{_entryData.billingStatus}</Badge>
+                  <Badge variant="outline">{entryData.billingStatus}</Badge>
                 </div>
               )}
 
