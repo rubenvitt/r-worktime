@@ -1,61 +1,36 @@
-import { OvertimeCard } from "@/components/dashboard/overtime-card";
-import { OvertimeYearSelector } from "@/components/dashboard/overtime-year-selector";
-import { ProblemsWidget } from "@/components/dashboard/problems-widget";
-import { WeekHoursCard } from "@/components/dashboard/week-hours-card";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { auth } from "@/lib/auth";
+import { defaultCloseMonth } from "@/components/app/month";
+import { MonthClosePanel } from "@/components/app/month-close-panel";
+import { PageContainer } from "@/components/app/page-container";
+import { PageHeader } from "@/components/app/page-header";
+import { DashboardStats } from "@/components/overview/dashboard-stats";
+import { RecentEntries } from "@/components/overview/recent-entries";
+import { RecentProblemsPanel } from "@/components/overview/recent-problems-panel";
+import { WeekDaysPanel } from "@/components/overview/week-days-panel";
+import { currentIsoWeek } from "@/components/week/week-utils";
+import { formatDateLong } from "@/lib/format";
 
-export default async function DashboardPage() {
-  const session = await auth();
+export default function DashboardPage() {
+  const now = new Date();
+  const { week } = currentIsoWeek(now);
 
   return (
-    <div className="px-4 py-6 sm:px-0">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Willkommen zurück, {session?.user?.name || session?.user?.email}!
-        </h2>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Hier ist deine Übersicht für heute
-        </p>
+    <PageContainer>
+      <PageHeader
+        title="Übersicht"
+        description={`${formatDateLong(now)} · KW ${week}`}
+      />
+      <div className="space-y-6">
+        <DashboardStats />
+        {/* Mobil: Monatsabschluss und Probleme zuerst, dann die Woche */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:items-start">
+          <div className="min-w-0 space-y-4 md:order-2">
+            <MonthClosePanel month={defaultCloseMonth(now)} variant="compact" />
+            <RecentProblemsPanel />
+          </div>
+          <WeekDaysPanel className="md:order-1" />
+        </div>
+        <RecentEntries />
       </div>
-
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Overtime Card - Spans 2 columns on large screens */}
-        <OvertimeCard />
-
-        {/* Yearly Overtime Selector */}
-        <OvertimeYearSelector />
-
-        {/* Week Hours Card with Navigation */}
-        <WeekHoursCard />
-      </div>
-
-      {/* Problems and Activity Grid */}
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Problems Widget */}
-        <ProblemsWidget />
-
-        {/* Recent Activity */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Letzte Aktivitäten</CardTitle>
-            <CardDescription>Deine letzten Zeiteinträge</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Noch keine Zeiteinträge vorhanden. Starte mit deinem ersten
-              Eintrag!
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    </PageContainer>
   );
 }

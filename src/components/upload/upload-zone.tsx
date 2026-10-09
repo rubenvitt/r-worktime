@@ -1,28 +1,17 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import {
-  AlertCircle,
-  CheckCircle,
-  FileJson,
-  Loader2,
-  Upload,
-} from "lucide-react";
+import { AlertCircle, FileJson, Loader2, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { toast } from "sonner";
+import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
 import { overtimeEvents } from "@/components/dashboard/overtime-card";
 import { ImportPreview } from "@/components/import/import-preview";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useToast } from "@/hooks/use-toast";
+import { formatDecimal } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { UploadResponse } from "@/types/import";
 
@@ -30,7 +19,6 @@ export function UploadZone() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<UploadResponse | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const { toast } = useToast();
 
   // Upload mutation
   const uploadMutation = useMutation({
@@ -67,10 +55,12 @@ export function UploadZone() {
       if (data.status === "preview") {
         setPreview(data);
       } else if (data.status === "success") {
-        toast({
-          title: "Import erfolgreich",
-          description: `${data.result?.processedEntries} Einträge wurden verarbeitet`,
-        });
+        toast.success(
+          `${data.result?.processedEntries ?? 0} Einträge importiert`,
+          {
+            description: summarizeResult(data),
+          },
+        );
 
         // Invalidiere Server-Cache für Überstunden
         try {
@@ -91,11 +81,9 @@ export function UploadZone() {
       setUploadProgress(100);
     },
     onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Upload fehlgeschlagen",
+      toast.error("Import fehlgeschlagen", {
         description:
-          error instanceof Error ? error.message : "Ein Fehler ist aufgetreten",
+          error instanceof Error ? error.message : "Unbekannter Fehler",
       });
       setUploadProgress(0);
     },
@@ -146,53 +134,50 @@ export function UploadZone() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Timing Export importieren</CardTitle>
-          <CardDescription>
-            Laden Sie Ihre Timing Export JSON-Datei hoch, um Zeiteinträge zu
-            importieren
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Panel>
+        <PanelHeader title="Timing-Export importieren" />
+        <PanelBody>
           {!file ? (
             <div
               {...getRootProps()}
               className={cn(
-                "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
-                isDragActive
-                  ? "border-primary bg-primary/5"
-                  : "border-muted-foreground/25 hover:border-primary/50",
+                "flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-input px-4 text-center transition-colors hover:border-primary/60",
+                isDragActive && "border-primary bg-info-muted",
               )}
             >
               <input {...getInputProps()} />
-              <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              {isDragActive ? (
-                <p className="text-lg font-medium">Datei hier ablegen...</p>
-              ) : (
-                <>
-                  <p className="text-lg font-medium mb-2">
-                    Klicken Sie hier oder ziehen Sie eine Datei hinein
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Nur JSON-Dateien (max. 10MB)
-                  </p>
-                </>
-              )}
+              <Upload
+                className="size-5 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <p className="max-w-prose text-sm">
+                {isDragActive
+                  ? "Lass die Datei hier los."
+                  : "Zieh deinen Timing-Export (.json) hierher oder wähl eine Datei aus."}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Nur JSON-Dateien, höchstens 10 MB
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center space-x-3 p-4 bg-muted rounded-lg">
-                <FileJson className="h-8 w-8 text-primary" />
-                <div className="flex-1">
-                  <p className="font-medium">{file.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {(file.size / 1024).toFixed(2)} KB
+              <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+                <FileJson
+                  className="size-5 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium" title={file.name}>
+                    {file.name}
+                  </p>
+                  <p className="num text-xs text-muted-foreground">
+                    {formatDecimal(file.size / 1024, 2)} KB
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
+                  className="h-11 md:h-8"
                   onClick={resetUpload}
                   disabled={uploadMutation.isPending}
                 >
@@ -200,36 +185,40 @@ export function UploadZone() {
                 </Button>
               </div>
 
-              {uploadProgress > 0 && (
-                <Progress value={uploadProgress} className="w-full" />
-              )}
+              {uploadProgress > 0 ? (
+                <Progress
+                  value={uploadProgress}
+                  className="w-full"
+                  aria-label={`Fortschritt für ${file.name}`}
+                />
+              ) : null}
 
-              {!preview && (
+              {!preview ? (
                 <Button
                   onClick={handleUpload}
                   disabled={uploadMutation.isPending}
-                  className="w-full"
+                  className="h-11 w-full md:h-9"
                 >
                   {uploadMutation.isPending ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Wird analysiert...
+                      <Loader2 className="animate-spin" />
+                      Analysiere …
                     </>
                   ) : (
                     <>
-                      <Upload className="mr-2 h-4 w-4" />
+                      <Upload />
                       Datei analysieren
                     </>
                   )}
                 </Button>
-              )}
+              ) : null}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </PanelBody>
+      </Panel>
 
-      {/* Preview Section */}
-      {preview?.preview && !uploadMutation.data?.result && (
+      {/* Vorschau */}
+      {preview?.preview && !uploadMutation.data?.result ? (
         <ImportPreview
           preview={preview.preview}
           isDuplicate={preview.isDuplicate}
@@ -237,54 +226,29 @@ export function UploadZone() {
           onCancel={resetUpload}
           isLoading={uploadMutation.isPending}
         />
-      )}
+      ) : null}
 
-      {/* Success Message */}
-      {uploadMutation.isSuccess &&
-        uploadMutation.data?.status === "success" && (
-          <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800">
-            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-            <AlertTitle>Import erfolgreich abgeschlossen</AlertTitle>
-            <AlertDescription>
-              {uploadMutation.data.result && (
-                <div className="mt-2 space-y-1 text-sm">
-                  <p>
-                    ✓ {uploadMutation.data.result.processedEntries} Einträge
-                    verarbeitet
-                  </p>
-                  <p>
-                    ✓ {uploadMutation.data.result.createdEntries} neue Einträge
-                    erstellt
-                  </p>
-                  {uploadMutation.data.result.replacedEntries > 0 && (
-                    <p>
-                      ✓ {uploadMutation.data.result.replacedEntries} Einträge
-                      ersetzt
-                    </p>
-                  )}
-                  {uploadMutation.data.result.skippedEntries > 0 && (
-                    <p>
-                      ⚠ {uploadMutation.data.result.skippedEntries} Einträge
-                      übersprungen
-                    </p>
-                  )}
-                </div>
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
-
-      {/* Error Messages */}
-      {uploadMutation.isError && (
+      {/* Fehler */}
+      {uploadMutation.isError ? (
         <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Fehler beim Import</AlertTitle>
+          <AlertCircle />
+          <AlertTitle>Import fehlgeschlagen</AlertTitle>
           <AlertDescription>
-            {uploadMutation.error?.message ||
-              "Ein unerwarteter Fehler ist aufgetreten"}
+            {uploadMutation.error?.message || "Unbekannter Fehler"}
           </AlertDescription>
         </Alert>
-      )}
+      ) : null}
     </div>
   );
+}
+
+function summarizeResult(data: UploadResponse): string | undefined {
+  const result = data.result;
+  if (!result) return undefined;
+  const parts = [`${result.createdEntries} neu`];
+  if (result.replacedEntries > 0)
+    parts.push(`${result.replacedEntries} ersetzt`);
+  if (result.skippedEntries > 0)
+    parts.push(`${result.skippedEntries} übersprungen`);
+  return parts.join(" · ");
 }

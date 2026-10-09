@@ -1,27 +1,25 @@
 "use client";
 
 import { ChevronDown, ChevronRight, Copy } from "lucide-react";
-import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { formatDateShort } from "@/lib/format";
 import { formatActivityLine } from "@/lib/timesheet/aggregate";
 import { MAX_TEXT_LENGTH } from "@/lib/timesheet/extension-protocol";
 import type { TimesheetDayView } from "@/lib/timesheet/types";
 import { cn } from "@/lib/utils";
 
-const weekdayFormatter = new Intl.DateTimeFormat("de-DE", {
-  weekday: "short",
-  day: "2-digit",
-  month: "2-digit",
-  timeZone: "UTC",
-});
-
+/** "2026-10-01" → "Do 01.10." */
 export function formatDayLabel(dateKey: string): string {
-  return weekdayFormatter.format(new Date(`${dateKey}T00:00:00Z`));
+  return formatDateShort(dateKey);
 }
+
+const TRAVEL_HINT =
+  "Vorschlag aus Schlüsselwörtern in den Notizen des Tages. Du kannst ihn umschalten.";
 
 interface TimesheetDayCardProps {
   day: TimesheetDayView;
@@ -32,6 +30,7 @@ interface TimesheetDayCardProps {
   copyDisabled?: boolean;
 }
 
+/** Ein Tag des Stundenzettels als Zeile in der gemeinsamen Liste. */
 export function TimesheetDayCard({
   day,
   travelFee,
@@ -40,175 +39,229 @@ export function TimesheetDayCard({
   copyDisabled = false,
 }: TimesheetDayCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showFullText, setShowFullText] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const textRef = useRef<HTMLParagraphElement>(null);
+
   const switchId = `travel-${day.date}`;
+  const detailsId = `day-details-${day.date}`;
+  const dayLabel = formatDayLabel(day.date);
   const tooLong = day.text.length > MAX_TEXT_LENGTH;
-  const incompleteEntries = day.missingEntries.filter((e) => !e.isCritical);
+  const textOpen = expanded || showFullText;
+  const manual = travelFee !== day.travelFee;
+
+  // Erkennen, ob der Tagestext abgeschnitten ist (nur dann „Ganzen Text zeigen“)
+  useEffect(() => {
+    const element = textRef.current;
+    if (!element || textOpen) return;
+    const measure = () =>
+      setClamped(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [textOpen]);
 
   return (
-    <Card className="gap-0 py-0">
-      <CardHeader className="flex flex-row flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 px-2"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          aria-label={expanded ? "Details zuklappen" : "Details aufklappen"}
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5">
+      {/* Datum (klappt Details auf) */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="order-1 -ml-2 h-11 gap-2 px-2 md:h-8"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        aria-label={`${dayLabel}: Details ${expanded ? "zuklappen" : "aufklappen"}`}
+      >
+        {expanded ? <ChevronDown /> : <ChevronRight />}
+        <span className="num w-[9ch] text-left font-semibold">{dayLabel}</span>
+      </Button>
+
+      {/* Stunden (gerundet) */}
+      <span className="num order-2 w-[6ch] text-right text-[15px] font-semibold">
+        {day.hours}
+      </span>
+
+      {/* Kopieren: mobil in Zeile 1 rechts, Desktop ganz rechts */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="order-3 ml-auto size-11 md:order-5 md:ml-0 md:size-8"
+        disabled={copyDisabled}
+        onClick={() => onCopy(day.text, "Text")}
+        aria-label={`Text vom ${dayLabel} kopieren`}
+        title="Text kopieren"
+      >
+        <Copy />
+      </Button>
+
+      {/* Hinweise */}
+      <div className="order-4 flex basis-full flex-wrap items-center gap-1.5 empty:hidden md:order-3 md:basis-auto">
+        {day.criticalCount > 0 ? (
+          <StatusBadge tone="warning">
+            {`Ohne Notiz · ${day.criticalCount}`}
+          </StatusBadge>
+        ) : null}
+        {day.hasIncompleteActivities ? (
+          <StatusBadge tone="neutral">Teilweise ohne Notiz</StatusBadge>
+        ) : null}
+        {tooLong ? (
+          <StatusBadge
+            tone="warning"
+            title={`Höchstens ${MAX_TEXT_LENGTH} Zeichen`}
+          >
+            {`${day.text.length} Zeichen`}
+          </StatusBadge>
+        ) : null}
+      </div>
+
+      {/* Dienstreise */}
+      <div
+        className="order-6 flex basis-full items-center gap-2 md:order-4 md:ml-auto md:basis-auto"
+        title={TRAVEL_HINT}
+      >
+        <Switch
+          id={switchId}
+          checked={travelFee}
+          onCheckedChange={onTravelFeeChange}
+        />
+        <Label
+          htmlFor={switchId}
+          className="min-h-11 text-[13px] font-normal md:min-h-0"
         >
-          {expanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-          <span className="font-semibold">{formatDayLabel(day.date)}</span>
-        </Button>
-        <span className="font-mono text-lg font-semibold tabular-nums">
-          {day.hours}
-        </span>
+          Dienstreise
+          {manual ? (
+            <span className="text-muted-foreground">(manuell)</span>
+          ) : day.travelFee ? (
+            <span className="text-muted-foreground">(Vorschlag)</span>
+          ) : null}
+        </Label>
+      </div>
 
-        {day.criticalCount > 0 && (
-          <Badge variant="destructive">
-            {day.criticalCount === 1
-              ? "1 fehlende Notiz"
-              : `${day.criticalCount} fehlende Notizen`}
-          </Badge>
-        )}
-        {day.hasIncompleteActivities && (
-          <Badge
-            variant="outline"
-            className="border-amber-500 text-amber-700 dark:text-amber-400"
-          >
-            Unvollständig
-          </Badge>
-        )}
-        {tooLong && (
-          <Badge
-            variant="outline"
-            className="border-amber-500 text-amber-700 dark:text-amber-400"
-          >
-            {day.text.length} Zeichen
-          </Badge>
-        )}
-
-        <div className="ml-auto flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Switch
-              id={switchId}
-              checked={travelFee}
-              onCheckedChange={onTravelFeeChange}
-            />
-            <Label htmlFor={switchId} className="text-sm font-normal">
-              Dienstreise
-              {travelFee !== day.travelFee && (
-                <span className="text-muted-foreground"> (manuell)</span>
-              )}
-            </Label>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={copyDisabled}
-            onClick={() => onCopy(day.text, "Text")}
-          >
-            <Copy className="mr-1 h-3.5 w-3.5" />
-            Text kopieren
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-3 px-4 pb-4">
+      {/* Tagestext */}
+      <div className="order-5 min-w-0 basis-full pl-0 md:order-6 md:pl-6">
         <p
+          ref={textRef}
           className={cn(
-            "whitespace-pre-wrap break-words rounded-md bg-muted px-3 py-2 font-mono text-xs",
-            !expanded && "line-clamp-2",
+            "whitespace-pre-wrap break-words text-[13px] leading-5 text-foreground/90",
+            !textOpen && "line-clamp-3 max-h-[60px]",
           )}
         >
-          {day.text || "–"}
+          {day.text || "—"}
         </p>
-        {tooLong && (
-          <p className="text-xs text-amber-700 dark:text-amber-400">
+        {!textOpen && clamped ? (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="h-8 px-0 text-[13px]"
+            onClick={() => setShowFullText(true)}
+          >
+            Ganzen Text zeigen
+          </Button>
+        ) : null}
+        {tooLong ? (
+          <p className="mt-1 text-xs text-warning">
             Der Text ist länger als {MAX_TEXT_LENGTH} Zeichen. Die Extension
             lehnt ihn so ab – kürze die Notizen in Timing.
           </p>
-        )}
+        ) : null}
+      </div>
 
-        {expanded && (
-          <div className="space-y-3">
-            <ul className="divide-y rounded-md border">
-              {day.activities.map((activity) => (
-                <li
-                  key={activity.title}
-                  className="flex items-start gap-3 px-3 py-2"
-                >
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium break-words">
-                        {activity.title}
+      {expanded ? (
+        <div
+          id={detailsId}
+          className="order-7 min-w-0 basis-full space-y-3 pt-1 md:pl-6"
+        >
+          <ul className="divide-y rounded-md border">
+            {day.activities.map((activity) => (
+              <li
+                key={activity.title}
+                className="flex items-start gap-3 py-2 pr-1 pl-3"
+              >
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="break-words text-[13px] font-medium">
+                      {activity.title}
+                    </span>
+                    {activity.isCritical ? (
+                      <StatusBadge tone="warning">Ohne Notiz</StatusBadge>
+                    ) : null}
+                    {activity.hasMissingEntries ? (
+                      <StatusBadge tone="neutral">
+                        Teilweise ohne Notiz
+                      </StatusBadge>
+                    ) : null}
+                    {activity.isTitleWithParentheses &&
+                    activity.notes.length === 0 ? (
+                      <span className="text-xs text-muted-foreground">
+                        Braucht keine Notiz
                       </span>
-                      {activity.isCritical && (
-                        <Badge variant="destructive">Keine Notiz</Badge>
-                      )}
-                      {activity.hasMissingEntries && (
-                        <Badge
-                          variant="outline"
-                          className="border-amber-500 text-amber-700 dark:text-amber-400"
-                        >
-                          Unvollständig
-                        </Badge>
-                      )}
-                      {activity.isTitleWithParentheses &&
-                        activity.notes.length === 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            Benötigt keine weiteren Notizen
-                          </span>
-                        )}
-                    </div>
-                    {activity.notes.length > 0 && (
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                        {activity.notes.map((note) => (
-                          <li key={note} className="break-words">
-                            {note}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    ) : null}
                   </div>
-                  <span className="font-mono text-sm tabular-nums">
-                    {activity.hours}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    aria-label={`„${activity.title}“ kopieren`}
-                    disabled={copyDisabled}
-                    onClick={() =>
-                      onCopy(formatActivityLine(activity), "Aktivität")
-                    }
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
+                  {activity.notes.length > 0 ? (
+                    <ul className="list-disc pl-5 text-[13px] text-muted-foreground">
+                      {activity.notes.map((note) => (
+                        <li key={note} className="break-words">
+                          {note}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+                <span className="num pt-0.5 text-[13px]">{activity.hours}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-11 md:size-7"
+                  aria-label={`„${activity.title}“ kopieren`}
+                  disabled={copyDisabled}
+                  onClick={() =>
+                    onCopy(formatActivityLine(activity), "Aktivität")
+                  }
+                >
+                  <Copy className="size-3.5" />
+                </Button>
+              </li>
+            ))}
+          </ul>
 
-            {incompleteEntries.length > 0 && (
-              <div className="text-sm">
-                <p className="font-medium text-amber-700 dark:text-amber-400">
-                  Einträge ohne Notiz:
-                </p>
-                <ul className="mt-1 space-y-0.5 text-muted-foreground">
-                  {incompleteEntries.map((entry, index) => (
-                    <li key={`${entry.activity}-${entry.start}-${index}`}>
-                      {entry.start}–{entry.end} · {entry.activity}
-                    </li>
-                  ))}
-                </ul>
+          {day.missingEntries.length > 0 ? (
+            <div className="text-[13px]">
+              <div className="flex flex-wrap items-center justify-between gap-x-3">
+                <p className="font-medium">Einträge ohne Notiz</p>
+                <Button
+                  asChild
+                  variant="link"
+                  size="sm"
+                  className="h-11 px-0 text-[13px] md:h-8"
+                >
+                  <Link
+                    href={`/entries?dateFrom=${day.date}&dateTo=${day.date}`}
+                  >
+                    In Zeiteinträgen öffnen
+                  </Link>
+                </Button>
               </div>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                {day.missingEntries.map((entry, index) => (
+                  <li key={`${entry.activity}-${entry.start}-${index}`}>
+                    <span className="num">
+                      {entry.start}–{entry.end}
+                    </span>{" "}
+                    {entry.activity}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
   );
 }

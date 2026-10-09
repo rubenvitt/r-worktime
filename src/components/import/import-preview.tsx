@@ -1,31 +1,34 @@
 "use client";
 
-import { format, parseISO } from "date-fns";
-import { de } from "date-fns/locale";
 import {
   AlertCircle,
   AlertTriangle,
   CheckCircle,
-  FileText,
   Info,
-  RefreshCw,
+  Loader2,
   Upload,
   X,
 } from "lucide-react";
-import { useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { type ReactNode, useState } from "react";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Panel,
+  PanelBody,
+  PanelFooter,
+  PanelHeader,
+} from "@/components/app/panel";
+import { StatusBadge } from "@/components/app/status-badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatHoursToTime } from "@/lib/utils";
+import {
+  formatDateLong,
+  formatDateShort,
+  formatHours,
+  formatTimestamp,
+} from "@/lib/format";
+import { ENTRY_TYPE_LABEL, type EntryTypeKey } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 import type { DetailedImportPreview } from "@/types/import";
 
 interface ImportPreviewProps {
@@ -34,6 +37,31 @@ interface ImportPreviewProps {
   onConfirm: () => void;
   onCancel: () => void;
   isLoading?: boolean;
+}
+
+function safe<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+function Fact({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1.5">
+      <dt className="text-[13px] text-muted-foreground">{label}</dt>
+      <dd className={cn("num text-sm font-medium", className)}>{value}</dd>
+    </div>
+  );
 }
 
 export function ImportPreview({
@@ -45,225 +73,157 @@ export function ImportPreview({
 }: ImportPreviewProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const getWarningIcon = (severity: string) => {
+  const warningIcon = (severity: string) => {
     switch (severity) {
       case "error":
-        return <AlertCircle className="h-4 w-4" />;
+        return <AlertCircle />;
       case "warning":
-        return <AlertTriangle className="h-4 w-4" />;
+        return <AlertTriangle />;
       default:
-        return <Info className="h-4 w-4" />;
+        return <Info />;
     }
   };
 
-  const getWarningColor = (severity: string): "default" | "destructive" => {
+  const warningVariant = (
+    severity: string,
+  ): "destructive" | "warning" | "info" => {
     switch (severity) {
       case "error":
         return "destructive";
+      case "warning":
+        return "warning";
       default:
-        return "default";
+        return "info";
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    try {
-      const date = parseISO(dateStr);
-      return format(date, "EEEE, dd.MM.yyyy", { locale: de });
-    } catch {
-      return dateStr;
-    }
-  };
+  const longDate = (value: string) => safe(() => formatDateLong(value), value);
 
-  const _formatTime = (dateStr: string) => {
-    try {
-      const date = parseISO(dateStr);
-      return format(date, "HH:mm");
-    } catch {
-      return "";
-    }
-  };
+  const { dateRange } = preview.summary;
+  const rangeText =
+    dateRange.from && dateRange.to
+      ? `${safe(() => formatDateShort(dateRange.from), dateRange.from)} – ${safe(
+          () => formatDateShort(dateRange.to),
+          dateRange.to,
+        )}`
+      : "—";
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Import-Vorschau
-            </CardTitle>
-            {preview.metadata?.fileName && (
-              <CardDescription className="mt-1">
-                <span className="font-medium">{preview.metadata.fileName}</span>
-              </CardDescription>
-            )}
-          </div>
-          <Button variant="ghost" size="icon" onClick={onCancel}>
-            <X className="h-4 w-4" />
+    <Panel>
+      <PanelHeader
+        title="Import-Vorschau"
+        meta={
+          preview.metadata?.fileName ? (
+            <span className="block max-w-[24ch] truncate">
+              {preview.metadata.fileName}
+            </span>
+          ) : undefined
+        }
+        actions={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11 md:size-8"
+            onClick={onCancel}
+            aria-label="Vorschau schließen"
+          >
+            <X />
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
+        }
+      />
+      <PanelBody>
         <Tabs defaultValue="summary" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="summary">Übersicht</TabsTrigger>
             <TabsTrigger value="warnings">
-              Warnungen
-              {preview.warnings.length > 0 && (
-                <Badge className="ml-2" variant="secondary">
+              Hinweise
+              {preview.warnings.length > 0 ? (
+                <span className="num ml-1 text-muted-foreground">
                   {preview.warnings.length}
-                </Badge>
-              )}
+                </span>
+              ) : null}
             </TabsTrigger>
-            <TabsTrigger value="entries">Einträge</TabsTrigger>
+            <TabsTrigger value="entries">Tage</TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
           </TabsList>
 
-          {/* Summary Tab */}
-          <TabsContent value="summary" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">
-                    Import-Statistik
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Gesamteinträge:
-                    </span>
-                    <span className="font-medium">
-                      {preview.summary.totalEntries}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Neue Einträge:
-                    </span>
-                    <span className="font-medium text-green-600">
-                      {preview.summary.newEntries}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Ersetzte Einträge:
-                    </span>
-                    <span className="font-medium text-yellow-600">
-                      {preview.summary.replacedEntries}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Betroffene Tage:
-                    </span>
-                    <span className="font-medium">
-                      {preview.summary.affectedDays}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">
-                    Arbeitszeiten
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Gesamtstunden:
-                    </span>
-                    <span className="font-medium">
-                      {formatHoursToTime(preview.summary.totalHours)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Durchschnitt/Tag:
-                    </span>
-                    <span className="font-medium">
-                      {formatHoursToTime(preview.summary.averageHoursPerDay)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Zeitraum:
-                    </span>
-                    <span className="font-medium">
-                      {preview.summary.dateRange.from &&
-                        format(
-                          parseISO(preview.summary.dateRange.from),
-                          "dd.MM.",
-                        )}
-                      {" - "}
-                      {preview.summary.dateRange.to &&
-                        format(
-                          parseISO(preview.summary.dateRange.to),
-                          "dd.MM.yyyy",
-                        )}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Übersicht */}
+          <TabsContent value="summary" className="space-y-4 pt-2">
+            <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
+              <dl className="divide-y">
+                <Fact label="Einträge" value={preview.summary.totalEntries} />
+                <Fact
+                  label="Neu"
+                  value={preview.summary.newEntries}
+                  className={
+                    preview.summary.newEntries > 0 ? "text-positive" : undefined
+                  }
+                />
+                <Fact
+                  label="Ersetzt"
+                  value={preview.summary.replacedEntries}
+                  className={
+                    preview.summary.replacedEntries > 0
+                      ? "text-warning"
+                      : undefined
+                  }
+                />
+                <Fact
+                  label="Betroffene Tage"
+                  value={preview.summary.affectedDays}
+                />
+              </dl>
+              <dl className="divide-y">
+                <Fact
+                  label="Gesamt"
+                  value={formatHours(preview.summary.totalHours)}
+                />
+                <Fact
+                  label="Ø pro Tag"
+                  value={formatHours(preview.summary.averageHoursPerDay)}
+                />
+                <Fact label="Zeitraum" value={rangeText} />
+              </dl>
             </div>
 
-            {/* Entry Type Breakdown */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">
-                  Eintragstypen
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(preview.summary.entryTypeBreakdown).map(
-                    ([type, count]) =>
-                      count > 0 && (
-                        <Badge key={type} variant="outline">
-                          {type}: {count}
-                        </Badge>
-                      ),
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(preview.summary.entryTypeBreakdown).map(
+                ([type, count]) =>
+                  count > 0 ? (
+                    <StatusBadge key={type} tone="neutral">
+                      {`${ENTRY_TYPE_LABEL[type as EntryTypeKey] ?? type} · ${count}`}
+                    </StatusBadge>
+                  ) : null,
+              )}
+            </div>
           </TabsContent>
 
-          {/* Warnings Tab */}
-          <TabsContent value="warnings">
-            <ScrollArea className="h-[400px] w-full">
+          {/* Hinweise */}
+          <TabsContent value="warnings" className="pt-2">
+            <ScrollArea className="h-[360px] w-full">
               {preview.warnings.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-                  <CheckCircle className="h-8 w-8 mb-2" />
-                  <p>Keine Warnungen gefunden</p>
-                </div>
+                <p className="py-10 text-[13px] text-muted-foreground">
+                  Keine Hinweise.
+                </p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2 pr-3">
                   {preview.warnings.map((warning, index) => (
                     <Alert
                       key={index}
-                      variant={getWarningColor(warning.severity)}
+                      variant={warningVariant(warning.severity)}
                     >
-                      <div className="flex items-start gap-2">
-                        {getWarningIcon(warning.severity)}
-                        <div className="flex-1">
-                          <AlertTitle className="text-sm font-medium">
-                            {warning.message}
-                          </AlertTitle>
-                          {warning.details && (
-                            <AlertDescription className="text-xs mt-1">
-                              {warning.details}
-                            </AlertDescription>
-                          )}
-                          {warning.date && (
-                            <Badge variant="outline" className="mt-2">
-                              {formatDate(warning.date)}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
+                      {warningIcon(warning.severity)}
+                      <AlertTitle className="text-sm">
+                        {warning.message}
+                      </AlertTitle>
+                      {warning.details || warning.date ? (
+                        <AlertDescription className="text-xs text-foreground/80">
+                          {warning.details ? <p>{warning.details}</p> : null}
+                          {warning.date ? (
+                            <p className="mt-1">{longDate(warning.date)}</p>
+                          ) : null}
+                        </AlertDescription>
+                      ) : null}
                     </Alert>
                   ))}
                 </div>
@@ -271,175 +231,146 @@ export function ImportPreview({
             </ScrollArea>
           </TabsContent>
 
-          {/* Entries Tab */}
-          <TabsContent value="entries">
-            <ScrollArea className="h-[400px] w-full">
-              <div className="space-y-2">
+          {/* Tage */}
+          <TabsContent value="entries" className="pt-2">
+            <ScrollArea className="h-[360px] w-full rounded-md border">
+              <ul className="divide-y">
                 {preview.entries.map((entry, index) => (
-                  <Card
-                    key={index}
-                    className={`cursor-pointer transition-colors ${
-                      selectedDate === entry.date ? "border-primary" : ""
-                    }`}
-                    onClick={() => setSelectedDate(entry.date)}
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm">
-                          {formatDate(entry.date)}
-                        </CardTitle>
-                        <Badge
-                          variant={
-                            entry.action === "CREATE" ? "default" : "secondary"
-                          }
-                        >
-                          {entry.action === "CREATE" ? "Neu" : "Ersetzt"}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        {entry.totalHoursBefore !== undefined && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Vorher:
-                            </span>{" "}
-                            <span className="font-medium">
-                              {formatHoursToTime(entry.totalHoursBefore)}
-                            </span>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-muted-foreground">
-                            Nachher:
-                          </span>{" "}
-                          <span className="font-medium">
-                            {formatHoursToTime(entry.totalHoursAfter)}
-                          </span>
-                        </div>
-                      </div>
-                      {entry.conflicts.length > 0 && (
-                        <Alert variant="destructive" className="py-2">
-                          <AlertCircle className="h-3 w-3" />
-                          <AlertDescription className="text-xs">
-                            {entry.conflicts.join(", ")}
-                          </AlertDescription>
-                        </Alert>
+                  <li key={index}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDate(entry.date)}
+                      aria-pressed={selectedDate === entry.date}
+                      className={cn(
+                        "flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left text-[13px] hover:bg-accent",
+                        selectedDate === entry.date && "bg-accent",
                       )}
-                    </CardContent>
-                  </Card>
+                    >
+                      <span className="num w-[9ch] shrink-0 font-medium">
+                        {safe(() => formatDateShort(entry.date), entry.date)}
+                      </span>
+                      <StatusBadge
+                        tone={
+                          entry.action === "CREATE" ? "positive" : "warning"
+                        }
+                      >
+                        {entry.action === "CREATE" ? "Neu" : "Ersetzt"}
+                      </StatusBadge>
+                      <span className="num ml-auto text-muted-foreground">
+                        {entry.totalHoursBefore !== undefined ? (
+                          <>bisher {formatHours(entry.totalHoursBefore)} · </>
+                        ) : null}
+                        danach{" "}
+                        <span className="text-foreground">
+                          {formatHours(entry.totalHoursAfter)}
+                        </span>
+                      </span>
+                      {entry.conflicts.length > 0 ? (
+                        <span className="basis-full text-xs text-destructive">
+                          {entry.conflicts.join(", ")}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </ScrollArea>
           </TabsContent>
 
-          {/* Details Tab */}
-          <TabsContent value="details">
-            <div className="space-y-4">
-              {/* Validation Status */}
-              <Alert
-                variant={preview.validation.isValid ? "default" : "destructive"}
-              >
-                <div className="flex items-start gap-2">
-                  {preview.validation.isValid ? (
-                    <CheckCircle className="h-4 w-4" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4" />
-                  )}
-                  <div>
-                    <AlertTitle>
-                      {preview.validation.isValid
-                        ? "Import bereit"
-                        : "Validierungsfehler"}
-                    </AlertTitle>
-                    {preview.validation.errors.length > 0 && (
-                      <AlertDescription className="mt-2">
-                        <ul className="list-disc list-inside space-y-1">
-                          {preview.validation.errors.map((error, i) => (
-                            <li key={i} className="text-xs">
-                              {error}
-                            </li>
-                          ))}
-                        </ul>
-                      </AlertDescription>
-                    )}
-                  </div>
-                </div>
+          {/* Details */}
+          <TabsContent value="details" className="space-y-4 pt-2">
+            <Alert
+              variant={preview.validation.isValid ? "default" : "destructive"}
+            >
+              {preview.validation.isValid ? (
+                <CheckCircle className="text-positive" />
+              ) : (
+                <AlertCircle />
+              )}
+              <AlertTitle>
+                {preview.validation.isValid
+                  ? "Bereit zum Import"
+                  : "Die Datei lässt sich so nicht importieren"}
+              </AlertTitle>
+              {preview.validation.errors.length > 0 ? (
+                <AlertDescription>
+                  <ul className="list-inside list-disc space-y-1 text-xs">
+                    {preview.validation.errors.map((error, i) => (
+                      <li key={i}>{error}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              ) : null}
+            </Alert>
+
+            {isDuplicate ? (
+              <Alert variant="warning">
+                <AlertTriangle />
+                <AlertTitle>Schon importiert</AlertTitle>
+                <AlertDescription className="text-foreground/80">
+                  Diese Datei wurde bereits importiert. Du kannst den Import
+                  trotzdem fortsetzen.
+                </AlertDescription>
               </Alert>
+            ) : null}
 
-              {/* Duplicate Warning */}
-              {isDuplicate && (
-                <Alert>
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Duplikat erkannt</AlertTitle>
-                  <AlertDescription>
-                    Diese Datei wurde bereits importiert. Sie können den Import
-                    trotzdem fortsetzen.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Metadata */}
-              {preview.metadata && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">
-                      Datei-Informationen
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Dateiname:</span>
-                      <span className="font-mono text-xs">
-                        {preview.metadata.fileName}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Hash:</span>
-                      <span className="font-mono text-xs">
-                        {preview.metadata.fileHash.substring(0, 12)}...
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        Analysiert am:
-                      </span>
-                      <span className="text-xs">
-                        {format(
-                          parseISO(preview.metadata.analyzedAt),
-                          "dd.MM.yyyy HH:mm",
-                        )}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+            {preview.metadata ? (
+              <dl className="divide-y">
+                <Fact
+                  label="Dateiname"
+                  value={
+                    <span className="break-all font-normal">
+                      {preview.metadata.fileName}
+                    </span>
+                  }
+                />
+                <Fact
+                  label="Prüfsumme"
+                  value={
+                    <span className="font-mono text-xs font-normal">
+                      {preview.metadata.fileHash.substring(0, 12)}…
+                    </span>
+                  }
+                />
+                <Fact
+                  label="Analysiert"
+                  value={safe(
+                    () => formatTimestamp(preview.metadata?.analyzedAt ?? ""),
+                    preview.metadata?.analyzedAt ?? "—",
+                  )}
+                />
+              </dl>
+            ) : null}
           </TabsContent>
         </Tabs>
-
-        <div className="flex justify-end gap-2 mt-6">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
-            Abbrechen
-          </Button>
-          <Button
-            onClick={onConfirm}
-            disabled={isLoading || !preview.validation.isValid}
-          >
-            {isLoading ? (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                Importiere...
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Import durchführen
-              </>
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      </PanelBody>
+      <PanelFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="h-11 md:h-9"
+          onClick={onCancel}
+          disabled={isLoading}
+        >
+          Abbrechen
+        </Button>
+        <Button
+          className="h-11 md:h-9"
+          onClick={onConfirm}
+          disabled={isLoading || !preview.validation.isValid}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Importiere …
+            </>
+          ) : (
+            <>
+              <Upload />
+              {isDuplicate ? "Trotzdem importieren" : "Importieren"}
+            </>
+          )}
+        </Button>
+      </PanelFooter>
+    </Panel>
   );
 }

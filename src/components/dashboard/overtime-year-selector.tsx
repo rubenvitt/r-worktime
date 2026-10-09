@@ -95,15 +95,15 @@ export function OvertimeYearSelector() {
       <CardContent>
         {loading ? (
           <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-24 mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded w-32"></div>
+            <div className="h-8 bg-muted rounded w-24 mb-2"></div>
+            <div className="h-4 bg-muted rounded w-32"></div>
           </div>
         ) : overtimeData ? (
           <>
             <div
               className={cn(
                 "text-2xl font-bold mb-2",
-                isPositive ? "text-green-600" : "text-red-600",
+                isPositive ? "text-positive" : "text-negative",
               )}
             >
               {formatOvertimeHours(overtimeData.balance)}

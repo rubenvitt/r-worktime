@@ -8,7 +8,7 @@ async function fetchWeekData(
   const response = await fetch(`/api/time-entries/week/${year}/${week}`);
 
   if (!response.ok) {
-    throw new Error("Failed to fetch week data");
+    throw new Error("Wochendaten konnten nicht geladen werden");
   }
 
   return response.json();

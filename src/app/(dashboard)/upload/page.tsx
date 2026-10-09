@@ -1,15 +1,10 @@
-import { ArrowRight, RefreshCw } from "lucide-react";
+import { Info } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { HolidayImport } from "@/components/upload/holiday-import";
+import { PageContainer } from "@/components/app/page-container";
+import { PageHeader } from "@/components/app/page-header";
+import { SettingsNav } from "@/components/app/settings-nav";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { UploadZone } from "@/components/upload/upload-zone";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -32,45 +27,33 @@ export default async function UploadPage() {
   );
 
   return (
-    <div className="px-4 py-6 sm:px-0">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Timing Import
-        </h2>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Importiere deine Zeiteinträge aus Timing
-        </p>
-      </div>
+    <PageContainer width="form">
+      <PageHeader
+        title="Datei-Import"
+        description="Fallback, falls der Sync einen Zeitraum nicht abdeckt."
+        toolbar={<SettingsNav />}
+      />
 
       <div className="space-y-6">
-        <Card>
-          <CardHeader className="flex flex-row items-start gap-4 space-y-0">
-            <RefreshCw className="mt-1 h-6 w-6 shrink-0 text-primary" />
-            <div className="space-y-1">
-              <CardTitle className="text-lg">
-                {syncActive
-                  ? "Timing-Sync ist aktiv"
-                  : "Timing direkt verbinden"}
-              </CardTitle>
-              <CardDescription>
-                {syncActive
-                  ? "Deine Einträge kommen automatisch aus Timing. Den Datei-Import brauchst du nur noch als Fallback."
-                  : "Statt JSON-Dateien zu exportieren, kann r-worktime deine Zeiteinträge direkt über die Timing-API abgleichen – auch automatisch im Hintergrund."}
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant={syncActive ? "outline" : "default"}>
-              <Link href="/settings/timing">
-                {syncActive ? "Sync-Status ansehen" : "Timing verbinden"}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <HolidayImport />
+        <Alert variant="info">
+          <Info />
+          <AlertDescription className="text-foreground">
+            <p>
+              {syncActive
+                ? "Der Timing-Sync ist aktiv. Ein Datei-Import ist normalerweise nicht nötig."
+                : "Statt Dateien zu importieren, kannst du Timing direkt verbinden. Dann kommen deine Einträge automatisch."}
+            </p>
+            <Link
+              href="/settings/timing"
+              className="mt-1 inline-flex min-h-11 items-center font-medium underline underline-offset-4 hover:text-primary md:min-h-0"
+            >
+              {syncActive ? "Zum Timing-Sync" : "Timing verbinden"}
+            </Link>
+          </AlertDescription>
+        </Alert>
+
         <UploadZone />
       </div>
-    </div>
+    </PageContainer>
   );
 }

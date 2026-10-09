@@ -1,50 +1,78 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { ErrorState } from "@/components/app/error-state";
+import { PageContainer } from "@/components/app/page-container";
+import { PageHeader } from "@/components/app/page-header";
+import { SettingsNav } from "@/components/app/settings-nav";
+import { SkeletonPanel } from "@/components/app/skeletons";
 import { TimingConnectionCard } from "@/components/timing/timing-connection-card";
 import { TimingSyncSettingsCard } from "@/components/timing/timing-sync-settings-card";
-import { TimingSyncStatusCard } from "@/components/timing/timing-sync-status-card";
-import { useTimingSettings } from "@/components/timing/use-timing";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  TimingSyncNowButton,
+  TimingSyncStatusCard,
+} from "@/components/timing/timing-sync-status-card";
+import {
+  useRunTimingSync,
+  useTimingSettings,
+} from "@/components/timing/use-timing";
+
+/** Springt zum API-Key-Feld der Verbindung und fokussiert es. */
+function focusTokenInput() {
+  const input = document.getElementById("timing-token");
+  if (!input) return;
+  input.scrollIntoView({ behavior: "smooth", block: "center" });
+  input.focus({ preventScroll: true });
+}
 
 export default function TimingSettingsPage() {
-  const { data: settings, isLoading, error } = useTimingSettings();
+  const { data: settings, isLoading, error, refetch } = useTimingSettings();
+  // Eine Mutation für Kopf-Button und Statuskarte, damit beide „läuft“ zeigen
+  const sync = useRunTimingSync();
 
   return (
-    <div className="container max-w-4xl py-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Timing-Sync</h1>
-        <p className="text-muted-foreground">
-          Übernimm deine Zeiteinträge direkt aus Timing – ohne Datei-Export.
-        </p>
-      </div>
+    <PageContainer width="form">
+      <PageHeader
+        title="Timing-Sync"
+        description="Übernimmt deine Zeiteinträge direkt aus Timing."
+        actions={
+          settings?.hasToken ? (
+            <TimingSyncNowButton settings={settings} sync={sync} />
+          ) : undefined
+        }
+        toolbar={<SettingsNav />}
+      />
 
       {isLoading && (
         <div className="space-y-6">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-64 w-full" />
+          <SkeletonPanel lines={4} />
+          <SkeletonPanel lines={5} />
+          <SkeletonPanel lines={3} />
         </div>
       )}
 
       {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
+        <ErrorState
+          title="Timing-Einstellungen konnten nicht geladen werden"
+          error={error}
+          onRetry={() => refetch()}
+        />
       )}
 
       {settings && (
         <div className="space-y-6">
-          <TimingConnectionCard settings={settings} />
+          <TimingSyncStatusCard
+            settings={settings}
+            sync={sync}
+            onConnect={focusTokenInput}
+          />
           <TimingSyncSettingsCard
             // Neu mounten, wenn sich die gespeicherten Werte ändern
             key={`${settings.hasToken}-${settings.syncEnabled}`}
             settings={settings}
           />
-          <TimingSyncStatusCard settings={settings} />
+          <TimingConnectionCard settings={settings} />
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

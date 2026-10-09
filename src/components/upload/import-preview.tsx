@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { formatHours } from "@/lib/format";
 
 interface ImportPreviewProps {
   preview: {
@@ -60,9 +61,9 @@ export function ImportPreview({
   const getEntryTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       WORK: "Arbeit",
-      OVERTIME: "Überstunden",
+      OVERTIME: "Saldo-Buchung",
       VACATION: "Urlaub",
-      SICK: "Krankheit",
+      SICK: "Krank",
       HOLIDAY: "Feiertag",
     };
     return labels[type] || type;
@@ -78,7 +79,7 @@ export function ImportPreview({
       WORK: "default",
       OVERTIME: "secondary",
       VACATION: "outline",
-      SICK: "destructive",
+      SICK: "outline",
       HOLIDAY: "outline",
     };
     return colors[type] || "default";
@@ -91,18 +92,16 @@ export function ImportPreview({
           <FileText className="h-5 w-5" />
           Import-Vorschau
         </CardTitle>
-        <CardDescription>
-          Überprüfen Sie die Details vor dem Import
-        </CardDescription>
+        <CardDescription>Prüf die Details vor dem Import.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Duplicate Warning */}
         {isDuplicate && (
-          <Alert className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800">
-            <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+          <Alert variant="warning">
+            <AlertTriangle />
             <AlertTitle>Duplikat erkannt</AlertTitle>
             <AlertDescription>
-              Diese Datei wurde bereits importiert. Sie können den Import
+              Diese Datei wurde bereits importiert. Du kannst den Import
               erzwingen, um die Daten erneut zu verarbeiten.
             </AlertDescription>
           </Alert>
@@ -112,23 +111,27 @@ export function ImportPreview({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Gesamt Einträge</p>
-            <p className="text-2xl font-bold">{preview.totalEntries}</p>
+            <p className="num text-[22px] leading-7 font-semibold">
+              {preview.totalEntries}
+            </p>
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Neue Einträge</p>
-            <p className="text-2xl font-bold text-green-600">
+            <p className="num text-[22px] leading-7 font-semibold text-positive">
               {preview.newEntries}
             </p>
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Ersetzte Einträge</p>
-            <p className="text-2xl font-bold text-orange-600">
+            <p className="num text-[22px] leading-7 font-semibold text-warning">
               {preview.replacedEntries}
             </p>
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Geschätzte Stunden</p>
-            <p className="text-2xl font-bold">{preview.estimatedHours}h</p>
+            <p className="num text-[22px] leading-7 font-semibold">
+              {formatHours(preview.estimatedHours)}
+            </p>
           </div>
         </div>
 
@@ -171,7 +174,7 @@ export function ImportPreview({
               ))}
               {preview.affectedDates.length > 9 && (
                 <div className="text-muted-foreground">
-                  ... und {preview.affectedDates.length - 9} weitere
+                  … und {preview.affectedDates.length - 9} weitere
                 </div>
               )}
             </div>
@@ -182,8 +185,8 @@ export function ImportPreview({
         {preview.duplicateWarnings.length > 0 && (
           <>
             <Separator />
-            <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-800">
-              <RefreshCw className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            <Alert variant="warning">
+              <RefreshCw />
               <AlertTitle>Einträge werden ersetzt</AlertTitle>
               <AlertDescription>
                 <ul className="mt-2 space-y-1 text-sm">
@@ -192,7 +195,7 @@ export function ImportPreview({
                   ))}
                   {preview.duplicateWarnings.length > 3 && (
                     <li className="text-muted-foreground">
-                      ... und {preview.duplicateWarnings.length - 3} weitere
+                      … und {preview.duplicateWarnings.length - 3} weitere
                     </li>
                   )}
                 </ul>
@@ -216,7 +219,7 @@ export function ImportPreview({
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Wird importiert...
+                  Importiere …
                 </>
               ) : (
                 <>
@@ -231,7 +234,7 @@ export function ImportPreview({
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Wird importiert...
+                  Importiere …
                 </>
               ) : (
                 <>
