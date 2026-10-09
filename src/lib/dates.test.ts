@@ -5,6 +5,7 @@ import {
   dateKeyFromDbDate,
   dateKeyFromIsoTimestamp,
   isDateKey,
+  monthEndKey,
   monthRange,
   shiftDateKey,
 } from "./dates";
@@ -93,5 +94,13 @@ describe("monthRange", () => {
   it("lehnt ungültige Monate ab", () => {
     expect(() => monthRange("2025-13")).toThrow();
     expect(() => monthRange("2025-1")).toThrow();
+  });
+});
+
+describe("monthEndKey", () => {
+  it("liefert den Monatsletzten ohne Verschiebung durch die Zeitzone", () => {
+    expect(monthEndKey(2026, 8)).toBe("2026-09-30");
+    expect(monthEndKey(2024, 1)).toBe("2024-02-29");
+    expect(monthEndKey(2026, 11)).toBe("2026-12-31");
   });
 });

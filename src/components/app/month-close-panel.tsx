@@ -133,7 +133,7 @@ export function MonthClosePanel({
             >
               <StepMarker status={step.status} index={index} />
               <div
-                className="min-w-0 flex-1 truncate text-[13px] leading-[18px]"
+                className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-[18px]"
                 title={step.detail}
               >
                 <span className="text-muted-foreground">{step.title}</span>{" "}
@@ -189,7 +189,7 @@ export function MonthClosePanel({
 function compactLink(step: MonthCloseStep): React.ReactNode {
   if (!step.href) return null;
   if (step.key === "transfer") {
-    return <StepLink href={step.href}>Zum Stundenzettel</StepLink>;
+    return <StepLink href={step.href}>Stundenzettel</StepLink>;
   }
   if (step.status === "done" || step.status === "loading") return null;
   return (

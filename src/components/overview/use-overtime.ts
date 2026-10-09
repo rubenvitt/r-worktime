@@ -7,6 +7,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { overtimeEvents } from "@/components/dashboard/overtime-card";
+import { berlinTodayKey, monthEndKey } from "@/lib/dates";
 
 export interface OvertimeData {
   balance: number;
@@ -66,8 +67,8 @@ const fetchMonthlyOvertime = async (
   if (isFutureMonth) return null;
 
   const endDate = isCurrentMonth
-    ? today.toISOString().split("T")[0]
-    : new Date(yearNum, monthNum + 1, 0).toISOString().split("T")[0];
+    ? berlinTodayKey(today)
+    : monthEndKey(yearNum, monthNum);
 
   // Get cumulative data up to end date
   const cumulativeResponse = await fetch(
@@ -77,9 +78,7 @@ const fetchMonthlyOvertime = async (
   // Get cumulative data up to previous month (if not January)
   let previousData = null;
   if (monthNum > 0) {
-    const prevEndDate = new Date(yearNum, monthNum, 0)
-      .toISOString()
-      .split("T")[0];
+    const prevEndDate = monthEndKey(yearNum, monthNum - 1);
     const prevResponse = await fetch(
       `/api/statistics/overtime?startDate=${year}-01-01&endDate=${prevEndDate}&includeDetails=true`,
     );
@@ -131,7 +130,7 @@ const fetchMonthlyHistory = async (year: string): Promise<MonthlyData[]> => {
     if (yearNum === currentYear && month > currentMonth) break;
     if (yearNum > currentYear) break;
 
-    const endDate = new Date(yearNum, month + 1, 0).toISOString().split("T")[0];
+    const endDate = monthEndKey(yearNum, month);
 
     // Get cumulative data up to end of this month
     const response = await fetch(
