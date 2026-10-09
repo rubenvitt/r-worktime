@@ -1,26 +1,53 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
+  AlertCircle,
   Download,
+  ExternalLink,
   FileJson,
   Loader2,
+  MoreHorizontal,
+  RotateCw,
   Send,
+  TriangleAlert,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/app/empty-state";
+import { ErrorState } from "@/components/app/error-state";
+import { FilterChips } from "@/components/app/filter-chips";
+import { closeRange, currentMonth, shiftMonth } from "@/components/app/month";
+import { MonthClosePanel } from "@/components/app/month-close-panel";
+import { PageContainer } from "@/components/app/page-container";
+import { PageHeader } from "@/components/app/page-header";
+import { Panel } from "@/components/app/panel";
+import { PeriodNav } from "@/components/app/period-nav";
+import {
+  RefetchBar,
+  SkeletonPanel,
+  SkeletonRows,
+} from "@/components/app/skeletons";
+import { StickyActionBar } from "@/components/app/sticky-action-bar";
+import {
+  DEFAULT_TIMESHEET_PREFS,
+  loadTimesheetPrefs,
+  saveTimesheetPrefs,
+  type TimesheetPrefs,
+  timesheetQueryString,
+} from "@/components/app/timesheet-prefs";
+import { type ProblemDayDto, useProblems } from "@/components/app/use-problems";
+import { useTrackingStart } from "@/components/app/use-tracking-start";
+import { QuickEntryModal } from "@/components/problems/quick-entry-modal";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -30,15 +57,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useOdooExtension } from "@/hooks/use-odoo-extension";
-import { berlinTodayKey } from "@/lib/dates";
+import { formatMonth } from "@/lib/format";
 import {
-  DEFAULT_ROUNDING,
   isRounding,
   ROUNDING_OPTIONS,
-  type Rounding,
   type TimesheetEntry,
 } from "@/lib/timesheet/aggregate";
 import {
@@ -46,25 +70,17 @@ import {
   validateTimesheetPayload,
 } from "@/lib/timesheet/extension-protocol";
 import type { TimesheetResponse } from "@/lib/timesheet/types";
+import { cn } from "@/lib/utils";
+import { GapRow } from "./gap-row";
 import { formatDayLabel, TimesheetDayCard } from "./timesheet-day-card";
 
 const EXTENSION_DOCS_URL =
   "https://github.com/rubenvitt/r-worktime/tree/main/extension#readme";
 const ALL_ROOTS = "__all__";
-const PREFS_KEY = "rwt.timesheet.prefs";
+const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 const travelKey = (month: string) => `rwt.timesheet.travel.${month}`;
 
-interface Prefs {
-  root: string | null;
-  rounding: Rounding;
-  includeAbsences: boolean;
-}
-
-const DEFAULT_PREFS: Prefs = {
-  root: null,
-  rounding: DEFAULT_ROUNDING,
-  includeAbsences: false,
-};
+type DayFilter = "all" | "missing-notes" | "travel";
 
 function readJson<T>(key: string): T | null {
   try {
@@ -83,42 +99,6 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
-function loadPrefs(): Prefs {
-  const stored = readJson<Partial<Prefs>>(PREFS_KEY);
-  return {
-    root: typeof stored?.root === "string" ? stored.root : null,
-    rounding:
-      typeof stored?.rounding === "number" && isRounding(stored.rounding)
-        ? stored.rounding
-        : DEFAULT_ROUNDING,
-    includeAbsences: stored?.includeAbsences === true,
-  };
-}
-
-function shiftMonth(month: string, delta: number): string {
-  const [y, m] = month.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return date.toISOString().slice(0, 7);
-}
-
-const monthFormatter = new Intl.DateTimeFormat("de-DE", {
-  month: "long",
-  year: "numeric",
-  timeZone: "UTC",
-});
-
-function formatMonth(month: string): string {
-  return monthFormatter.format(new Date(`${month}-01T00:00:00Z`));
-}
-
-function buildQuery(month: string, prefs: Prefs, withRounding = true) {
-  const params = new URLSearchParams({ month });
-  if (prefs.root) params.set("root", prefs.root);
-  if (withRounding) params.set("rounding", String(prefs.rounding));
-  if (prefs.includeAbsences) params.set("includeAbsences", "1");
-  return params.toString();
-}
-
 async function copyToClipboard(text: string, label: string) {
   try {
     await navigator.clipboard.writeText(text);
@@ -130,19 +110,39 @@ async function copyToClipboard(text: string, label: string) {
   }
 }
 
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
 export function TimesheetView() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+
   const [month, setMonth] = useState<string | null>(null);
-  const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
+  const [prefs, setPrefs] = useState<TimesheetPrefs>(DEFAULT_TIMESHEET_PREFS);
   const [travelOverrides, setTravelOverrides] = useState<
     Record<string, boolean>
   >({});
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<DayFilter>("all");
+  const [gapDay, setGapDay] = useState<ProblemDayDto | null>(null);
   const extension = useOdooExtension();
 
-  // localStorage erst nach dem Mount lesen (kein Hydration-Mismatch)
+  // localStorage und Query-Parameter erst nach dem Mount lesen (einmalig,
+  // kein Hydration-Mismatch). Spätere Wechsel schreibt die Seite per replace.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur beim Mount
   useEffect(() => {
-    setPrefs(loadPrefs());
-    setMonth(berlinTodayKey().slice(0, 7));
+    setPrefs(loadTimesheetPrefs());
+    const requested = searchParams.get("month");
+    setMonth(
+      requested && MONTH_PATTERN.test(requested) ? requested : currentMonth(),
+    );
+    if (searchParams.get("filter") === "missing-notes") {
+      setFilter("missing-notes");
+    }
   }, []);
 
   useEffect(() => {
@@ -150,24 +150,33 @@ export function TimesheetView() {
     setTravelOverrides(
       readJson<Record<string, boolean>>(travelKey(month)) ?? {},
     );
+    setSendError(null);
   }, [month]);
 
-  const updatePrefs = useCallback((patch: Partial<Prefs>) => {
+  const changeMonth = useCallback(
+    (next: string) => {
+      setMonth(next);
+      router.replace(`${pathname}?month=${next}`, { scroll: false });
+    },
+    [pathname, router],
+  );
+
+  const updatePrefs = useCallback((patch: Partial<TimesheetPrefs>) => {
     setPrefs((current) => {
       const next = { ...current, ...patch };
-      writeJson(PREFS_KEY, next);
+      saveTimesheetPrefs(next);
       return next;
     });
   }, []);
 
-  const { data, isLoading, isFetching, isPlaceholderData, error } =
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } =
     useQuery<TimesheetResponse>({
       queryKey: ["timesheet", month, prefs],
       enabled: month !== null,
       placeholderData: (previous) => previous,
       queryFn: async () => {
         const response = await fetch(
-          `/api/timesheet?${buildQuery(month ?? "", prefs)}`,
+          `/api/timesheet?${timesheetQueryString(month ?? "", prefs)}`,
         );
         const body = await response.json().catch(() => null);
         if (!response.ok) {
@@ -232,6 +241,7 @@ export function TimesheetView() {
       return;
     }
     setSending(true);
+    setSendError(null);
     try {
       const result = await extension.send(month, payload);
       if (result.ok) {
@@ -240,12 +250,34 @@ export function TimesheetView() {
             "Öffne den Stundenzettel in Odoo und klicke dort auf „eintragen“.",
         });
       } else {
-        toast.error(ackErrorMessage(result.error));
+        const message = ackErrorMessage(result.error);
+        toast.error(message);
+        setSendError(message);
       }
     } finally {
       setSending(false);
     }
   };
+
+  const handleCopyJson = () =>
+    copyToClipboard(JSON.stringify(payload, null, 2), "JSON");
+
+  // Lückenzeilen: Tage ohne Einträge im Prüfbereich (nur Anzeige)
+  const tracking = useTrackingStart();
+  const gapRange =
+    month && !tracking.isLoading
+      ? closeRange(month, tracking.trackingStart)
+      : null;
+  const gapsQuery = useProblems(
+    gapRange
+      ? { ...gapRange, problemType: "missing", sortBy: "date_asc" }
+      : null,
+  );
+  const hasGapRange = gapRange !== null;
+  const gaps = useMemo(
+    () => (hasGapRange ? (gapsQuery.data?.problems ?? []) : []),
+    [hasGapRange, gapsQuery.data],
+  );
 
   const roots = useMemo(() => {
     const list = data?.availableRoots ?? [];
@@ -254,215 +286,279 @@ export function TimesheetView() {
       : list;
   }, [data?.availableRoots, prefs.root]);
 
+  const monthLoaded = Boolean(data && data.month === month);
   const travelDays = payload.filter((p) => p.travelFee).length;
   const criticalDays = days.filter((d) => d.criticalCount > 0).length;
   const exportHref = month
-    ? `/api/timesheet/timing-export?${buildQuery(month, prefs, false)}`
+    ? `/api/timesheet/timing-export?${timesheetQueryString(month, prefs, false)}`
     : undefined;
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Stundenzettel</h1>
-        <p className="text-muted-foreground">
-          Fasse deine Einträge pro Tag zusammen und übertrage sie nach Odoo –
-          per Extension oder Zwischenablage.
-        </p>
+  const extensionPresent = extension.status === "present";
+  const primaryDisabled = extensionPresent
+    ? payload.length === 0 || sending || isPlaceholderData
+    : payload.length === 0 || isPlaceholderData;
+  const handlePrimary = extensionPresent ? handleSend : handleCopyJson;
+
+  // Gleicher Handler überall; nur der Kopf (und mobil die Leiste) ist primär
+  const primaryButton = (
+    className?: string,
+    variant: "default" | "outline" = "default",
+  ) => (
+    <Button
+      type="button"
+      variant={variant}
+      className={className}
+      disabled={primaryDisabled}
+      onClick={handlePrimary}
+    >
+      {extensionPresent ? (
+        sending ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <Send />
+        )
+      ) : (
+        <FileJson />
+      )}
+      {extensionPresent ? "An Odoo senden" : "JSON kopieren"}
+    </Button>
+  );
+
+  // Liste: Tage (gefiltert) und Lückenzeilen chronologisch gemischt
+  const visibleDays = useMemo(() => {
+    if (filter === "missing-notes")
+      return days.filter((d) => d.criticalCount > 0);
+    if (filter === "travel")
+      return days.filter((d) => travelFeeFor(d.date, d.travelFee));
+    return days;
+  }, [days, filter, travelFeeFor]);
+
+  const rows = useMemo(() => {
+    type Row =
+      | { kind: "day"; key: string; day: (typeof days)[number] }
+      | { kind: "gap"; key: string; problem: ProblemDayDto };
+    const list: Row[] = visibleDays.map((day) => ({
+      kind: "day",
+      key: day.date,
+      day,
+    }));
+    if (filter === "all" && monthLoaded) {
+      const dayKeys = new Set(days.map((d) => d.date));
+      for (const problem of gaps) {
+        const key = problem.date.slice(0, 10);
+        // nur Tage mit Soll (keine Wochenenden/Feiertage)
+        if (!dayKeys.has(key) && problem.expectedHours > 0) {
+          list.push({ kind: "gap", key, problem });
+        }
+      }
+      list.sort((a, b) => a.key.localeCompare(b.key));
+    }
+    return list;
+  }, [visibleDays, filter, monthLoaded, days, gaps]);
+
+  if (month === null) {
+    return (
+      <PageContainer>
+        <PageHeader title="Stundenzettel" />
+        <div className="space-y-6">
+          <SkeletonPanel lines={4} />
+          <Panel>
+            <SkeletonRows count={6} height={56} />
+          </Panel>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  const monthLabel = formatMonth(month);
+  const meta = monthLoaded && data && (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <span className="num text-[32px] leading-9 font-semibold tracking-[-0.02em] text-foreground">
+        {data.totals.hours}
+      </span>
+      <span>
+        gerundet · {plural(data.totals.days, "Tag", "Tage")} ·{" "}
+        {plural(data.totals.entries, "Eintrag", "Einträge")} · Dienstreise an{" "}
+        {plural(travelDays, "Tag", "Tagen")}
+      </span>
+    </div>
+  );
+
+  const toolbar = (
+    <div className="flex min-w-max flex-wrap items-center gap-x-5 gap-y-2 md:min-w-0">
+      <div className="flex items-center gap-2">
+        <Label
+          htmlFor="timesheet-root"
+          className="text-[13px] font-normal text-muted-foreground"
+        >
+          Projekt
+        </Label>
+        <Select
+          value={prefs.root ?? ALL_ROOTS}
+          onValueChange={(value) =>
+            updatePrefs({ root: value === ALL_ROOTS ? null : value })
+          }
+        >
+          <SelectTrigger
+            id="timesheet-root"
+            size="sm"
+            className="max-w-[16rem] data-[size=sm]:h-11 md:data-[size=sm]:h-8"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_ROOTS}>Alle Arbeitseinträge</SelectItem>
+            {roots.map((root) => (
+              <SelectItem key={root} value={root}>
+                {root}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      <Card>
-        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-2">
-            <Label htmlFor="timesheet-month">Monat</Label>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Vorheriger Monat"
-                disabled={!month}
-                onClick={() => month && setMonth(shiftMonth(month, -1))}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Input
-                id="timesheet-month"
-                type="month"
-                value={month ?? ""}
-                onChange={(event) => {
-                  if (/^\d{4}-\d{2}$/.test(event.target.value)) {
-                    setMonth(event.target.value);
-                  }
-                }}
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Nächster Monat"
-                disabled={!month}
-                onClick={() => month && setMonth(shiftMonth(month, 1))}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+      <div className="flex items-center gap-2">
+        <Label
+          htmlFor="timesheet-rounding"
+          className="text-[13px] font-normal text-muted-foreground"
+        >
+          Rundung
+        </Label>
+        <Select
+          value={String(prefs.rounding)}
+          onValueChange={(value) => {
+            const rounding = Number(value);
+            if (isRounding(rounding)) updatePrefs({ rounding });
+          }}
+        >
+          <SelectTrigger
+            id="timesheet-rounding"
+            size="sm"
+            className="data-[size=sm]:h-11 md:data-[size=sm]:h-8"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ROUNDING_OPTIONS.map((option) => (
+              <SelectItem key={option} value={String(option)}>
+                {option} Min.
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="timesheet-root">Projekt</Label>
-            <Select
-              value={prefs.root ?? ALL_ROOTS}
-              onValueChange={(value) =>
-                updatePrefs({ root: value === ALL_ROOTS ? null : value })
-              }
-            >
-              <SelectTrigger id="timesheet-root" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_ROOTS}>Alle Arbeitseinträge</SelectItem>
-                {roots.map((root) => (
-                  <SelectItem key={root} value={root}>
-                    {root}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <div className="flex items-center gap-2">
+        <Switch
+          id="timesheet-absences"
+          checked={prefs.includeAbsences}
+          onCheckedChange={(checked) =>
+            updatePrefs({ includeAbsences: checked })
+          }
+        />
+        <Label
+          htmlFor="timesheet-absences"
+          className="min-h-11 text-[13px] font-normal md:min-h-0"
+        >
+          Abwesenheiten einbeziehen
+        </Label>
+      </div>
+    </div>
+  );
 
-          <div className="space-y-2">
-            <Label htmlFor="timesheet-rounding">Rundung pro Tag</Label>
-            <Select
-              value={String(prefs.rounding)}
-              onValueChange={(value) => {
-                const rounding = Number(value);
-                if (isRounding(rounding)) updatePrefs({ rounding });
-              }}
-            >
-              <SelectTrigger id="timesheet-rounding" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ROUNDING_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={String(option)}>
-                    {option} Minuten
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-end gap-2 pb-2">
-            <Switch
-              id="timesheet-absences"
-              checked={prefs.includeAbsences}
-              onCheckedChange={(checked) =>
-                updatePrefs({ includeAbsences: checked })
-              }
-            />
-            <Label htmlFor="timesheet-absences" className="font-normal">
-              Abwesenheiten einbeziehen
-            </Label>
-          </div>
-        </CardContent>
-      </Card>
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Fehler</AlertTitle>
-          <AlertDescription>{(error as Error).message}</AlertDescription>
-        </Alert>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {month ? formatMonth(month) : "…"}
-            {isFetching && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-          </CardTitle>
-          <CardDescription>
-            {data && data.month === month
-              ? `${data.totals.days} Tage · ${data.totals.entries} Einträge · Dienstreise an ${travelDays} von ${data.totals.days} Tagen`
-              : "Lade …"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-            <div>
-              <div className="font-mono text-3xl font-bold tabular-nums">
-                {data && data.month === month ? data.totals.hours : "–"}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Summe der gerundeten Tage
-              </p>
-            </div>
-            {criticalDays > 0 && (
-              <p className="text-sm text-destructive">
-                {criticalDays === 1
-                  ? "An 1 Tag fehlen Notizen."
-                  : `An ${criticalDays} Tagen fehlen Notizen.`}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
+  const actions = (
+    <>
+      {primaryButton()}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-11 md:size-9"
+            aria-label="Weitere Aktionen"
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {extensionPresent ? (
+            <DropdownMenuItem
               disabled={payload.length === 0 || isPlaceholderData}
-              onClick={() =>
-                copyToClipboard(JSON.stringify(payload, null, 2), "JSON")
-              }
+              onSelect={() => handleCopyJson()}
             >
-              <FileJson className="mr-2 h-4 w-4" />
+              <FileJson />
               JSON kopieren
-            </Button>
-            {extension.status === "present" && (
-              <Button
-                disabled={payload.length === 0 || sending || isPlaceholderData}
-                onClick={handleSend}
-              >
-                {sending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="mr-2 h-4 w-4" />
-                )}
-                An Odoo-Extension senden
-              </Button>
-            )}
-            <Button variant="outline" asChild disabled={!exportHref}>
-              <a href={exportHref} download>
-                <Download className="mr-2 h-4 w-4" />
-                Rohdaten (Timing-JSON) herunterladen
-              </a>
-            </Button>
-          </div>
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem asChild disabled={!exportHref}>
+            <a href={exportHref} download>
+              <Download />
+              Rohdaten (Timing-JSON) herunterladen
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <a href={EXTENSION_DOCS_URL} target="_blank" rel="noreferrer">
+              <ExternalLink />
+              Odoo-Extension einrichten
+            </a>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
 
-          {extension.status === "absent" && (
-            <p className="text-sm text-muted-foreground">
-              Keine Odoo-Extension erkannt. Mit der Extension überträgst du den
-              Monat ohne Zwischenablage –{" "}
-              <a
-                href={EXTENSION_DOCS_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-4"
-              >
-                so richtest du sie ein
-              </a>
-              . Danach diese Seite neu laden.
-            </p>
-          )}
-          {extension.status === "present" && extension.version && (
-            <p className="text-xs text-muted-foreground">
-              Odoo-Extension {extension.version} verbunden.
-            </p>
-          )}
+  const showList = !isLoading && !error && days.length > 0;
 
-          {issues.length > 0 && (
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Nicht an die Extension sendbar</AlertTitle>
+  return (
+    <PageContainer>
+      <PageHeader
+        title="Stundenzettel"
+        meta={meta}
+        period={
+          <PeriodNav
+            label={monthLabel}
+            prevLabel="Vorheriger Monat"
+            nextLabel="Nächster Monat"
+            onPrev={() => changeMonth(shiftMonth(month, -1))}
+            onNext={() => changeMonth(shiftMonth(month, 1))}
+            onToday={() => changeMonth(currentMonth())}
+            isCurrent={month === currentMonth()}
+          >
+            <Input
+              id="timesheet-month"
+              type="month"
+              aria-label="Monat"
+              value={month}
+              className="num h-11 w-full max-w-[12rem] text-center md:h-8 md:w-[11rem]"
+              onChange={(event) => {
+                if (MONTH_PATTERN.test(event.target.value)) {
+                  changeMonth(event.target.value);
+                }
+              }}
+            />
+          </PeriodNav>
+        }
+        actions={actions}
+        toolbar={toolbar}
+      />
+
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <MonthClosePanel
+            month={month}
+            variant="full"
+            notesCriticalDays={
+              monthLoaded && !isPlaceholderData ? criticalDays : undefined
+            }
+            onShowMissingNotes={() => setFilter("missing-notes")}
+            transferAction={primaryButton("h-11 md:h-8", "outline")}
+          />
+
+          {issues.length > 0 ? (
+            <Alert variant="warning">
+              <TriangleAlert />
+              <AlertTitle>So nimmt die Extension den Monat nicht an</AlertTitle>
               <AlertDescription>
                 <ul className="list-disc pl-4">
                   {issues.map((issue, index) => (
@@ -474,39 +570,149 @@ export function TimesheetView() {
                 </ul>
               </AlertDescription>
             </Alert>
-          )}
-        </CardContent>
-      </Card>
+          ) : null}
 
-      {isLoading || month === null ? (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
-          ))}
+          {sendError ? (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertTitle>
+                Senden an die Odoo-Extension fehlgeschlagen
+              </AlertTitle>
+              <AlertDescription>
+                <p className="text-foreground/80">{sendError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  disabled={primaryDisabled}
+                  onClick={handleSend}
+                >
+                  <RotateCw />
+                  Erneut senden
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
         </div>
-      ) : days.length === 0 && !error ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Keine Einträge für {formatMonth(month)}
-            {prefs.root ? ` im Projekt „${prefs.root}“` : ""}.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {days.map((day) => (
-            <TimesheetDayCard
-              key={day.date}
-              day={day}
-              travelFee={travelFeeFor(day.date, day.travelFee)}
-              onTravelFeeChange={(value) =>
-                setTravelFee(day.date, value, day.travelFee)
+
+        {showList ? (
+          <FilterChips
+            ariaLabel="Tage filtern"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "all", label: "Alle", count: days.length },
+              {
+                value: "missing-notes",
+                label: "Ohne Notiz",
+                count: criticalDays,
+              },
+              { value: "travel", label: "Dienstreise", count: travelDays },
+            ]}
+          />
+        ) : null}
+
+        {error ? (
+          <ErrorState
+            title="Stundenzettel konnte nicht geladen werden"
+            error={error}
+            onRetry={() => refetch()}
+          />
+        ) : isLoading ? (
+          <Panel>
+            <SkeletonRows count={6} height={56} />
+          </Panel>
+        ) : days.length === 0 ? (
+          <Panel>
+            <EmptyState
+              title={
+                prefs.root
+                  ? `Keine Einträge im ${monthLabel} im Projekt ‚${prefs.root}‘.`
+                  : `Keine Einträge im ${monthLabel}.`
               }
-              onCopy={copyToClipboard}
-              copyDisabled={isPlaceholderData}
             />
-          ))}
-        </div>
-      )}
-    </div>
+          </Panel>
+        ) : (
+          <Panel aria-label={`Tage im ${monthLabel}`}>
+            <RefetchBar active={isFetching} />
+            {rows.length === 0 ? (
+              <EmptyState
+                title={
+                  filter === "missing-notes"
+                    ? "Alle Tage haben eine Notiz."
+                    : "Kein Tag als Dienstreise markiert."
+                }
+                action={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFilter("all")}
+                  >
+                    Alle Tage zeigen
+                  </Button>
+                }
+              />
+            ) : (
+              <ul
+                className={cn(
+                  "divide-y transition-opacity",
+                  isPlaceholderData && "opacity-60",
+                )}
+              >
+                {rows.map((row) => (
+                  <Fragment key={`${row.kind}-${row.key}`}>
+                    {row.kind === "day" ? (
+                      <TimesheetDayCard
+                        day={row.day}
+                        travelFee={travelFeeFor(
+                          row.day.date,
+                          row.day.travelFee,
+                        )}
+                        onTravelFeeChange={(value) =>
+                          setTravelFee(row.day.date, value, row.day.travelFee)
+                        }
+                        onCopy={copyToClipboard}
+                        copyDisabled={isPlaceholderData}
+                      />
+                    ) : (
+                      <GapRow
+                        date={row.key}
+                        onAdd={() => setGapDay(row.problem)}
+                      />
+                    )}
+                  </Fragment>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        )}
+      </div>
+
+      {gapDay ? (
+        <QuickEntryModal
+          key={gapDay.date}
+          open
+          onOpenChange={(open) => {
+            if (!open) setGapDay(null);
+          }}
+          date={new Date(gapDay.date)}
+          suggestedHours={Math.max(
+            0,
+            gapDay.expectedHours - gapDay.currentHours,
+          )}
+          onSuccess={() => {
+            setGapDay(null);
+            queryClient.invalidateQueries({ queryKey: ["problems"] });
+            queryClient.invalidateQueries({ queryKey: ["timesheet"] });
+          }}
+        />
+      ) : null}
+
+      <StickyActionBar open={payload.length > 0} className="md:hidden">
+        {primaryButton("h-11 w-full")}
+      </StickyActionBar>
+    </PageContainer>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { WORK_DAY_LABELS, WORK_DAYS } from "@/types/settings";
 
 interface WorkDaysSelectorProps {
@@ -10,6 +9,18 @@ interface WorkDaysSelectorProps {
   error?: string;
 }
 
+// Wochenbeginn Montag
+const ORDERED_DAYS = [
+  WORK_DAYS.MONDAY,
+  WORK_DAYS.TUESDAY,
+  WORK_DAYS.WEDNESDAY,
+  WORK_DAYS.THURSDAY,
+  WORK_DAYS.FRIDAY,
+  WORK_DAYS.SATURDAY,
+  WORK_DAYS.SUNDAY,
+];
+
+/** Sieben Umschalter (aria-pressed), mobil als 7er-Raster. */
 export function WorkDaysSelector({
   value,
   onChange,
@@ -23,36 +34,36 @@ export function WorkDaysSelector({
     }
   };
 
-  // Order days starting from Monday
-  const orderedDays = [
-    WORK_DAYS.MONDAY,
-    WORK_DAYS.TUESDAY,
-    WORK_DAYS.WEDNESDAY,
-    WORK_DAYS.THURSDAY,
-    WORK_DAYS.FRIDAY,
-    WORK_DAYS.SATURDAY,
-    WORK_DAYS.SUNDAY,
-  ];
-
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {orderedDays.map((day) => (
-          <div key={day} className="flex items-center space-x-2">
-            <Checkbox
-              id={`day-${day}`}
-              checked={value.includes(day)}
-              onCheckedChange={() => handleToggleDay(day)}
-              className="cursor-pointer"
-            />
-            <Label
-              htmlFor={`day-${day}`}
-              className="text-sm font-medium cursor-pointer select-none"
+    <div className="space-y-2">
+      {/* biome-ignore lint/a11y/useSemanticElements: Umschalter-Gruppe, kein Fieldset */}
+      <div
+        role="group"
+        aria-label="Arbeitstage"
+        className="grid grid-cols-7 gap-1.5 sm:flex sm:flex-wrap"
+      >
+        {ORDERED_DAYS.map((day) => {
+          const active = value.includes(day);
+          const label = WORK_DAY_LABELS[day];
+          return (
+            <button
+              key={day}
+              type="button"
+              aria-pressed={active}
+              aria-label={label}
+              title={label}
+              onClick={() => handleToggleDay(day)}
+              className={cn(
+                "inline-flex h-11 min-w-0 items-center justify-center rounded-md border text-sm transition-colors duration-[120ms] sm:h-9 sm:w-11",
+                active
+                  ? "border-primary bg-primary text-primary-foreground font-medium"
+                  : "border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
             >
-              {WORK_DAY_LABELS[day]}
-            </Label>
-          </div>
-        ))}
+              {label.slice(0, 2)}
+            </button>
+          );
+        })}
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>

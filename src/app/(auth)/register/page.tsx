@@ -1,12 +1,13 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { CircleAlert, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,11 +15,11 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -28,25 +29,27 @@ import { Input } from "@/components/ui/input";
 
 const registerSchema = z
   .object({
-    name: z.string().min(2, "Name muss mindestens 2 Zeichen lang sein"),
-    email: z.string().email("Bitte gültige E-Mail-Adresse eingeben"),
+    name: z.string().min(2, "Der Name braucht mindestens 2 Zeichen."),
+    email: z.string().email("Gib eine gültige E-Mail-Adresse ein."),
     password: z
       .string()
-      .min(8, "Passwort muss mindestens 8 Zeichen lang sein")
-      .regex(/[A-Z]/, "Passwort muss mindestens einen Großbuchstaben enthalten")
-      .regex(
-        /[a-z]/,
-        "Passwort muss mindestens einen Kleinbuchstaben enthalten",
-      )
-      .regex(/[0-9]/, "Passwort muss mindestens eine Zahl enthalten"),
+      .min(8, "Das Passwort braucht mindestens 8 Zeichen.")
+      .regex(/[A-Z]/, "Das Passwort braucht mindestens einen Großbuchstaben.")
+      .regex(/[a-z]/, "Das Passwort braucht mindestens einen Kleinbuchstaben.")
+      .regex(/[0-9]/, "Das Passwort braucht mindestens eine Zahl."),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwörter stimmen nicht überein",
+    message: "Die Passwörter stimmen nicht überein.",
     path: ["confirmPassword"],
   });
 
 type RegisterForm = z.infer<typeof registerSchema>;
+
+// Mobil ohne Kartenrahmen, ab sm als ruhige Karte
+const CARD_CLASS =
+  "gap-5 border-0 bg-transparent py-0 sm:gap-6 sm:border sm:bg-card sm:py-6";
+const CARD_SECTION_CLASS = "px-0 sm:px-6";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -83,13 +86,14 @@ export default function RegisterPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || "Registrierung fehlgeschlagen");
+        // Klartext der API, z. B. beim Rate-Limit
+        setError(data.error || "Das Konto konnte nicht angelegt werden.");
       } else {
         router.push("/login?registered=true");
       }
     } catch (_error) {
       setError(
-        "Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.",
+        "Das Konto konnte nicht angelegt werden. Bitte versuch es gleich noch einmal.",
       );
     } finally {
       setIsLoading(false);
@@ -97,16 +101,20 @@ export default function RegisterPage() {
   }
 
   return (
-    <Card className="border-slate-200 dark:border-slate-700">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold">Konto erstellen</CardTitle>
-        <CardDescription>
-          Geben Sie Ihre Daten ein, um ein neues Konto zu erstellen
-        </CardDescription>
+    <Card className={CARD_CLASS}>
+      <CardHeader className={CARD_SECTION_CLASS}>
+        <h1 className="text-xl font-semibold tracking-[-0.01em]">
+          Konto anlegen
+        </h1>
+        <CardDescription>Leg dein Konto an.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className={CARD_SECTION_CLASS}>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4"
+            noValidate
+          >
             <FormField
               control={form.control}
               name="name"
@@ -115,7 +123,6 @@ export default function RegisterPage() {
                   <FormLabel>Name</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="Max Mustermann"
                       autoComplete="name"
                       disabled={isLoading}
                       {...field}
@@ -133,9 +140,9 @@ export default function RegisterPage() {
                   <FormLabel>E-Mail</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="name@beispiel.de"
                       type="email"
                       autoComplete="email"
+                      inputMode="email"
                       disabled={isLoading}
                       {...field}
                     />
@@ -152,13 +159,16 @@ export default function RegisterPage() {
                   <FormLabel>Passwort</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="••••••••"
                       type="password"
                       autoComplete="new-password"
                       disabled={isLoading}
                       {...field}
                     />
                   </FormControl>
+                  <FormDescription>
+                    Mindestens 8 Zeichen, mit Groß- und Kleinbuchstaben und
+                    einer Zahl.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -168,10 +178,9 @@ export default function RegisterPage() {
               name="confirmPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Passwort bestätigen</FormLabel>
+                  <FormLabel>Passwort wiederholen</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="••••••••"
                       type="password"
                       autoComplete="new-password"
                       disabled={isLoading}
@@ -184,26 +193,36 @@ export default function RegisterPage() {
             />
 
             {error && (
-              <div className="text-sm text-red-500 font-medium">{error}</div>
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button
+              type="submit"
+              className="h-11 w-full sm:h-9"
+              disabled={isLoading}
+            >
               {isLoading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Registrieren...
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                  Lege an …
                 </>
               ) : (
-                "Registrieren"
+                "Konto anlegen"
               )}
             </Button>
           </form>
         </Form>
       </CardContent>
-      <CardFooter>
+      <CardFooter className={CARD_SECTION_CLASS}>
         <p className="text-sm text-muted-foreground">
-          Bereits ein Konto?{" "}
-          <Link href="/login" className="text-primary hover:underline">
+          Schon ein Konto?{" "}
+          <Link
+            href="/login"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
             Anmelden
           </Link>
         </p>

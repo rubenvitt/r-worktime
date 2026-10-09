@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  AlertCircle,
-  Calendar,
-  CheckCircle,
-  Clock,
-  Loader2,
-} from "lucide-react";
+import { CircleCheck, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -64,8 +58,8 @@ export function BulkFillDialog({
   const handlePreview = async () => {
     if (!startDate || !endDate) {
       toast({
-        title: "Fehler",
-        description: "Bitte wähle Start- und Enddatum",
+        title: "Zeitraum fehlt",
+        description: "Wähl ein Start- und ein Enddatum.",
         variant: "destructive",
       });
       return;
@@ -92,7 +86,9 @@ export function BulkFillDialog({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Fehler beim Laden der Vorschau");
+        throw new Error(
+          error.error || "Die Vorschau konnte nicht geladen werden.",
+        );
       }
 
       const data = await response.json();
@@ -100,11 +96,11 @@ export function BulkFillDialog({
     } catch (error) {
       console.error("Preview error:", error);
       toast({
-        title: "Fehler",
+        title: "Auffüllen fehlgeschlagen",
         description:
           error instanceof Error
             ? error.message
-            : "Fehler beim Laden der Vorschau",
+            : "Die Vorschau konnte nicht geladen werden.",
         variant: "destructive",
       });
     } finally {
@@ -115,8 +111,8 @@ export function BulkFillDialog({
   const handleSubmit = async () => {
     if (!startDate || !endDate) {
       toast({
-        title: "Fehler",
-        description: "Bitte wähle Start- und Enddatum",
+        title: "Zeitraum fehlt",
+        description: "Wähl ein Start- und ein Enddatum.",
         variant: "destructive",
       });
       return;
@@ -143,13 +139,15 @@ export function BulkFillDialog({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Fehler beim Erstellen der Einträge");
+        throw new Error(
+          error.error || "Die Einträge konnten nicht angelegt werden.",
+        );
       }
 
       const data = await response.json();
 
       toast({
-        title: "Erfolg",
+        title: "Arbeitstage aufgefüllt",
         description: data.message,
       });
 
@@ -162,11 +160,11 @@ export function BulkFillDialog({
     } catch (error) {
       console.error("Submit error:", error);
       toast({
-        title: "Fehler",
+        title: "Auffüllen fehlgeschlagen",
         description:
           error instanceof Error
             ? error.message
-            : "Fehler beim Erstellen der Einträge",
+            : "Die Einträge konnten nicht angelegt werden.",
         variant: "destructive",
       });
     } finally {
@@ -181,53 +179,50 @@ export function BulkFillDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Arbeitstage automatisch befüllen</DialogTitle>
+          <DialogTitle>Arbeitstage auffüllen</DialogTitle>
           <DialogDescription>
-            Fülle alle Arbeitstage in einem Zeitraum mit Standard-Arbeitszeiten.
-            Wochenenden und Feiertage werden automatisch übersprungen.
+            Trägt an jedem Arbeitstag im Zeitraum einen Eintrag mit deinen
+            Standardzeiten ein. Gut zum Nachtragen von Wochen vor deinem ersten
+            Sync.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Date Range */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="startDate">Von Datum</Label>
-              <div className="flex gap-2">
-                <Calendar className="h-5 w-5 text-muted-foreground mt-2" />
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  max={new Date().toISOString().split("T")[0]}
-                />
-              </div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="startDate">Von</Label>
+              <Input
+                id="startDate"
+                type="date"
+                className="num w-full min-w-0"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                max={new Date().toISOString().split("T")[0]}
+              />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="endDate">Bis Datum</Label>
-              <div className="flex gap-2">
-                <Calendar className="h-5 w-5 text-muted-foreground mt-2" />
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  max={new Date().toISOString().split("T")[0]}
-                />
-              </div>
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="endDate">Bis</Label>
+              <Input
+                id="endDate"
+                type="date"
+                className="num w-full min-w-0"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                max={new Date().toISOString().split("T")[0]}
+              />
             </div>
           </div>
 
-          {/* Work Hours */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="dailyHours">Stunden pro Tag</Label>
               <Input
                 id="dailyHours"
                 type="number"
+                inputMode="decimal"
+                className="num"
                 step="0.25"
                 min="0.25"
                 max="24"
@@ -235,46 +230,39 @@ export function BulkFillDialog({
                 onChange={(e) => setDailyHours(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="startTime">Arbeitszeit von</Label>
-              <div className="flex gap-2">
-                <Clock className="h-5 w-5 text-muted-foreground mt-2" />
-                <Input
-                  id="startTime"
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                />
-              </div>
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="startTime">Start</Label>
+              <Input
+                id="startTime"
+                type="time"
+                className="num"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="endTime">Arbeitszeit bis</Label>
-              <div className="flex gap-2">
-                <Clock className="h-5 w-5 text-muted-foreground mt-2" />
-                <Input
-                  id="endTime"
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                />
-              </div>
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="endTime">Ende</Label>
+              <Input
+                id="endTime"
+                type="time"
+                className="num"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
             </div>
           </div>
 
-          {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="description">Beschreibung</Label>
             <Input
               id="description"
               type="text"
-              placeholder="z.B. Manuelle Arbeitszeit"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
 
-          {/* Options */}
-          <div className="flex items-center space-x-2">
+          <div className="flex min-h-11 items-center gap-2 sm:min-h-0">
             <Checkbox
               id="skipExisting"
               checked={skipExisting}
@@ -282,51 +270,57 @@ export function BulkFillDialog({
             />
             <Label
               htmlFor="skipExisting"
-              className="text-sm font-normal cursor-pointer"
+              className="cursor-pointer text-sm font-normal"
             >
-              Existierende Einträge überspringen
+              Tage mit vorhandenen Einträgen überspringen
             </Label>
           </div>
 
-          {/* Preview Results */}
+          <div className="space-y-1 text-[13px] text-muted-foreground">
+            <p>
+              Übersprungen werden immer Wochenenden und Tage, an denen schon ein
+              Feiertag eingetragen ist. Der Zeitraum darf höchstens ein Jahr
+              lang sein.
+            </p>
+            <p>
+              Erst siehst du eine Vorschau, danach legst du die Einträge an.
+            </p>
+          </div>
+
           {preview && (
-            <Alert className="mt-4">
-              <CheckCircle className="h-4 w-4" />
+            <Alert variant="info">
+              <CircleCheck />
+              <AlertTitle>Vorschau</AlertTitle>
               <AlertDescription>
-                <strong>Vorschau:</strong> {preview.message}
-                <div className="mt-2 text-sm">
-                  <div>✓ {preview.created} Arbeitstage werden befüllt</div>
+                <ul className="mt-1 space-y-0.5">
+                  <li>
+                    <span className="num font-medium">{preview.created}</span>{" "}
+                    Arbeitstage werden aufgefüllt
+                  </li>
                   {preview.skipReasons.weekend > 0 && (
-                    <div>
-                      - {preview.skipReasons.weekend} Wochenendtage übersprungen
-                    </div>
+                    <li>
+                      <span className="num">{preview.skipReasons.weekend}</span>{" "}
+                      Wochenendtage übersprungen
+                    </li>
                   )}
                   {preview.skipReasons.holiday > 0 && (
-                    <div>
-                      - {preview.skipReasons.holiday} Feiertage übersprungen
-                    </div>
+                    <li>
+                      <span className="num">{preview.skipReasons.holiday}</span>{" "}
+                      Feiertage übersprungen
+                    </li>
                   )}
                   {preview.skipReasons.existing > 0 && (
-                    <div>
-                      - {preview.skipReasons.existing} existierende Einträge
-                      übersprungen
-                    </div>
+                    <li>
+                      <span className="num">
+                        {preview.skipReasons.existing}
+                      </span>{" "}
+                      Tage mit Einträgen übersprungen
+                    </li>
                   )}
-                </div>
+                </ul>
               </AlertDescription>
             </Alert>
           )}
-
-          {/* Info Alert */}
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Hinweis:</strong> Diese Funktion erstellt Zeiteinträge für
-              alle Arbeitstage (Mo-Fr) im gewählten Zeitraum. Wochenenden und
-              bereits eingetragene Feiertage werden automatisch übersprungen.
-              Ideal zum Nachtragen historischer Arbeitszeiten.
-            </AlertDescription>
-          </Alert>
         </div>
 
         <DialogFooter>
@@ -340,8 +334,8 @@ export function BulkFillDialog({
             >
               {loading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Lade Vorschau...
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                  Lade Vorschau …
                 </>
               ) : (
                 "Vorschau anzeigen"
@@ -351,11 +345,11 @@ export function BulkFillDialog({
             <Button onClick={handleSubmit} disabled={loading}>
               {loading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Erstelle Einträge...
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                  Lege Einträge an …
                 </>
               ) : (
-                `${preview.created} Einträge erstellen`
+                `${preview.created} Einträge anlegen`
               )}
             </Button>
           )}

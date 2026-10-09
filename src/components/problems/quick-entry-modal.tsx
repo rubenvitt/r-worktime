@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { format, setHours, setMinutes } from "date-fns";
-import { Calendar, Clock } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { formatHoursToTime } from "@/lib/utils";
+import { formatDateLong, formatHours } from "@/lib/format";
+import { ENTRY_TYPE_LABEL } from "@/lib/labels";
+
+const ENTRY_TYPES = ["WORK", "VACATION", "SICK", "HOLIDAY"] as const;
 
 interface QuickEntryModalProps {
   open: boolean;
@@ -99,18 +102,20 @@ export function QuickEntryModal({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to create entry");
+        throw new Error(
+          error.error || "Der Eintrag konnte nicht angelegt werden.",
+        );
       }
 
       return response.json();
     },
     onSuccess: () => {
-      toast.success("Der Zeiteintrag wurde erfolgreich hinzugefügt.");
+      toast.success("Eintrag nachgetragen");
       onSuccess();
       onOpenChange(false);
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Konnte den Eintrag nicht erstellen.");
+      toast.error(error.message || "Der Eintrag konnte nicht angelegt werden.");
     },
   });
 
@@ -119,7 +124,7 @@ export function QuickEntryModal({
 
     // Validate times
     if (formData.startTime >= formData.endTime) {
-      toast.error("Die Endzeit muss nach der Startzeit liegen.");
+      toast.error("Das Ende muss nach dem Start liegen.");
       return;
     }
 
@@ -133,89 +138,66 @@ export function QuickEntryModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>Manueller Zeiteintrag</DialogTitle>
+          <DialogTitle>Eintrag nachtragen</DialogTitle>
           <DialogDescription>
-            Erstelle einen neuen Zeiteintrag für{" "}
-            {format(new Date(date), "dd.MM.yyyy")}
-            {suggestedHours > 0 && (
-              <span className="block mt-1 text-sm">
-                Empfohlene Stunden: {formatHoursToTime(suggestedHours)}
-              </span>
-            )}
+            {formatDateLong(date)}
+            {suggestedHours > 0 ? (
+              <>
+                {" · "}vorgeschlagen{" "}
+                <span className="num">{formatHours(suggestedHours)}</span>
+              </>
+            ) : null}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
-            {/* Date Display */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Datum</Label>
-              <div className="col-span-3 flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">
-                  {format(new Date(date), "dd.MM.yyyy")}
-                </span>
+          <div className="grid gap-4 pb-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="startTime">Von</Label>
+                <Input
+                  id="startTime"
+                  type="time"
+                  value={formData.startTime}
+                  onChange={(e) =>
+                    setFormData({ ...formData, startTime: e.target.value })
+                  }
+                  className="num w-full min-w-0"
+                  required
+                />
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="endTime">Bis</Label>
+                <Input
+                  id="endTime"
+                  type="time"
+                  value={formData.endTime}
+                  onChange={(e) =>
+                    setFormData({ ...formData, endTime: e.target.value })
+                  }
+                  className="num w-full min-w-0"
+                  required
+                />
               </div>
             </div>
 
-            {/* Start Time */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="startTime" className="text-right">
-                Von
-              </Label>
-              <Input
-                id="startTime"
-                type="time"
-                value={formData.startTime}
-                onChange={(e) =>
-                  setFormData({ ...formData, startTime: e.target.value })
-                }
-                className="col-span-3"
-                required
-              />
-            </div>
-
-            {/* End Time */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="endTime" className="text-right">
-                Bis
-              </Label>
-              <Input
-                id="endTime"
-                type="time"
-                value={formData.endTime}
-                onChange={(e) =>
-                  setFormData({ ...formData, endTime: e.target.value })
-                }
-                className="col-span-3"
-                required
-              />
-            </div>
-
-            {/* Duration Display */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Dauer</Label>
-              <div className="col-span-3 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <span
-                  className={`font-medium ${
-                    currentDuration < 0 ? "text-destructive" : ""
-                  }`}
-                >
-                  {currentDuration >= 0
-                    ? `${currentDuration.toFixed(1)} Stunden`
-                    : "Ungültige Zeit"}
+            <p className="text-[13px] text-muted-foreground" aria-live="polite">
+              Dauer{" "}
+              {currentDuration > 0 ? (
+                <span className="num font-medium text-foreground">
+                  {formatHours(currentDuration)}
                 </span>
-              </div>
-            </div>
+              ) : (
+                <span className="font-medium text-destructive">
+                  Das Ende muss nach dem Start liegen.
+                </span>
+              )}
+            </p>
 
-            {/* Type */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="type" className="text-right">
-                Typ
-              </Label>
+            <div className="space-y-2">
+              <Label htmlFor="type">Typ</Label>
               <Select
                 value={formData.type}
                 onValueChange={(value) =>
@@ -225,31 +207,27 @@ export function QuickEntryModal({
                   })
                 }
               >
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger id="type" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="WORK">Arbeit</SelectItem>
-                  <SelectItem value="VACATION">Urlaub</SelectItem>
-                  <SelectItem value="SICK">Krankheit</SelectItem>
-                  <SelectItem value="HOLIDAY">Feiertag</SelectItem>
+                  {ENTRY_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {ENTRY_TYPE_LABEL[type]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Description */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="description" className="text-right">
-                Beschreibung
-              </Label>
+            <div className="space-y-2">
+              <Label htmlFor="description">Beschreibung (optional)</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
                 }
-                placeholder="Optional: Was wurde gemacht?"
-                className="col-span-3"
                 rows={3}
               />
             </div>
@@ -268,7 +246,10 @@ export function QuickEntryModal({
               type="submit"
               disabled={createEntryMutation.isPending || currentDuration <= 0}
             >
-              {createEntryMutation.isPending ? "Speichern..." : "Speichern"}
+              {createEntryMutation.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : null}
+              {createEntryMutation.isPending ? "Speichere …" : "Speichern"}
             </Button>
           </DialogFooter>
         </form>

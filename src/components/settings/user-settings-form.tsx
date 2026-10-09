@@ -2,19 +2,26 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Loader2, RotateCcw, Save } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Loader2 } from "lucide-react";
+import type * as React from "react";
+import { useEffect, useId, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/app/error-state";
+import { SkeletonPanel } from "@/components/app/skeletons";
+import { StickyActionBar } from "@/components/app/sticky-action-bar";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
@@ -32,39 +39,107 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { formatHours } from "@/lib/format";
 import {
   DEFAULT_SETTINGS,
   type UserSettingsResponse,
   type UserSettingsUpdate,
   userSettingsUpdateSchema,
+  WORK_DAY_LABELS,
 } from "@/types/settings";
+import { SettingsSection } from "./settings-section";
 import { WorkDaysSelector } from "./work-days-selector";
 
-export function UserSettingsForm() {
-  const queryClient = useQueryClient();
-  const [overtimePreview, setOvertimePreview] = useState<number>(0);
+// Werte bleiben unverändert, nur die Beschriftung ohne GMT-Offset
+const TIMEZONES = [
+  { value: "Europe/Berlin", label: "Europa/Berlin" },
+  { value: "Europe/London", label: "Europa/London" },
+  { value: "Europe/Paris", label: "Europa/Paris" },
+  { value: "Europe/Zurich", label: "Europa/Zürich" },
+  { value: "America/New_York", label: "Amerika/New York" },
+];
 
-  // Fetch current settings
-  const { data: settings, isLoading } = useQuery({
+// Satz aus DEFAULT_SETTINGS, damit der Text zur Server-Logik passt
+const DEFAULT_DAYS = (DEFAULT_SETTINGS.workDays ?? [])
+  .map((day) =>
+    WORK_DAY_LABELS[day as keyof typeof WORK_DAY_LABELS]?.slice(0, 2),
+  )
+  .join(", ");
+const DEFAULTS_SUMMARY = [
+  `Setzt die Werte dieser Seite zurück: ${DEFAULT_SETTINGS.weeklyWorkHours ?? 40} Wochenstunden`,
+  DEFAULT_DAYS,
+  `${DEFAULT_SETTINGS.defaultStartTime}–${DEFAULT_SETTINGS.defaultEndTime}`,
+  `Pause ${formatHours(DEFAULT_SETTINGS.breakDuration ?? 0)}.`,
+].join(", ");
+
+const baseResolver = zodResolver(userSettingsUpdateSchema);
+
+/** Wie der zod-Resolver, aber mit deutschem Text für leere Zahlenfelder. */
+const resolver: typeof baseResolver = async (values, context, options) => {
+  const result = await baseResolver(values, context, options);
+  for (const error of Object.values(result.errors ?? {})) {
+    const fieldError = error as { type?: string; message?: string } | undefined;
+    if (fieldError?.type === "invalid_type") {
+      fieldError.message = "Gib eine Zahl ein.";
+    }
+  }
+  return result;
+};
+
+function toNumber(value: string): number {
+  return Number.parseFloat(value.replace(",", "."));
+}
+
+function NumberWithSuffix({
+  suffix,
+  ...props
+}: React.ComponentProps<typeof Input> & { suffix: string }) {
+  return (
+    <div className="relative w-full max-w-40">
+      <Input {...props} className="num pr-9" />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground"
+      >
+        {suffix}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Formular für Sollzeit und Standardzeiten. `children` sind weitere
+ * Abschnitte der Seite (außerhalb des <form>), die Speicherleiste kommt danach.
+ */
+export function UserSettingsForm({ children }: { children?: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  const formId = useId();
+  const [resetOpen, setResetOpen] = useState(false);
+
+  const {
+    data: settings,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["user-settings"],
     queryFn: async () => {
       const response = await fetch("/api/settings");
       if (!response.ok) {
-        throw new Error("Fehler beim Laden der Einstellungen");
+        throw new Error("Die Einstellungen konnten nicht geladen werden.");
       }
       const data = await response.json();
       return data.data as UserSettingsResponse;
     },
   });
 
-  // Form setup
   const form = useForm<UserSettingsUpdate>({
-    resolver: zodResolver(userSettingsUpdateSchema),
+    resolver,
     defaultValues: DEFAULT_SETTINGS,
   });
 
-  // Update form when settings are loaded
+  // Geladene Werte übernehmen. Sprache, Benachrichtigung und Theme sind
+  // nicht sichtbar, bleiben aber im Formularzustand und gehen unverändert mit.
   useEffect(() => {
     if (settings) {
       form.reset({
@@ -81,7 +156,6 @@ export function UserSettingsForm() {
     }
   }, [settings, form]);
 
-  // Update settings mutation
   const updateMutation = useMutation({
     mutationFn: async (data: UserSettingsUpdate) => {
       const response = await fetch("/api/settings", {
@@ -91,21 +165,22 @@ export function UserSettingsForm() {
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Fehler beim Speichern");
+        throw new Error(
+          error.error || "Die Arbeitszeit konnte nicht gespeichert werden.",
+        );
       }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
       queryClient.invalidateQueries({ queryKey: ["overtime"] });
-      toast.success("Einstellungen wurden gespeichert");
+      toast.success("Arbeitszeit gespeichert");
     },
     onError: (error) => {
       toast.error(error.message);
     },
   });
 
-  // Reset settings mutation
   const resetMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/settings", {
@@ -119,70 +194,89 @@ export function UserSettingsForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user-settings"] });
       queryClient.invalidateQueries({ queryKey: ["overtime"] });
-      toast.success("Einstellungen wurden zurückgesetzt");
+      toast.success("Standardwerte wiederhergestellt");
+      setResetOpen(false);
     },
     onError: () => {
-      toast.error("Fehler beim Zurücksetzen der Einstellungen");
+      toast.error("Die Standardwerte konnten nicht wiederhergestellt werden.");
     },
   });
 
-  // Calculate overtime preview
-  useEffect(() => {
-    const values = form.watch();
-    const dailyHours =
-      values.workDays.length > 0
-        ? values.weeklyWorkHours / values.workDays.length
-        : 0;
-    setOvertimePreview(dailyHours);
-  }, [form.watch]);
+  // Live-Satz: Soll pro Arbeitstag
+  const weeklyWorkHours = useWatch({
+    control: form.control,
+    name: "weeklyWorkHours",
+  });
+  const workDays = useWatch({ control: form.control, name: "workDays" });
+  const breakDuration = useWatch({
+    control: form.control,
+    name: "breakDuration",
+  });
+  const dayCount = workDays?.length ?? 0;
+  const dailyTarget =
+    Number.isFinite(weeklyWorkHours) && weeklyWorkHours > 0 && dayCount > 0
+      ? weeklyWorkHours / dayCount
+      : null;
 
   const onSubmit = (data: UserSettingsUpdate) => {
     updateMutation.mutate(data);
   };
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
-    );
-  }
+  const onInvalid = () => {
+    toast.error("Bitte prüf die markierten Felder.");
+  };
 
-  return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {/* Arbeitszeit-Einstellungen */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Arbeitszeit-Konfiguration</CardTitle>
-            <CardDescription>
-              Definiere deine regulären Arbeitszeiten für die
-              Überstundenberechnung
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+  const isDirty = form.formState.isDirty;
+
+  let formBody: React.ReactNode;
+  if (isLoading) {
+    formBody = (
+      <div className="space-y-4">
+        <SkeletonPanel lines={4} />
+        <SkeletonPanel lines={3} />
+      </div>
+    );
+  } else if (error) {
+    formBody = (
+      <ErrorState
+        title="Arbeitszeit konnte nicht geladen werden"
+        error={error}
+        onRetry={() => refetch()}
+      />
+    );
+  } else {
+    formBody = (
+      <Form {...form}>
+        <form
+          id={formId}
+          onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+          className="space-y-6"
+          noValidate
+        >
+          <SettingsSection id="sollzeit" title="Sollzeit" first>
             <FormField
               control={form.control}
               name="weeklyWorkHours"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Wöchentliche Arbeitszeit (Stunden)</FormLabel>
+                  <FormLabel>Wochenstunden</FormLabel>
                   <FormControl>
-                    <Input
+                    <NumberWithSuffix
+                      suffix="h"
                       type="number"
+                      inputMode="decimal"
                       step="0.5"
                       min="1"
                       max="168"
-                      {...field}
-                      onChange={(e) =>
-                        field.onChange(parseFloat(e.target.value))
-                      }
+                      name={field.name}
+                      ref={field.ref}
+                      onBlur={field.onBlur}
+                      value={Number.isFinite(field.value) ? field.value : ""}
+                      onChange={(e) => field.onChange(toNumber(e.target.value))}
                     />
                   </FormControl>
                   <FormDescription>
-                    Deine vertragliche wöchentliche Arbeitszeit in Stunden
+                    Deine vertragliche Arbeitszeit pro Woche.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -199,46 +293,89 @@ export function UserSettingsForm() {
                     <WorkDaysSelector
                       value={field.value}
                       onChange={field.onChange}
-                      error={form.formState.errors.workDays?.message}
                     />
                   </FormControl>
-                  <FormDescription>
-                    Wähle die Tage aus, an denen du normalerweise arbeitest
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <p className="text-sm" aria-live="polite">
+              {dailyTarget !== null ? (
+                <>
+                  Das sind{" "}
+                  <span className="num font-medium">
+                    {formatHours(dailyTarget)}
+                  </span>{" "}
+                  pro Arbeitstag.
+                </>
+              ) : (
+                <span className="text-muted-foreground">
+                  Wähl Wochenstunden und mindestens einen Arbeitstag.
+                </span>
+              )}
+            </p>
+          </SettingsSection>
+
+          <SettingsSection
+            id="standardzeiten"
+            title="Standardzeiten fürs Auffüllen"
+            description="Wird beim Auffüllen verwendet, nicht für dein Soll."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <FormField
                 control={form.control}
                 name="defaultStartTime"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Standard-Startzeit</FormLabel>
+                  <FormItem className="min-w-0">
+                    <FormLabel>Start</FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      <Input type="time" className="num" {...field} />
                     </FormControl>
-                    <FormDescription>
-                      Deine übliche Arbeitsbeginn-Zeit
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="defaultEndTime"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Standard-Endzeit</FormLabel>
+                  <FormItem className="min-w-0">
+                    <FormLabel>Ende</FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      <Input type="time" className="num" {...field} />
                     </FormControl>
-                    <FormDescription>
-                      Deine übliche Arbeitsende-Zeit
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="breakDuration"
+                render={({ field }) => (
+                  <FormItem className="min-w-0">
+                    <FormLabel>Pause</FormLabel>
+                    <FormControl>
+                      <NumberWithSuffix
+                        suffix="h"
+                        type="number"
+                        inputMode="decimal"
+                        step="0.25"
+                        min="0"
+                        max="8"
+                        name={field.name}
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                        value={Number.isFinite(field.value) ? field.value : ""}
+                        onChange={(e) =>
+                          field.onChange(toNumber(e.target.value))
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription className="num">
+                      {Number.isFinite(breakDuration) && breakDuration >= 0
+                        ? formatHours(breakDuration)
+                        : "—"}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -248,199 +385,112 @@ export function UserSettingsForm() {
 
             <FormField
               control={form.control}
-              name="breakDuration"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Pausendauer (Stunden)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.25"
-                      min="0"
-                      max="8"
-                      {...field}
-                      onChange={(e) =>
-                        field.onChange(parseFloat(e.target.value))
-                      }
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Deine übliche Pausendauer pro Arbeitstag in Stunden
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="timezone"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Zeitzone</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Wähle eine Zeitzone" />
+                      <SelectTrigger className="w-full sm:w-64">
+                        <SelectValue placeholder="Zeitzone wählen" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="Europe/Berlin">
-                        Europa/Berlin (GMT+1)
-                      </SelectItem>
-                      <SelectItem value="Europe/London">
-                        Europa/London (GMT)
-                      </SelectItem>
-                      <SelectItem value="Europe/Paris">
-                        Europa/Paris (GMT+1)
-                      </SelectItem>
-                      <SelectItem value="Europe/Zurich">
-                        Europa/Zürich (GMT+1)
-                      </SelectItem>
-                      <SelectItem value="America/New_York">
-                        Amerika/New York (GMT-5)
-                      </SelectItem>
+                      {TIMEZONES.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {tz.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <FormDescription>
-                    Deine Zeitzone für korrekte Zeitberechnungen
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
+          </SettingsSection>
+        </form>
+      </Form>
+    );
+  }
 
-            {/* Vorschau-Berechnung */}
-            {overtimePreview > 0 && (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Vorschau:</strong> Mit diesen Einstellungen beträgt
-                  deine tägliche Soll-Arbeitszeit{" "}
-                  <strong>{overtimePreview.toFixed(2)} Stunden</strong>
-                  {form.watch("breakDuration") > 0 &&
-                    ` (inkl. ${form.watch("breakDuration")} Stunden Pause)`}
-                  .
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
+  return (
+    <div className="space-y-6">
+      {formBody}
 
-        {/* Benachrichtigungen & Präferenzen */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Benachrichtigungen & Präferenzen</CardTitle>
-            <CardDescription>
-              Personalisiere deine App-Erfahrung
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <FormField
-              control={form.control}
-              name="overtimeNotification"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <FormLabel className="text-base">
-                      Überstunden-Benachrichtigungen
-                    </FormLabel>
-                    <FormDescription>
-                      Erhalte Benachrichtigungen bei hohen Überstunden
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+      {children}
 
-            <FormField
-              control={form.control}
-              name="theme"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Erscheinungsbild</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Wähle ein Theme" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="light">Hell</SelectItem>
-                      <SelectItem value="dark">Dunkel</SelectItem>
-                      <SelectItem value="system">System</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Wähle dein bevorzugtes Farbschema
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+      {settings ? (
+        <SettingsSection
+          id="standardwerte"
+          title="Standardwerte"
+          description={DEFAULTS_SUMMARY}
+        >
+          <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full sm:h-9 sm:w-auto"
+                disabled={resetMutation.isPending}
+              >
+                Auf Standardwerte zurücksetzen …
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Auf Standardwerte zurücksetzen?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Deine Sollzeit und Standardzeiten werden überschrieben. Das
+                  ändert auch dein Soll und damit den Saldo.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(event) => {
+                    event.preventDefault();
+                    resetMutation.mutate();
+                  }}
+                  disabled={resetMutation.isPending}
+                >
+                  {resetMutation.isPending && (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  )}
+                  Zurücksetzen
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </SettingsSection>
+      ) : null}
 
-            <FormField
-              control={form.control}
-              name="language"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Sprache</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Wähle eine Sprache" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="de">Deutsch</SelectItem>
-                      <SelectItem value="en">English</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Deine bevorzugte Sprache für die Benutzeroberfläche
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Action Buttons */}
-        <div className="flex justify-between">
+      <StickyActionBar open={isDirty}>
+        <span className="text-sm font-medium">Ungespeicherte Änderungen</span>
+        <div className="ml-auto flex gap-2">
           <Button
             type="button"
             variant="outline"
-            onClick={() => resetMutation.mutate()}
-            disabled={resetMutation.isPending}
+            className="h-11 sm:h-9"
+            onClick={() => form.reset()}
+            disabled={updateMutation.isPending}
           >
-            {resetMutation.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RotateCcw className="mr-2 h-4 w-4" />
-            )}
-            Auf Standard zurücksetzen
+            Verwerfen
           </Button>
-
           <Button
             type="submit"
-            disabled={updateMutation.isPending || !form.formState.isDirty}
+            form={formId}
+            className="h-11 sm:h-9"
+            disabled={updateMutation.isPending}
           >
-            {updateMutation.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
+            {updateMutation.isPending && (
+              <Loader2 className="animate-spin" aria-hidden="true" />
             )}
-            Einstellungen speichern
+            Speichern
           </Button>
         </div>
-      </form>
-    </Form>
+      </StickyActionBar>
+    </div>
   );
 }

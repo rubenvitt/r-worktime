@@ -1,19 +1,15 @@
 "use client";
 
 import {
-  Calendar,
+  AlertCircle,
+  Check,
   CheckCircle,
   Download,
-  FileJson,
-  FileSpreadsheet,
-  Info,
-  Settings,
+  Loader2,
 } from "lucide-react";
-import { useState } from "react";
+import { type KeyboardEvent, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -33,6 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ENTRY_TYPE_LABEL, EXPORT_FORMAT_LABEL } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 import { EntryType } from "@/types/database";
 
 interface ExportDialogProps {
@@ -40,25 +38,13 @@ interface ExportDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Format-Keys bleiben (API: json, csv, excel); Anzeige aus EXPORT_FORMAT_LABEL
 type ExportFormat = "json" | "csv" | "excel";
 
-const formatIcons = {
-  json: FileJson,
-  csv: FileSpreadsheet,
-  excel: FileSpreadsheet,
-};
+const FORMATS: ExportFormat[] = ["json", "csv", "excel"];
 
-const formatLabels = {
-  json: "JSON (Timing-kompatibel)",
-  csv: "CSV (Excel-kompatibel)",
-  excel: "Excel Spreadsheet",
-};
-
-const formatDescriptions = {
-  json: "Strukturierte Daten für Import in andere Systeme",
-  csv: "Comma-separated values für Excel und andere Tools",
-  excel: "Microsoft Excel Arbeitsmappe",
-};
+const formatText = (format: ExportFormat) =>
+  EXPORT_FORMAT_LABEL[format === "excel" ? "xlsx" : format];
 
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>("json");
@@ -68,11 +54,16 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportComplete, setExportComplete] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const formatRefs = useRef<Partial<Record<ExportFormat, HTMLButtonElement>>>(
+    {},
+  );
 
   const handleExport = async () => {
     setIsExporting(true);
     setExportProgress(0);
     setExportComplete(false);
+    setExportError(null);
 
     try {
       // Simulate progress
@@ -139,7 +130,11 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
       }, 2000);
     } catch (error) {
       console.error("Export error:", error);
-      // Handle error (would need error state and display)
+      setExportError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Export fehlgeschlagen",
+      );
     } finally {
       setIsExporting(false);
     }
@@ -152,6 +147,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
     setIncludeSettings(false);
     setExportProgress(0);
     setExportComplete(false);
+    setExportError(null);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -163,96 +159,126 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
     }
   };
 
+  const handleFormatKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const index = FORMATS.indexOf(format);
+    let next: ExportFormat | null = null;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      next = FORMATS[(index + 1) % FORMATS.length];
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      next = FORMATS[(index - 1 + FORMATS.length) % FORMATS.length];
+    }
+    if (next) {
+      event.preventDefault();
+      setFormat(next);
+      formatRefs.current[next]?.focus();
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent
+        className="sm:max-w-[520px]"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          formatRefs.current[format]?.focus();
+        }}
+      >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            Daten exportieren
-          </DialogTitle>
+          <DialogTitle>Daten exportieren</DialogTitle>
           <DialogDescription>
-            Exportieren Sie Ihre Zeiteinträge in verschiedenen Formaten
+            Exportiere deine Zeiteinträge als Datei.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Format Selection */}
-          <div className="space-y-3">
-            <Label className="text-base font-medium">Export-Format</Label>
-            <div className="grid grid-cols-1 gap-3">
-              {(Object.keys(formatLabels) as ExportFormat[]).map(
-                (formatKey) => {
-                  const Icon = formatIcons[formatKey];
-                  return (
-                    <Card
-                      key={formatKey}
-                      className={`cursor-pointer transition-colors ${
-                        format === formatKey
-                          ? "ring-2 ring-primary bg-primary/5"
-                          : "hover:bg-muted/50"
-                      }`}
-                      onClick={() => setFormat(formatKey)}
+        <div className="space-y-5 pb-4">
+          <div className="space-y-2">
+            <p id="export-format-label" className="text-sm font-medium">
+              Format
+            </p>
+            <div
+              role="radiogroup"
+              aria-labelledby="export-format-label"
+              className="divide-y overflow-hidden rounded-md border"
+            >
+              {FORMATS.map((formatKey) => {
+                const checked = format === formatKey;
+                const text = formatText(formatKey);
+                return (
+                  // biome-ignore lint/a11y/useSemanticElements: kompakte Formatliste als Radio-Buttons (Spezifikation)
+                  <button
+                    key={formatKey}
+                    ref={(element) => {
+                      if (element) formatRefs.current[formatKey] = element;
+                    }}
+                    type="button"
+                    role="radio"
+                    aria-checked={checked}
+                    tabIndex={checked ? 0 : -1}
+                    onClick={() => setFormat(formatKey)}
+                    onKeyDown={handleFormatKey}
+                    className={cn(
+                      "flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-accent focus-visible:relative focus-visible:z-10",
+                      checked && "bg-accent",
+                    )}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded-full border",
+                        checked
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-input",
+                      )}
                     >
-                      <CardContent className="flex items-center gap-3 p-4">
-                        <div className="flex items-center gap-3 flex-1">
-                          <Icon className="h-8 w-8 text-muted-foreground" />
-                          <div>
-                            <div className="font-medium">
-                              {formatLabels[formatKey]}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {formatDescriptions[formatKey]}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {formatKey === "json" && (
-                            <Badge variant="secondary">Empfohlen</Badge>
-                          )}
-                          <div
-                            className={`w-4 h-4 rounded-full border-2 ${
-                              format === formatKey
-                                ? "border-primary bg-primary"
-                                : "border-muted-foreground"
-                            }`}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                },
-              )}
+                      {checked ? (
+                        <Check className="size-3" strokeWidth={3} />
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="text-sm font-medium">{text.label}</span>
+                      <span className="ml-2 text-[13px] text-muted-foreground">
+                        {text.hint}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Date Range Filter */}
-          <div className="space-y-3">
-            <Label className="text-base font-medium flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-sm font-medium">
               Zeitraum (optional)
-            </Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="dateFrom" className="text-sm">
+            </legend>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="min-w-0 space-y-1.5">
+                <Label
+                  htmlFor="dateFrom"
+                  className="text-[13px] font-normal text-muted-foreground"
+                >
                   Von
                 </Label>
                 <Input
                   id="dateFrom"
                   type="date"
+                  className="num w-full min-w-0"
                   value={dateRange.from}
                   onChange={(e) =>
                     setDateRange((prev) => ({ ...prev, from: e.target.value }))
                   }
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="dateTo" className="text-sm">
+              <div className="min-w-0 space-y-1.5">
+                <Label
+                  htmlFor="dateTo"
+                  className="text-[13px] font-normal text-muted-foreground"
+                >
                   Bis
                 </Label>
                 <Input
                   id="dateTo"
                   type="date"
+                  className="num w-full min-w-0"
                   value={dateRange.to}
                   onChange={(e) =>
                     setDateRange((prev) => ({ ...prev, to: e.target.value }))
@@ -260,82 +286,75 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
                 />
               </div>
             </div>
-          </div>
+          </fieldset>
 
-          {/* Type Filter */}
-          <div className="space-y-3">
-            <Label className="text-base font-medium">Eintragstyp</Label>
+          <div className="space-y-2">
+            <Label htmlFor="export-type">Typ</Label>
             <Select
               value={typeFilter}
               onValueChange={(value) =>
                 setTypeFilter(value as EntryType | "all")
               }
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Typ auswählen" />
+              <SelectTrigger id="export-type" className="w-full">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle Typen</SelectItem>
-                <SelectItem value={EntryType.WORK}>Arbeit</SelectItem>
-                <SelectItem value={EntryType.OVERTIME}>Überstunden</SelectItem>
-                <SelectItem value={EntryType.VACATION}>Urlaub</SelectItem>
-                <SelectItem value={EntryType.SICK}>Krankheit</SelectItem>
-                <SelectItem value={EntryType.HOLIDAY}>Feiertag</SelectItem>
+                {Object.values(EntryType).map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {ENTRY_TYPE_LABEL[type]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Additional Options */}
-          {format === "json" && (
-            <div className="space-y-3">
-              <Label className="text-base font-medium flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Zusätzliche Optionen
+          {format === "json" ? (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="includeSettings"
+                checked={includeSettings}
+                onCheckedChange={(checked) => setIncludeSettings(!!checked)}
+              />
+              <Label htmlFor="includeSettings" className="font-normal">
+                Einstellungen mitexportieren
               </Label>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="includeSettings"
-                  checked={includeSettings}
-                  onCheckedChange={(checked) => setIncludeSettings(!!checked)}
-                />
-                <Label htmlFor="includeSettings" className="text-sm">
-                  Benutzereinstellungen einschließen
-                </Label>
-              </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Info Alert */}
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              Der Export kann je nach Datenmenge einige Sekunden dauern.
-              Maximum: 50.000 Einträge pro Export.
-            </AlertDescription>
-          </Alert>
+          <p className="text-[13px] text-muted-foreground">
+            Bis zu 50.000 Einträge pro Export. Das kann ein paar Sekunden
+            dauern.
+          </p>
 
-          {/* Progress */}
-          {isExporting && (
+          {isExporting ? (
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Export wird erstellt...</Label>
-                <span className="text-sm text-muted-foreground">
-                  {exportProgress}%
+              <div className="flex items-center justify-between text-[13px]">
+                <span>Export wird erstellt …</span>
+                <span className="num text-muted-foreground">
+                  {exportProgress} %
                 </span>
               </div>
               <Progress value={exportProgress} className="w-full" />
             </div>
-          )}
+          ) : null}
 
-          {/* Success Message */}
-          {exportComplete && (
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-700">
-                Export erfolgreich! Die Datei wurde heruntergeladen.
+          {exportComplete ? (
+            <Alert>
+              <CheckCircle className="text-positive" />
+              <AlertDescription className="text-foreground">
+                Export fertig. Die Datei liegt in deinen Downloads.
               </AlertDescription>
             </Alert>
-          )}
+          ) : null}
+
+          {exportError ? (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{exportError}</AlertDescription>
+            </Alert>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -349,18 +368,20 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           <Button
             onClick={handleExport}
             disabled={isExporting || exportComplete}
-            className="gap-2"
           >
             {isExporting ? (
-              "Exportiere..."
+              <>
+                <Loader2 className="animate-spin" />
+                Exportiere …
+              </>
             ) : exportComplete ? (
               <>
-                <CheckCircle className="h-4 w-4" />
+                <CheckCircle />
                 Fertig
               </>
             ) : (
               <>
-                <Download className="h-4 w-4" />
+                <Download />
                 Exportieren
               </>
             )}

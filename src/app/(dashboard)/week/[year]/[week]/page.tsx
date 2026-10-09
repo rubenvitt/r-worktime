@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
+import { PageContainer } from "@/components/app/page-container";
 import { WeekView } from "@/components/week/week-view";
-import { WeekViewSkeleton } from "@/components/week/week-view-skeleton";
 import { auth } from "@/lib/auth";
 
 interface WeekPageProps {
@@ -29,10 +28,8 @@ export default async function WeekPage({ params }: WeekPageProps) {
   }
 
   return (
-    <div className="container mx-auto py-8">
-      <Suspense fallback={<WeekViewSkeleton />}>
-        <WeekView year={year} week={week} />
-      </Suspense>
-    </div>
+    <PageContainer>
+      <WeekView year={year} week={week} />
+    </PageContainer>
   );
 }
