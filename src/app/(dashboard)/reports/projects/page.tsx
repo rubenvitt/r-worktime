@@ -1,19 +1,21 @@
-import { EmptyState } from "@/components/app/empty-state";
-import { PageHeader } from "@/components/app/page-header";
-import { Panel } from "@/components/app/panel";
-import { ReportsNav } from "@/components/reports/reports-nav";
+import { Suspense } from "react";
+import {
+  ProjectsReportView,
+  ProjectsSkeleton,
+} from "@/components/reports/projects/projects-report-view";
+import { ReportFallback } from "@/components/reports/report-header";
 
 export default function ProjectsReportPage() {
+  // useSearchParams (?period, ?key) braucht eine Suspense-Grenze
   return (
-    <>
-      <PageHeader
-        title="Projekte"
-        description="Stunden je Projekt und Kunde im gewählten Zeitraum."
-        toolbar={<ReportsNav />}
-      />
-      <Panel>
-        <EmptyState title="Folgt" description="Dieser Bericht ist in Arbeit." />
-      </Panel>
-    </>
+    <Suspense
+      fallback={
+        <ReportFallback report="projects">
+          <ProjectsSkeleton />
+        </ReportFallback>
+      }
+    >
+      <ProjectsReportView />
+    </Suspense>
   );
 }
