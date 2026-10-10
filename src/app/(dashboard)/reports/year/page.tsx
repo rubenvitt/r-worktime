@@ -1,19 +1,21 @@
-import { EmptyState } from "@/components/app/empty-state";
-import { PageHeader } from "@/components/app/page-header";
-import { Panel } from "@/components/app/panel";
-import { ReportsNav } from "@/components/reports/reports-nav";
+import { Suspense } from "react";
+import { SkeletonPanel, SkeletonStatStrip } from "@/components/app/skeletons";
+import { ReportFallback } from "@/components/reports/report-header";
+import { YearView } from "@/components/reports/year/year-view";
 
 export default function YearReportPage() {
+  // useSearchParams (?year, ?horizon, ?base) braucht eine Suspense-Grenze
   return (
-    <>
-      <PageHeader
-        title="Jahr & Prognose"
-        description="Jahresverlauf und Prognose für die nächsten Monate aus Urlaub, Feiertagen und Vergangenheit."
-        toolbar={<ReportsNav />}
-      />
-      <Panel>
-        <EmptyState title="Folgt" description="Dieser Bericht ist in Arbeit." />
-      </Panel>
-    </>
+    <Suspense
+      fallback={
+        <ReportFallback report="year">
+          <SkeletonStatStrip tiles={4} />
+          <SkeletonPanel lines={5} />
+          <SkeletonPanel lines={8} />
+        </ReportFallback>
+      }
+    >
+      <YearView />
+    </Suspense>
   );
 }
