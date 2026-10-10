@@ -77,11 +77,32 @@ describe("loadOfficialHolidays", () => {
           : { ok: false, statusText: "Service Unavailable" },
       ),
     );
-    const result = await loadOfficialHolidays([2032, 2031]);
+    const result = await loadOfficialHolidays(
+      [2032, 2031],
+      new Date("2030-06-01T12:00:00Z"),
+    );
     expect(result.names).toEqual({ "2031-12-25": "1. Weihnachtstag" });
     expect(result.unavailableYears).toEqual([2032]);
   });
+
+  it("fragt Jahre außerhalb des Abruffensters nicht ab", async () => {
+    const fetchMock = vi.fn(async () => apiResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const years = Array.from({ length: 200 }, (_, i) => 1900 + i);
+    const result = await loadOfficialHolidays(
+      years,
+      // Jahre ohne Cache-Eintrag aus anderen Tests (Cache auf Modulebene)
+      new Date("2070-06-01T12:00:00Z"),
+    );
+    // 2055–2075: 15 Jahre zurück, 5 voraus
+    expect(fetchMock).toHaveBeenCalledTimes(21);
+    expect(result.unavailableYears).toHaveLength(200 - 21);
+    expect(result.unavailableYears).toContain(1900);
+    expect(result.unavailableYears).not.toContain(2070);
+  });
 });
+
+const NOW_2040 = new Date("2040-06-01T12:00:00Z");
 
 describe("loadOfficialHolidays bei Dienstausfall", () => {
   beforeEach(() => {
@@ -100,7 +121,7 @@ describe("loadOfficialHolidays bei Dienstausfall", () => {
     const fetchMock = vi.fn(() => new Promise<never>(() => {}));
     vi.stubGlobal("fetch", fetchMock);
 
-    const first = loadOfficialHolidays([2041]);
+    const first = loadOfficialHolidays([2041], NOW_2040);
     await vi.advanceTimersByTimeAsync(5_000);
     await expect(first).resolves.toEqual({
       names: {},
@@ -109,7 +130,7 @@ describe("loadOfficialHolidays bei Dienstausfall", () => {
 
     // Innerhalb von 5 min kein neuer Abruf, Ergebnis sofort
     await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
-    await expect(loadOfficialHolidays([2041])).resolves.toEqual({
+    await expect(loadOfficialHolidays([2041], NOW_2040)).resolves.toEqual({
       names: {},
       unavailableYears: [2041],
     });
@@ -125,7 +146,7 @@ describe("loadOfficialHolidays bei Dienstausfall", () => {
         ) as never,
     );
     await vi.advanceTimersByTimeAsync(61 * 1000);
-    await expect(loadOfficialHolidays([2041])).resolves.toEqual({
+    await expect(loadOfficialHolidays([2041], NOW_2040)).resolves.toEqual({
       names: { "2041-12-25": "1. Weihnachtstag" },
       unavailableYears: [],
     });

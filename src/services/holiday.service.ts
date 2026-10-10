@@ -130,6 +130,24 @@ async function officialHolidays(year: number): Promise<Map<string, string>> {
   }
 }
 
+// Zeiträume kommen teils aus Query-Parametern. Ohne Fenster löste ein
+// Zeitraum über Jahrhunderte je Jahr einen Abruf beim Feiertags-Dienst aus.
+const HOLIDAY_YEARS_BACK = 15;
+const HOLIDAY_YEARS_AHEAD = 5;
+
+/** Nur Jahre nahe dem aktuellen werden beim Feiertags-Dienst abgefragt */
+export function isFetchableHolidayYear(
+  year: number,
+  now: Date = new Date(),
+): boolean {
+  const current = now.getUTCFullYear();
+  return (
+    Number.isInteger(year) &&
+    year >= current - HOLIDAY_YEARS_BACK &&
+    year <= current + HOLIDAY_YEARS_AHEAD
+  );
+}
+
 export interface OfficialHolidayData {
   /** Datum → Name, alle offiziellen Feiertage (auch am Wochenende) */
   names: Record<string, string>;
@@ -144,11 +162,15 @@ export interface OfficialHolidayData {
  */
 export async function loadOfficialHolidays(
   years: number[],
+  now: Date = new Date(),
 ): Promise<OfficialHolidayData> {
   const sortedYears = [...new Set(years)].sort((a, b) => a - b);
   const results = await Promise.all(
     sortedYears.map((year) =>
-      officialHolidays(year).then(
+      (isFetchableHolidayYear(year, now)
+        ? officialHolidays(year)
+        : Promise.reject(new Error("Jahr außerhalb des Abruffensters"))
+      ).then(
         (map) => ({ year, map }),
         (error: unknown) => {
           console.error(`Feiertage ${year} nicht verfügbar:`, error);
