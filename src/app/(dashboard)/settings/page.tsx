@@ -8,7 +8,7 @@ import { AppearancePanel } from "@/components/settings/appearance-panel";
 const SECTIONS = [
   {
     title: "Arbeitszeit",
-    description: "Sollzeit, Arbeitstage, Feiertage, Auffüllen",
+    description: "Sollzeit, Arbeitstage, Urlaub, Feiertage, Auffüllen",
     href: "/settings/overtime",
   },
   {

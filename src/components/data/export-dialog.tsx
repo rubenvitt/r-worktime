@@ -38,13 +38,12 @@ interface ExportDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-// Format-Keys bleiben (API: json, csv, excel); Anzeige aus EXPORT_FORMAT_LABEL
-type ExportFormat = "json" | "csv" | "excel";
+// Format-Keys wie in der API (json, csv); Anzeige aus EXPORT_FORMAT_LABEL
+type ExportFormat = "json" | "csv";
 
-const FORMATS: ExportFormat[] = ["json", "csv", "excel"];
+const FORMATS: ExportFormat[] = ["json", "csv"];
 
-const formatText = (format: ExportFormat) =>
-  EXPORT_FORMAT_LABEL[format === "excel" ? "xlsx" : format];
+const formatText = (format: ExportFormat) => EXPORT_FORMAT_LABEL[format];
 
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>("json");

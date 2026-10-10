@@ -1,14 +1,15 @@
 import type { Prisma } from "@prisma/client";
-import {
-  eachDayOfInterval,
-  endOfMonth,
-  endOfWeek,
-  format,
-  getWeek,
-  startOfMonth,
-  startOfWeek,
-} from "date-fns";
 import { excludeAdjustmentFilter, findAdjustmentEntry } from "@/lib/adjustment";
+import {
+  berlinDayStart,
+  dateKeyFromDbDate,
+  type IsoWeek,
+  isoWeekOf,
+  isoWeekRange,
+  monthRange,
+  shiftDateKey,
+  weekdayOfKey,
+} from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { EntryType } from "@/types/database";
 import type {
@@ -265,21 +266,16 @@ export class OvertimeService {
       throw new Error("User settings not found");
     }
 
-    // Berechne Start- und Enddatum der Woche
-    const firstDayOfYear = new Date(year, 0, 1);
-    const daysToAdd = (week - 1) * 7;
-    const weekStart = startOfWeek(
-      new Date(firstDayOfYear.getTime() + daysToAdd * 24 * 60 * 60 * 1000),
-      { weekStartsOn: 1 },
-    );
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+    // ISO-8601-Woche (Montag bis Sonntag) auf Berliner Kalendertagen;
+    // wirft bei Wochen, die es im Jahr nicht gibt
+    const range = isoWeekRange(year, week);
 
     const entries = await prisma.timeEntry.findMany({
       where: {
         userId,
         date: {
-          gte: weekStart,
-          lte: weekEnd,
+          gte: range.start,
+          lte: range.end,
         },
       },
       orderBy: { date: "asc" },
@@ -288,7 +284,7 @@ export class OvertimeService {
     // Gruppiere Entries nach Tag
     const entriesByDay = new Map<string, typeof entries>();
     entries.forEach((entry) => {
-      const dateKey = format(entry.date, "yyyy-MM-dd");
+      const dateKey = dateKeyFromDbDate(entry.date);
       if (!entriesByDay.has(dateKey)) {
         entriesByDay.set(dateKey, []);
       }
@@ -306,12 +302,9 @@ export class OvertimeService {
       holiday: 0,
     };
 
-    const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
-
-    for (const day of daysInWeek) {
-      const dateKey = format(day, "yyyy-MM-dd");
+    for (const dateKey of range.dayKeys) {
       const dayEntries = entriesByDay.get(dateKey) || [];
-      const dayOfWeek = day.getDay();
+      const dayOfWeek = weekdayOfKey(dateKey);
       const isWorkDay = settings.workDays.includes(dayOfWeek);
 
       let dayActual = 0;
@@ -348,7 +341,7 @@ export class OvertimeService {
       targetHours += dayTarget;
 
       dailyBreakdown.push({
-        date: day,
+        date: berlinDayStart(dateKey),
         actualHours: this.roundToQuarterHour(dayActual),
         targetHours: dayTarget,
         overtimeHours: this.roundToQuarterHour(dayActual - dayTarget),
@@ -380,33 +373,37 @@ export class OvertimeService {
     const cached = this.getFromCache<MonthlyStatistics>(cacheKey);
     if (cached) return cached;
 
-    const monthStart = startOfMonth(new Date(year, month - 1));
-    const monthEnd = endOfMonth(monthStart);
+    const range = monthRange(`${year}-${String(month).padStart(2, "0")}`);
 
     const entries = await prisma.timeEntry.findMany({
       where: {
         userId,
         date: {
-          gte: monthStart,
-          lte: monthEnd,
+          gte: range.start,
+          lte: range.end,
         },
       },
     });
 
-    // Berechne wöchentliche Breakdown
+    // Wöchentliche Aufschlüsselung nach ISO-Woche; Anfang Januar und Ende
+    // Dezember gehören die Tage ggf. zum ISO-Wochenjahr davor bzw. danach
     const weeklyBreakdown: WeeklyStatistics[] = [];
-    const weeksInMonth = new Set<number>();
+    const weeksInMonth = new Map<string, IsoWeek>();
 
     entries.forEach((entry) => {
-      const week = getWeek(entry.date, { weekStartsOn: 1 });
-      weeksInMonth.add(week);
+      const iso = isoWeekOf(dateKeyFromDbDate(entry.date));
+      const key = `${iso.year}-${String(iso.week).padStart(2, "0")}`;
+      weeksInMonth.set(key, iso);
     });
 
-    for (const week of Array.from(weeksInMonth).sort()) {
+    const sortedWeeks = [...weeksInMonth.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, iso]) => iso);
+    for (const iso of sortedWeeks) {
       const weekStats = await this.calculateWeeklyStatistics(
         userId,
-        year,
-        week,
+        iso.year,
+        iso.week,
       );
       weeklyBreakdown.push(weekStats);
     }
@@ -431,10 +428,14 @@ export class OvertimeService {
 
     // Berechne Target Hours für den Monat
     const settings = await this.getUserSettings(userId);
-    const workDaysInMonth = eachDayOfInterval({
-      start: monthStart,
-      end: monthEnd,
-    }).filter((day) => settings?.workDays.includes(day.getDay())).length;
+    let workDaysInMonth = 0;
+    for (
+      let key = range.firstKey;
+      key <= range.lastKey;
+      key = shiftDateKey(key, 1)
+    ) {
+      if (settings?.workDays.includes(weekdayOfKey(key))) workDaysInMonth++;
+    }
     targetHours = workDaysInMonth * (settings?.dailyHours || 8);
 
     const monthlyStats: MonthlyStatistics = {

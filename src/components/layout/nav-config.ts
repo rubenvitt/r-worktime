@@ -1,6 +1,6 @@
-import { getISOWeek, getISOWeekYear } from "date-fns";
 import {
   CalendarRange,
+  ChartColumn,
   CircleAlert,
   FileText,
   LayoutGrid,
@@ -9,7 +9,7 @@ import {
   Scale,
   Settings,
 } from "lucide-react";
-import { berlinTodayKey } from "@/lib/dates";
+import { berlinTodayKey, isoWeekOf } from "@/lib/dates";
 
 export type NavKey =
   | "overview"
@@ -17,6 +17,7 @@ export type NavKey =
   | "timesheet"
   | "problems"
   | "overtime"
+  | "reports"
   | "entries"
   | "settings";
 
@@ -26,6 +27,7 @@ export const ACTIVE_RULES: ReadonlyArray<readonly [RegExp, NavKey]> = [
   [/^\/timesheet(\/|$)/, "timesheet"],
   [/^\/problems(\/|$)/, "problems"],
   [/^\/overtime(\/|$)/, "overtime"],
+  [/^\/reports(\/|$)/, "reports"],
   [/^\/entries(\/|$)/, "entries"],
   [/^\/(settings|upload)(\/|$)/, "settings"],
 ];
@@ -40,9 +42,8 @@ export function activeNavKey(pathname: string): NavKey | null {
 
 /** Aktuelle ISO-Woche (Berliner Kalendertag): `/week/{isoYear}/{isoWeek}` */
 export function currentWeekHref(now: Date = new Date()): string {
-  // Mittag UTC des Berliner Tags – ISO-Woche unabhängig von der Rechner-Zeitzone
-  const day = new Date(`${berlinTodayKey(now)}T12:00:00Z`);
-  return `/week/${getISOWeekYear(day)}/${getISOWeek(day)}`;
+  const { year, week } = isoWeekOf(berlinTodayKey(now));
+  return `/week/${year}/${week}`;
 }
 
 export interface NavItem {
@@ -94,6 +95,14 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/overtime",
     icon: Scale,
     shortcut: "g u",
+    group: "Auswertung",
+  },
+  {
+    key: "reports",
+    label: "Berichte",
+    href: "/reports",
+    icon: ChartColumn,
+    shortcut: "g b",
     group: "Auswertung",
   },
   {

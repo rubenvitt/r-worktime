@@ -1,15 +1,13 @@
 "use client";
 
-import { getISOWeek, getYear } from "date-fns";
 import { ArrowRight, Calendar } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { currentIsoWeek } from "@/components/week/week-utils";
 
 export function WeekHoursCard() {
-  const now = new Date();
-  const currentYear = getYear(now);
-  const currentWeek = getISOWeek(now);
+  const { year: currentYear, week: currentWeek } = currentIsoWeek();
 
   return (
     <Card className="relative overflow-hidden">

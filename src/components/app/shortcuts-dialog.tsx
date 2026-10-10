@@ -18,6 +18,7 @@ const GROUPS: Array<{ title: string; items: Array<[string[], string]> }> = [
       [["g", "s"], "Stundenzettel"],
       [["g", "p"], "Probleme"],
       [["g", "u"], "Überstunden"],
+      [["g", "b"], "Berichte"],
       [["g", "e"], "Zeiteinträge"],
       [["g", "t"], "Timing-Sync"],
       [["g", ","], "Einstellungen"],

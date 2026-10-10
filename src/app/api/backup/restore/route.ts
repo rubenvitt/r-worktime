@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import {
   keepMissingSyncFields,
   resolveRestoreSource,
+  settingsFromBackup,
 } from "@/lib/backup-restore";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
@@ -24,17 +25,9 @@ interface UserProfile {
   name?: string;
 }
 
-interface UserSettings {
-  weeklyWorkHours: number;
-  workDays: number[];
-  defaultStartTime: string;
-  defaultEndTime: string;
-  breakDuration: number;
-  timezone: string;
-  overtimeNotification: boolean;
-  language: string;
-  theme: string;
-}
+// Rohdaten aus dem Backup; alte Backups enthalten entfernte Felder,
+// settingsFromBackup übernimmt nur die bekannten.
+type BackupSettings = Record<string, unknown>;
 
 interface BackupData {
   backupInfo: {
@@ -46,7 +39,7 @@ interface BackupData {
   };
   userData: {
     profile: UserProfile;
-    settings?: UserSettings;
+    settings?: BackupSettings;
     entries: Array<{
       id?: string;
       date: string;
@@ -135,32 +128,11 @@ export async function POST(request: NextRequest) {
       // Restore settings
       if (restoreSettings && backupData.userData.settings) {
         try {
-          const settings = backupData.userData.settings;
+          const settings = settingsFromBackup(backupData.userData.settings);
           await tx.userSettings.upsert({
             where: { userId: session.user.id },
-            create: {
-              userId: session.user.id,
-              weeklyWorkHours: settings.weeklyWorkHours,
-              workDays: settings.workDays || [1, 2, 3, 4, 5],
-              defaultStartTime: settings.defaultStartTime || "09:00",
-              defaultEndTime: settings.defaultEndTime || "17:00",
-              breakDuration: settings.breakDuration || 0.5,
-              timezone: settings.timezone || "Europe/Berlin",
-              overtimeNotification: settings.overtimeNotification ?? true,
-              language: settings.language || "de",
-              theme: settings.theme || "light",
-            },
-            update: {
-              weeklyWorkHours: settings.weeklyWorkHours,
-              workDays: settings.workDays || [1, 2, 3, 4, 5],
-              defaultStartTime: settings.defaultStartTime || "09:00",
-              defaultEndTime: settings.defaultEndTime || "17:00",
-              breakDuration: settings.breakDuration || 0.5,
-              timezone: settings.timezone || "Europe/Berlin",
-              overtimeNotification: settings.overtimeNotification ?? true,
-              language: settings.language || "de",
-              theme: settings.theme || "light",
-            },
+            create: { userId: session.user.id, ...settings },
+            update: settings,
           });
           results.settingsRestored = true;
         } catch (error) {

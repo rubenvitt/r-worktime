@@ -19,53 +19,18 @@ export const userSettingsSchema = z.object({
       "Arbeitstage dürfen nicht doppelt vorkommen",
     ),
 
-  defaultStartTime: z
-    .string()
-    .regex(
-      /^([01]\d|2[0-3]):([0-5]\d)$/,
-      "Startzeit muss im Format HH:mm sein",
-    ),
-
-  defaultEndTime: z
-    .string()
-    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Endzeit muss im Format HH:mm sein"),
-
-  breakDuration: z
+  annualVacationDays: z
     .number()
-    .min(0, "Pausendauer kann nicht negativ sein")
-    .max(8, "Pausendauer kann nicht mehr als 8 Stunden betragen"),
-
-  timezone: z
-    .string()
-    .min(1, "Zeitzone ist erforderlich")
-    .refine((tz) => {
-      try {
-        Intl.DateTimeFormat(undefined, { timeZone: tz });
-        return true;
-      } catch {
-        return false;
-      }
-    }, "Ungültige Zeitzone"),
-
-  overtimeNotification: z.boolean().optional(),
-  language: z.string().optional(),
-  theme: z.enum(["light", "dark", "system"]).optional(),
+    .min(0, "Der Urlaubsanspruch kann nicht negativ sein")
+    .max(60, "Der Urlaubsanspruch kann höchstens 60 Tage betragen")
+    .refine(
+      (days) => Number.isInteger(days * 2),
+      "Nur ganze oder halbe Tage möglich",
+    ),
 });
 
-// Refine to ensure start time is before end time
-export const userSettingsUpdateSchema = userSettingsSchema.refine(
-  (data) => {
-    const start = data.defaultStartTime.split(":").map(Number);
-    const end = data.defaultEndTime.split(":").map(Number);
-    const startMinutes = start[0] * 60 + start[1];
-    const endMinutes = end[0] * 60 + end[1];
-    return startMinutes < endMinutes;
-  },
-  {
-    message: "Startzeit muss vor der Endzeit liegen",
-    path: ["defaultEndTime"],
-  },
-);
+// Eigener Name für Updates (Route und Formular importieren ihn)
+export const userSettingsUpdateSchema = userSettingsSchema;
 
 // Type inference
 export type UserSettings = z.infer<typeof userSettingsSchema>;
@@ -77,13 +42,7 @@ export interface UserSettingsResponse {
   userId: string;
   weeklyWorkHours: number;
   workDays: number[];
-  defaultStartTime: string;
-  defaultEndTime: string;
-  breakDuration: number;
-  timezone: string;
-  overtimeNotification: boolean;
-  language: string;
-  theme: string;
+  annualVacationDays: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -117,14 +76,8 @@ export const WORK_DAY_LABELS = {
 } as const;
 
 // Default settings
-export const DEFAULT_SETTINGS: Partial<UserSettings> = {
+export const DEFAULT_SETTINGS: UserSettings = {
   weeklyWorkHours: 40,
   workDays: [1, 2, 3, 4, 5], // Mo-Fr
-  defaultStartTime: "09:00",
-  defaultEndTime: "17:00",
-  breakDuration: 0.5,
-  timezone: "Europe/Berlin",
-  overtimeNotification: true,
-  language: "de",
-  theme: "system",
+  annualVacationDays: 30,
 };

@@ -1,6 +1,5 @@
 "use client";
 
-import { getISOWeek, getISOWeekYear } from "date-fns";
 import { Check, ChevronDown, MoreHorizontal, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -16,6 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isoWeekOf } from "@/lib/dates";
 import {
   formatDateShort,
   formatHours,
@@ -31,11 +31,8 @@ const REVIEW_REASONS = [
   "Feiertag",
 ] as const;
 
-/** ISO-Woche eines Tages ("YYYY-MM-DD"), mittags UTC = derselbe Tag in Berlin */
-export function isoWeekOf(dateKey: string): { year: number; week: number } {
-  const date = new Date(`${dateKey}T12:00:00Z`);
-  return { year: getISOWeekYear(date), week: getISOWeek(date) };
-}
+/** ISO-Woche eines Tages ("YYYY-MM-DD") */
+export { isoWeekOf };
 
 /** Ein offener Tag als kompakte Zeile (44 px), mobil zweizeilig. */
 export function ProblemRow({

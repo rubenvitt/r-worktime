@@ -88,7 +88,7 @@ export default function OvertimeSettingsPage() {
         <SettingsSection
           id="auffuellen"
           title="Arbeitstage auffüllen"
-          description="Trägt für einen vergangenen Zeitraum an jedem Arbeitstag deine Standardzeiten ein, z. B. für Wochen vor deinem ersten Sync."
+          description="Trägt für einen vergangenen Zeitraum an jedem Arbeitstag Arbeitszeit ein, z. B. für Wochen vor deinem ersten Sync."
         >
           <Button
             type="button"

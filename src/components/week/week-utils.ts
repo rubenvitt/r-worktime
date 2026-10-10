@@ -1,49 +1,20 @@
 // Reine Hilfsfunktionen für die Woche (ISO-Kalenderwoche, Überschneidungen).
 // Alle Kalendertage als "YYYY-MM-DD" in Europe/Berlin.
 
-import { getISOWeek, getISOWeekYear } from "date-fns";
-import { berlinDateKey, berlinTodayKey } from "@/lib/dates";
+import {
+  berlinDateKey,
+  berlinTodayKey,
+  type IsoWeek,
+  isoWeekOf,
+} from "@/lib/dates";
 
-export interface IsoWeek {
-  year: number;
-  week: number;
-}
-
-/** Mittag UTC eines Kalendertags – ISO-Woche unabhängig von der Zeitzone. */
-function noon(key: string): Date {
-  return new Date(`${key}T12:00:00Z`);
-}
-
-function keyOf(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-/** Montag der ISO-Woche als "YYYY-MM-DD". */
-export function isoWeekMonday(year: number, week: number): string {
-  // Der 4. Januar liegt immer in KW 1.
-  const jan4 = new Date(Date.UTC(year, 0, 4, 12));
-  const weekday = (jan4.getUTCDay() + 6) % 7; // Mo = 0
-  const monday = new Date(jan4);
-  monday.setUTCDate(jan4.getUTCDate() - weekday + (week - 1) * 7);
-  return keyOf(monday);
-}
-
-/** ISO-Woche eines Kalendertags. */
-export function isoWeekOf(key: string): IsoWeek {
-  const date = noon(key);
-  return { year: getISOWeekYear(date), week: getISOWeek(date) };
-}
-
-/** Verschiebt eine ISO-Woche um n Wochen. */
-export function shiftIsoWeek(
-  year: number,
-  week: number,
-  delta: number,
-): IsoWeek {
-  const monday = noon(isoWeekMonday(year, week));
-  monday.setUTCDate(monday.getUTCDate() + delta * 7);
-  return isoWeekOf(keyOf(monday));
-}
+// ISO-Wochen-Logik liegt in @/lib/dates (auch für Services); hier re-exportiert.
+export {
+  type IsoWeek,
+  isoWeekMonday,
+  isoWeekOf,
+  shiftIsoWeek,
+} from "@/lib/dates";
 
 /** Aktuelle ISO-Woche (Berliner Kalendertag). */
 export function currentIsoWeek(now: Date = new Date()): IsoWeek {

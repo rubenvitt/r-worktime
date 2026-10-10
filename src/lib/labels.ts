@@ -1,5 +1,10 @@
 // Sichtbare Bezeichnungen für Rohwerte aus API und Datenbank.
 
+import {
+  BILLING_STATUS_LABELS,
+  normalizeBillingStatus,
+} from "@/lib/reports/billing-status";
+
 export type EntryTypeKey =
   | "WORK"
   | "OVERTIME"
@@ -32,12 +37,11 @@ export const ENTRY_SOURCE_LABEL: Record<EntrySourceKey, string> = {
   ADJUSTMENT: "Anfangs-Saldo",
 };
 
-/** unbilled „Offen“, billed „Abgerechnet“, null „—“, sonst Rohwert */
+/** Bekannte Status deutsch (z. B. billable/unbilled „Offen“), leer „—“, sonst Rohwert */
 export function billingStatusLabel(value: string | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (value === "unbilled") return "Offen";
-  if (value === "billed") return "Abgerechnet";
-  return value;
+  if (value === null || value === undefined || value.trim() === "") return "—";
+  const status = normalizeBillingStatus(value);
+  return status === "unknown" ? value : BILLING_STATUS_LABELS[status];
 }
 
 export type ProblemTypeKey = "missing" | "zero_hours" | "incomplete";
@@ -49,10 +53,9 @@ export const PROBLEM_TYPE_LABEL: Record<ProblemTypeKey, string> = {
 };
 
 export const EXPORT_FORMAT_LABEL: Record<
-  "csv" | "xlsx" | "json",
+  "csv" | "json",
   { label: string; hint: string }
 > = {
   csv: { label: "CSV", hint: "für Tabellenkalkulationen" },
-  xlsx: { label: "Excel (.xlsx)", hint: "für Excel" },
   json: { label: "JSON", hint: "vollständige Daten" },
 };

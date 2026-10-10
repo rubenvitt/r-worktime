@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 // Export format type
-type ExportFormat = "json" | "csv" | "excel";
+type ExportFormat = "json" | "csv";
 
 // Helper function to format date for CSV
 const formatDateForCSV = (date: Date): string => {
@@ -114,9 +114,9 @@ export async function GET(request: NextRequest) {
     const includeSettings = searchParams.get("includeSettings") === "true";
 
     // Validate format
-    if (!["json", "csv", "excel"].includes(format)) {
+    if (!["json", "csv"].includes(format)) {
       return NextResponse.json(
-        { error: "Invalid format. Supported formats: json, csv, excel" },
+        { error: "Invalid format. Supported formats: json, csv" },
         { status: 400 },
       );
     }
@@ -195,13 +195,6 @@ export async function GET(request: NextRequest) {
         filename = `time-entries${dateRangeStr}.csv`;
         break;
 
-      case "excel":
-        // For now, return CSV with Excel MIME type
-        // In a real implementation, you'd use a library like 'xlsx'
-        exportData = convertToCSV(entries);
-        contentType = "application/vnd.ms-excel";
-        filename = `time-entries${dateRangeStr}.csv`;
-        break;
       default: {
         const jsonData: Record<string, unknown> = {
           exportInfo: {
