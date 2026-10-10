@@ -1,4 +1,4 @@
-import { isWeekend } from "date-fns";
+import { weekdayOfKey } from "@/lib/dates";
 
 export interface Holiday {
   date: string;
@@ -23,7 +23,6 @@ export class HolidayService {
   async fetchHolidaysForYear(year: number): Promise<Holiday[]> {
     try {
       const url = `${this.API_BASE_URL}?years=${year}&states=${this.STATE}`;
-      console.log("Fetching holidays from:", url);
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -31,11 +30,9 @@ export class HolidayService {
       }
 
       const data: HolidayApiResponse = await response.json();
-      console.log("API Response:", JSON.stringify(data, null, 2));
 
       // Check if response is successful
       if (data.status !== "success" || !data.feiertage) {
-        console.log("No holidays found in response");
         return [];
       }
 
@@ -45,25 +42,18 @@ export class HolidayService {
       for (const holiday of data.feiertage) {
         // Check if holiday is valid in Niedersachsen
         if (holiday.ni !== "1" && holiday.all_states !== "1") {
-          console.log(`Skipping ${holiday.fname} - not valid in Niedersachsen`);
           continue;
         }
 
-        const date = new Date(holiday.date);
-
-        // Only include weekdays (Monday to Friday)
-        if (!isWeekend(date)) {
-          console.log(`Including ${holiday.fname} on ${holiday.date}`);
+        // Only include weekdays (Monday to Friday); reiner Kalendertag,
+        // unabhängig von der Zeitzone des Servers
+        const weekday = weekdayOfKey(holiday.date);
+        if (weekday !== 0 && weekday !== 6) {
           filteredHolidays.push(holiday);
-        } else {
-          console.log(`Skipping ${holiday.fname} on ${holiday.date} - weekend`);
         }
       }
 
-      console.log(`Filtered to ${filteredHolidays.length} holidays`);
-      return filteredHolidays.sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-      );
+      return filteredHolidays.sort((a, b) => a.date.localeCompare(b.date));
     } catch (error) {
       console.error(`Error fetching holidays for year ${year}:`, error);
       throw error;
