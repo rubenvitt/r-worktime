@@ -1,19 +1,20 @@
-import { EmptyState } from "@/components/app/empty-state";
-import { PageHeader } from "@/components/app/page-header";
-import { Panel } from "@/components/app/panel";
-import { ReportsNav } from "@/components/reports/reports-nav";
+import { Suspense } from "react";
+import { SkeletonPanel, SkeletonStatStrip } from "@/components/app/skeletons";
+import { AbsencesView } from "@/components/reports/absences/absences-view";
+import { ReportFallback } from "@/components/reports/report-header";
 
 export default function AbsencesReportPage() {
+  // useSearchParams (?year) braucht eine Suspense-Grenze
   return (
-    <>
-      <PageHeader
-        title="Abwesenheiten"
-        description="Urlaub, Krankheit und Feiertage, mit Resturlaub."
-        toolbar={<ReportsNav />}
-      />
-      <Panel>
-        <EmptyState title="Folgt" description="Dieser Bericht ist in Arbeit." />
-      </Panel>
-    </>
+    <Suspense
+      fallback={
+        <ReportFallback report="absences">
+          <SkeletonStatStrip tiles={4} />
+          <SkeletonPanel lines={6} />
+        </ReportFallback>
+      }
+    >
+      <AbsencesView />
+    </Suspense>
   );
 }
