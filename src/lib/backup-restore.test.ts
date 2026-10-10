@@ -6,6 +6,7 @@ import {
   keepMissingSyncFields,
   resolveRestoreSource,
   settingsFromBackup,
+  travelDaysFromBackup,
 } from "./backup-restore";
 
 describe("resolveRestoreSource", () => {
@@ -124,5 +125,45 @@ describe("settingsFromBackup", () => {
       workDays: [1, 2, 3, 4, 5],
       annualVacationDays: 30,
     });
+  });
+});
+
+describe("travelDaysFromBackup", () => {
+  it("liefert für alte Backups ohne Reisetage null", () => {
+    expect(travelDaysFromBackup({ entries: [] })).toBeNull();
+    expect(travelDaysFromBackup(undefined)).toBeNull();
+    expect(travelDaysFromBackup({ travelDays: "kaputt" })).toBeNull();
+  });
+
+  it("übernimmt Reisetage als Datums-Key, auch aus ISO-Zeitstempeln", () => {
+    expect(
+      travelDaysFromBackup({
+        travelDays: [
+          { date: "2026-03-02", isTravel: true },
+          { date: "2026-03-03T00:00:00.000Z", isTravel: false },
+        ],
+      }),
+    ).toEqual([
+      { date: "2026-03-02", isTravel: true },
+      { date: "2026-03-03", isTravel: false },
+    ]);
+  });
+
+  it("verwirft ungültige Zeilen und behält bei Dubletten die letzte", () => {
+    expect(
+      travelDaysFromBackup({
+        travelDays: [
+          { date: "2026-02-30", isTravel: true },
+          { date: "2026-03-02", isTravel: "ja" },
+          null,
+          { date: "2026-03-02", isTravel: true },
+          { date: "2026-03-02", isTravel: false },
+        ],
+      }),
+    ).toEqual([{ date: "2026-03-02", isTravel: false }]);
+  });
+
+  it("liefert für ein leeres Feld eine leere Liste", () => {
+    expect(travelDaysFromBackup({ travelDays: [] })).toEqual([]);
   });
 });

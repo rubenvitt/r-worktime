@@ -6,6 +6,7 @@ import {
   Database,
   Download,
   FileText,
+  Plane,
   Settings,
   Shield,
   Upload,
@@ -33,9 +34,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { plural } from "@/lib/format";
 
 interface BackupStats {
   totalEntries: number;
+  /** Festgelegte Reisetage (ältere Server liefern das Feld nicht) */
+  totalTravelDays?: number;
   hasSettings: boolean;
   dateRange: {
     from: string;
@@ -66,6 +70,7 @@ interface BackupPreview {
     validEntries: number;
     invalidEntries: number;
     hasSettings: boolean;
+    travelDays?: number;
     dateRange: { from: string; to: string } | null;
     entryTypes: Record<string, number>;
     warnings: string[];
@@ -285,6 +290,14 @@ export function BackupManager() {
                   <Settings className="h-4 w-4 text-muted-foreground" />
                   {backupStats.hasSettings ? "Mit" : "Ohne"} Einstellungen
                 </div>
+                <div className="flex items-center gap-2">
+                  <Plane className="h-4 w-4 text-muted-foreground" />
+                  {plural(
+                    backupStats.totalTravelDays ?? 0,
+                    "Reisetag",
+                    "Reisetage",
+                  )}
+                </div>
                 {backupStats.dateRange && (
                   <>
                     <div className="flex items-center gap-2">
@@ -465,6 +478,10 @@ export function BackupManager() {
                     <div>
                       <strong>Einstellungen:</strong>{" "}
                       {backupPreview.preview.hasSettings ? "Ja" : "Nein"}
+                    </div>
+                    <div>
+                      <strong>Reisetage:</strong>{" "}
+                      {backupPreview.preview.travelDays ?? 0}
                     </div>
                   </div>
 

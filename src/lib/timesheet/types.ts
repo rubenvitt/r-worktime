@@ -16,6 +16,8 @@ export interface TimesheetDayView extends Omit<TimesheetDay, "activities"> {
   hours: string;
   /** Tagestext wie im Payload */
   text: string;
+  /** gespeicherte Reisetag-Festlegung; null = es gilt der Vorschlag `travelFee` */
+  travelOverride: boolean | null;
 }
 
 export interface TimesheetResponse {
@@ -24,7 +26,7 @@ export interface TimesheetResponse {
   rounding: Rounding;
   includeAbsences: boolean;
   days: TimesheetDayView[];
-  /** Vertrag für Clipboard/Extension (travelFee = Vorschlag) */
+  /** Vertrag für Clipboard/Extension (travelFee = Festlegung, sonst Vorschlag) */
   payload: TimesheetEntry[];
   totals: {
     /** Summe der ungerundeten Minuten */

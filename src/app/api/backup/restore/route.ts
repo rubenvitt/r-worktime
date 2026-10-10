@@ -5,7 +5,9 @@ import {
   keepMissingSyncFields,
   resolveRestoreSource,
   settingsFromBackup,
+  travelDaysFromBackup,
 } from "@/lib/backup-restore";
+import { berlinDayStart } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
 import { EntryType } from "@/types/database";
@@ -57,6 +59,8 @@ interface BackupData {
       createdAt?: string;
       updatedAt?: string;
     }>;
+    /** Reisetag-Festlegungen; fehlt in älteren Backups */
+    travelDays?: Array<{ date: string; isTravel: boolean }>;
   };
 }
 
@@ -107,8 +111,12 @@ export async function POST(request: NextRequest) {
       entriesUpdated: 0,
       entriesSkipped: 0,
       settingsRestored: false,
+      travelDaysRestored: 0,
+      travelDaysSkipped: 0,
       errors: [] as string[],
     };
+    // null = Backup ohne Reisetage (älteres Format) → nichts anfassen
+    const travelDays = travelDaysFromBackup(backupData.userData);
 
     // Start transaction
     await prisma.$transaction(async (tx) => {
@@ -117,6 +125,13 @@ export async function POST(request: NextRequest) {
         await tx.timeEntry.deleteMany({
           where: { userId: session.user.id },
         });
+
+        // Festlegungen nur ersetzen, wenn das Backup welche mitbringt
+        if (travelDays !== null) {
+          await tx.travelDay.deleteMany({
+            where: { userId: session.user.id },
+          });
+        }
 
         if (restoreSettings && backupData.userData.settings) {
           await tx.userSettings.deleteMany({
@@ -247,6 +262,29 @@ export async function POST(request: NextRequest) {
           results.errors.push(`Failed to process entry: ${error}`);
         }
       }
+
+      // Reisetag-Festlegungen (Upsert je Tag, Zeitraumfilter wie bei Einträgen)
+      for (const day of travelDays ?? []) {
+        const date = berlinDayStart(day.date);
+        if (
+          (dateRange?.from && date < new Date(dateRange.from)) ||
+          (dateRange?.to && date > new Date(dateRange.to))
+        ) {
+          results.travelDaysSkipped++;
+          continue;
+        }
+        try {
+          await tx.travelDay.upsert({
+            where: { userId_date: { userId: session.user.id, date } },
+            create: { userId: session.user.id, date, isTravel: day.isTravel },
+            update: { isTravel: day.isTravel },
+          });
+          results.travelDaysRestored++;
+        } catch (error) {
+          results.travelDaysSkipped++;
+          results.errors.push(`Failed to restore travel day: ${error}`);
+        }
+      }
     });
 
     // Invalidiere Overtime Cache nach Backup Restore
@@ -333,6 +371,7 @@ export async function PUT(request: NextRequest) {
         validEntries: validEntries.length,
         invalidEntries: entries.length - validEntries.length,
         hasSettings: !!backupData.userData.settings,
+        travelDays: travelDaysFromBackup(backupData.userData)?.length ?? 0,
         dateRange,
         entryTypes,
         warnings:

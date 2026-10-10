@@ -1,5 +1,6 @@
 import { EntrySource } from "@prisma/client";
 import { ADJUSTMENT_MARKER } from "@/lib/adjustment";
+import { isDateKey } from "@/lib/dates";
 
 // Hilfen für den Restore alter und neuer Backups (reine Funktionen, testbar).
 
@@ -113,4 +114,38 @@ export function settingsFromBackup(raw: unknown): RestoredSettings {
         ? annualVacationDays
         : DEFAULT_RESTORED_SETTINGS.annualVacationDays,
   };
+}
+
+export interface RestoredTravelDay {
+  /** "YYYY-MM-DD" */
+  date: string;
+  isTravel: boolean;
+}
+
+/**
+ * Reisetag-Festlegungen aus `userData` eines Backups. Ältere Backups kennen
+ * `travelDays` nicht → null; dann darf ein Restore vorhandene Festlegungen
+ * auch beim Ersetzen nicht löschen. Ungültige Zeilen fallen weg, bei
+ * Dubletten gilt die letzte. Datum als Key oder ISO-Zeitstempel (@db.Date).
+ */
+export function travelDaysFromBackup(
+  userData: unknown,
+): RestoredTravelDay[] | null {
+  if (!userData || typeof userData !== "object") return null;
+  const raw = (userData as Record<string, unknown>).travelDays;
+  if (!Array.isArray(raw)) return null;
+
+  const byDate = new Map<string, boolean>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const { date, isTravel } = item as Record<string, unknown>;
+    if (typeof date !== "string" || typeof isTravel !== "boolean") continue;
+    const key = date.slice(0, 10);
+    if (!isDateKey(key)) continue;
+    byDate.delete(key);
+    byDate.set(key, isTravel);
+  }
+  return Array.from(byDate.entries())
+    .map(([date, isTravel]) => ({ date, isTravel }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }

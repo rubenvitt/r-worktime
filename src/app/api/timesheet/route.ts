@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { monthRange } from "@/lib/dates";
+import { loadTravelOverrides } from "@/lib/reports/travel-store";
 import {
   buildTimesheetResponse,
   loadAvailableRoots,
@@ -20,12 +22,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [entries, availableRoots] = await Promise.all([
+    const [entries, availableRoots, travelOverrides] = await Promise.all([
       loadTimesheetEntries(session.user.id, query.data),
       loadAvailableRoots(session.user.id),
+      loadTravelOverrides(session.user.id, monthRange(query.data.month)),
     ]);
     return NextResponse.json(
-      buildTimesheetResponse(entries, query.data, availableRoots),
+      buildTimesheetResponse(
+        entries,
+        query.data,
+        availableRoots,
+        travelOverrides,
+      ),
     );
   } catch (error) {
     console.error("Stundenzettel konnte nicht erstellt werden:", error);
