@@ -82,3 +82,50 @@ describe("calculateWeeklyStatistics (ISO-8601)", () => {
     ).rejects.toThrow(RangeError);
   });
 });
+
+describe("calculateMonthlyStatistics (Abrechnungsstatus)", () => {
+  beforeEach(() => {
+    overtimeService.invalidateCache("u1");
+    prismaMock.userSettings.findUnique.mockResolvedValue({
+      weeklyWorkHours: new Prisma.Decimal(40),
+      workDays: [1, 2, 3, 4, 5],
+    });
+    prismaMock.timeEntry.findMany.mockReset();
+  });
+
+  it("teilt Arbeitsstunden nach Timing-Status statt nach Typ", async () => {
+    const withStatus = (
+      dateKey: string,
+      hours: number,
+      billingStatus: string | null,
+      type = "WORK",
+      source = "TIMING_SYNC",
+    ) => ({
+      ...entry(dateKey, hours, type),
+      billingStatus,
+      source,
+      description: null,
+    });
+    prismaMock.timeEntry.findMany.mockResolvedValue([
+      withStatus("2026-10-01", 4, "billable"),
+      withStatus("2026-10-01", 1, "paid"),
+      withStatus("2026-10-02", 2, "not_billable"),
+      withStatus("2026-10-02", 1.5, null),
+      withStatus("2026-10-05", 8, null, "WORK", "BULK_FILL"),
+      // Abwesenheit mit Status zählt nicht als abrechenbar
+      withStatus("2026-10-06", 8, "unbilled", "VACATION"),
+      // Anfangssaldo zählt nicht
+      withStatus("2026-10-01", 12.5, null, "OVERTIME", "ADJUSTMENT"),
+    ]);
+
+    const stats = await overtimeService.calculateMonthlyStatistics(
+      "u1",
+      2026,
+      10,
+    );
+
+    expect(stats.billableHours).toBe(5);
+    expect(stats.nonBillableHours).toBe(2);
+    expect(stats.unknownHours).toBe(9.5);
+  });
+});

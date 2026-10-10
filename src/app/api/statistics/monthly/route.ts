@@ -141,6 +141,7 @@ export async function POST(request: NextRequest) {
           overtimeHours: acc.overtimeHours + month.overtimeHours,
           billableHours: acc.billableHours + month.billableHours,
           nonBillableHours: acc.nonBillableHours + month.nonBillableHours,
+          unknownHours: acc.unknownHours + month.unknownHours,
         }),
         {
           totalHours: 0,
@@ -148,6 +149,7 @@ export async function POST(request: NextRequest) {
           overtimeHours: 0,
           billableHours: 0,
           nonBillableHours: 0,
+          unknownHours: 0,
         },
       );
 

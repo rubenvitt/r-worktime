@@ -47,8 +47,12 @@ export interface MonthlyStatistics {
   targetHours: number;
   overtimeHours: number;
   weeklyBreakdown: WeeklyStatistics[];
+  /** Arbeitsstunden mit abrechenbarem Status (offen, abgerechnet, bezahlt) */
   billableHours: number;
+  /** Arbeitsstunden mit Status „nicht abrechenbar“ */
   nonBillableHours: number;
+  /** Arbeitsstunden ohne oder mit unbekanntem Status */
+  unknownHours: number;
 }
 
 export interface CacheEntry<T> {
