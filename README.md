@@ -37,11 +37,12 @@ NEXTAUTH_SECRET="..."
 NEXTAUTH_URL="http://localhost:3000"
 TIMING_TOKEN_ENCRYPTION_KEY="..."   # openssl rand -base64 32, für den Timing-Sync
 TIMING_SYNC_SCHEDULER="on"          # "off" schaltet den Hintergrund-Sync ab
+REGISTRATION_ENABLED="false"        # "true" erlaubt neue Accounts über /register
 ```
 
 ## Verwendung
 
-1. **Login/Registrierung** über `/login`
+1. **Login** über `/login`. Neue Accounts nur mit `REGISTRATION_ENABLED="true"` über `/register`
 2. **Timing verbinden** unter `/settings/timing` oder **Timing-Export hochladen** unter `/upload`
 3. **Überstunden prüfen** im Dashboard
 4. **Arbeitszeiten konfigurieren** in den Einstellungen

@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { authRateLimit } from "@/lib/rate-limit";
+import { isRegistrationEnabled } from "@/lib/registration";
 
 const registerSchema = z.object({
   name: z.string().min(2),
@@ -11,6 +12,13 @@ const registerSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  if (!isRegistrationEnabled()) {
+    return NextResponse.json(
+      { error: "Registrierung ist deaktiviert" },
+      { status: 403 },
+    );
+  }
+
   // Apply rate limiting
   const rateLimitResponse = await authRateLimit(request);
   if (rateLimitResponse) {
