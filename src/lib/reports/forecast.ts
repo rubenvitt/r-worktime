@@ -26,7 +26,7 @@ import {
   shiftMonthKey,
   weekdayOfKey,
 } from "@/lib/dates";
-import { hoursToAbsenceDays } from "@/lib/reports/absences";
+import { absenceDayShare } from "@/lib/reports/absences";
 import {
   billableShare,
   classifyBillingStatus,
@@ -154,7 +154,8 @@ function summarizeBaseMonth(
   for (const entry of input.entries) {
     if (entry.date < from || entry.date > lastKey) continue;
     if (isAbsence(entry)) {
-      absenceDays.add(entry.date);
+      // 0-h-Einträge sind keine Abwesenheit (wie im Saldo)
+      if (entry.hours > 0) absenceDays.add(entry.date);
     } else if (isRealWork(entry)) {
       realWorkDays.add(entry.date);
       const hours = roundToQuarterHour(entry.hours);
@@ -310,10 +311,8 @@ export interface ForecastInput {
   /** Einträge ab Beginn der Basis bis Ende des Horizonts (ohne Anfangssaldo) */
   entries: readonly ReportEntry[];
   schedule: WorkSchedule;
-  /** Alle Feiertage (offiziell und importiert) – für Basis und Prognose */
+  /** Alle Feiertage (offiziell und importiert) – wie im Saldo */
   holidayKeys: ReadonlySet<string>;
-  /** Importierte Feiertage – für „bis heute“, wie im Saldo */
-  importedHolidayKeys: ReadonlySet<string>;
   trackingStart: string | null;
   /** Aktueller Saldo (wie /overtime), inklusive heute */
   currentBalance: number;
@@ -354,7 +353,8 @@ export function buildForecast(input: ForecastInput): Forecast {
   // (mindestens ½), Krankheit vor Urlaub, zusammen höchstens ein Tag.
   const plannedHours = new Map<string, { sick: number; vacation: number }>();
   for (const entry of input.entries) {
-    if (!isAbsence(entry) || entry.date <= todayKey) continue;
+    if (!isAbsence(entry) || entry.date <= todayKey || !(entry.hours > 0))
+      continue;
     const hours = plannedHours.get(entry.date) ?? { sick: 0, vacation: 0 };
     if (entry.type === "SICK") hours.sick += entry.hours;
     else hours.vacation += entry.hours;
@@ -363,9 +363,7 @@ export function buildForecast(input: ForecastInput): Forecast {
   const plannedShare = (key: string): number => {
     const hours = plannedHours.get(key);
     if (!hours) return 0;
-    const sick = hoursToAbsenceDays(hours.sick, schedule.dailyHours);
-    const vacation = hoursToAbsenceDays(hours.vacation, schedule.dailyHours);
-    return sick + Math.min(vacation, 1 - sick);
+    return absenceDayShare(hours.sick, hours.vacation, schedule.dailyHours);
   };
 
   // Rest von heute: nur an einem verfügbaren Arbeitstag (kein Feiertag,
@@ -374,7 +372,7 @@ export function buildForecast(input: ForecastInput): Forecast {
   let todayAbsent = false;
   for (const entry of input.entries) {
     if (entry.date !== todayKey) continue;
-    if (isAbsence(entry)) todayAbsent = true;
+    if (isAbsence(entry)) todayAbsent ||= entry.hours > 0;
     else if (isWorkEntry(entry)) todayWork += roundToQuarterHour(entry.hours);
   }
   const todayAvailable =
@@ -426,7 +424,7 @@ export function buildForecast(input: ForecastInput): Forecast {
             from: start,
             to: todayKey,
             schedule,
-            holidayKeys: input.importedHolidayKeys,
+            holidayKeys,
           }),
           start,
           todayKey,

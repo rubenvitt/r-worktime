@@ -407,41 +407,29 @@ export function YearSection({ data }: { data: YearReportResponse }) {
       <div className="space-y-2">
         <Notice tone="info">
           Gearbeitet zählt Arbeit inklusive Auffüllungen; Urlaub und Krankheit
-          zählen mit dem Tagessoll, Feiertage mindern das Soll.
+          zählen mit ihren Stunden, je Tag höchstens mit dem Tagessoll.
+          Feiertage (offiziell und importiert) mindern das Soll.
           {adjustment
             ? ` Gezählt wird ab dem Tag nach dem Anfangssaldo (${formatDateLong(adjustment.date)}).`
             : ` Gezählt wird ab dem ersten Eintrag (${formatDateLong(report.trackingStart)}).`}{" "}
           Abrechenbar nutzt den Timing-Abrechnungsstatus; die Quote ist
           abrechenbar von gesamt wie im Abrechnungsbericht, Einträge ohne Status
-          zählen mit. Alle Stunden sind je Eintrag auf Viertelstunden gerundet
-          wie im Saldo; der Abrechnungsbericht rechnet minutengenau.
+          zählen mit. Arbeitsstunden sind je Eintrag auf Viertelstunden gerundet
+          wie im Saldo, Urlaub und Krankheit zählen ungerundet; der
+          Abrechnungsbericht rechnet minutengenau.
         </Notice>
-        {holidays.notImported.length > 0 ? (
-          <Notice tone="warning">
-            {holidays.notImported.length === 1
-              ? "Ein Feiertag ist"
-              : `${holidays.notImported.length} Feiertage sind`}{" "}
-            nicht importiert (
-            {holidays.notImported
-              .map((h) => `${h.name} ${formatDayMonth(h.date)}`)
-              .join(", ")}
-            ) und zählen deshalb wie im Saldo als Soll.{" "}
-            <Link href="/settings/overtime" className="underline">
-              Feiertage importieren
-            </Link>
-          </Notice>
-        ) : null}
         {holidays.unavailable ? (
           <Notice tone="warning">
-            Der Feiertags-Dienst war nicht erreichbar; nicht importierte
-            Feiertage konnten nicht geprüft werden.
+            Der Feiertags-Dienst war nicht erreichbar; nur importierte Feiertage
+            mindern das Soll.
           </Notice>
         ) : null}
         {balanceMismatch && currentBalance !== null ? (
           <Notice tone="warning">
             Der Saldo auf der Überstunden-Seite beträgt{" "}
-            {formatHoursDelta(currentBalance)}. Die Abweichung entsteht, wenn
-            Urlaub oder Krankheit doppelt oder an Feiertagen eingetragen ist.
+            {formatHoursDelta(currentBalance)}. Beide rechnen nach denselben
+            Regeln; eine Abweichung entsteht meist, weil der Saldo bis zu fünf
+            Minuten zwischengespeichert wird.
           </Notice>
         ) : null}
       </div>

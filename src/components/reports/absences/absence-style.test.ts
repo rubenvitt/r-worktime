@@ -78,9 +78,7 @@ describe("describeAbsenceDay", () => {
           holidayImported: false,
         }),
       ),
-    ).toBe(
-      "Fr 25.12. · Feiertag (1. Weihnachtstag), nicht importiert · zählt 1 Tag",
-    );
+    ).toBe("Fr 25.12. · Feiertag (1. Weihnachtstag) · zählt 1 Tag");
   });
 
   it("nennt beide Kategorien bei geteilten Tagen", () => {

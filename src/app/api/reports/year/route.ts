@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { berlinTodayKey, weekdayOfKey } from "@/lib/dates";
+import { berlinTodayKey } from "@/lib/dates";
 import {
   loadCurrentBalance,
   loadHolidays,
@@ -23,10 +23,19 @@ export interface YearReportResponse {
   /** Aktueller Saldo wie auf /overtime – nur im laufenden Jahr */
   currentBalance: number | null;
   holidays: {
-    /** Offizielle Feiertage auf gezählten Arbeitstagen ohne HOLIDAY-Eintrag */
-    notImported: Array<{ date: string; name: string }>;
+    /** Feiertags-Dienst nicht erreichbar: nur importierte Feiertage mindern das Soll */
     unavailable: boolean;
   };
+}
+
+/** Jahre vom Erfassungsbeginn (höchstens) bis zum angefragten Jahr. */
+function holidayYears(trackingStart: string | null, year: number): number[] {
+  const first = trackingStart
+    ? Math.min(Number(trackingStart.slice(0, 4)), year)
+    : year;
+  const years: number[] = [];
+  for (let y = first; y <= year; y++) years.push(y);
+  return years;
 }
 
 // GET /api/reports/year?year=YYYY
@@ -60,33 +69,21 @@ export async function GET(request: NextRequest) {
       context.trackingStart
         ? loadReportEntries(userId, context.trackingStart, to)
         : Promise.resolve([]),
-      loadHolidays(userId, [year], context.schedule.workDays),
+      // Auch das Vorjahr ab Erfassungsbeginn: der Eröffnungssaldo braucht dessen Feiertage
+      loadHolidays(userId, holidayYears(context.trackingStart, year)),
       isCurrentYear ? loadCurrentBalance(userId) : Promise.resolve(null),
     ]);
 
-    // Wie der Saldo: nur importierte Feiertage mindern das Soll
+    // Wie der Saldo: offizielle und importierte Feiertage mindern das Soll
     const report = buildYearReport({
       year,
       todayKey,
       entries,
       schedule: context.schedule,
-      holidayKeys: holidays.importedKeys,
+      holidayKeys: holidays.allKeys,
       trackingStart: context.trackingStart,
       initialBalance: context.initialBalance,
     });
-
-    const notImported = [...holidays.allKeys]
-      .filter(
-        (key) =>
-          key.startsWith(`${year}-`) &&
-          !holidays.importedKeys.has(key) &&
-          context.trackingStart !== null &&
-          key >= context.trackingStart &&
-          key <= to &&
-          context.schedule.workDays.includes(weekdayOfKey(key)),
-      )
-      .sort()
-      .map((date) => ({ date, name: holidays.names[date] ?? "Feiertag" }));
 
     const body: YearReportResponse = {
       report,
@@ -95,7 +92,6 @@ export async function GET(request: NextRequest) {
         : null,
       currentBalance,
       holidays: {
-        notImported,
         unavailable: holidays.unavailableYears.length > 0,
       },
     };

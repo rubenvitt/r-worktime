@@ -32,6 +32,8 @@ export function WeekDaysPanel({ className }: { className?: string }) {
     ...day,
     key: dayKeyOf(day.date),
     actual: hoursToMinutes(day.totalHours),
+    // Urlaub/Krank wie im Saldo, höchstens bis zum Soll
+    credit: hoursToMinutes(day.absenceHours ?? 0),
     target: hoursToMinutes(day.targetHours),
   }));
   const scale = Math.max(600, ...days.map((d) => d.actual));
@@ -104,7 +106,7 @@ export function WeekDaysPanel({ className }: { className?: string }) {
                         <Delta minutes={null} />
                       ) : (
                         <Delta
-                          minutes={day.actual - day.target}
+                          minutes={day.actual + day.credit - day.target}
                           noTarget={day.target === 0}
                         />
                       )}

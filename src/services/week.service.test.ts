@@ -10,7 +10,7 @@ const { prismaMock, officialHolidaysMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
-vi.mock("@/lib/reports/forecast-data", () => ({
+vi.mock("@/services/holiday.service", () => ({
   loadOfficialHolidays: officialHolidaysMock,
 }));
 
@@ -55,15 +55,38 @@ describe("getWeekData (KW 53/2026 mit Neujahr)", () => {
     expect(week.summary.targetHours).toBe(32);
   });
 
-  it("markiert nicht importierte Feiertage, das Soll bleibt wie im Saldo", async () => {
+  it("nimmt offizielle Feiertage auch ohne Import aus dem Soll", async () => {
     prismaMock.timeEntry.findMany.mockResolvedValue([]);
     const week = await weekService.getWeekData("u1", 2026, 53);
 
     const newYear = week.days[4];
-    expect(newYear.targetHours).toBe(8);
+    expect(newYear.targetHours).toBe(0);
     expect(newYear.holiday).toEqual({ name: "Neujahr", imported: false });
     expect(week.days[0].holiday).toBeNull();
-    expect(week.summary.targetHours).toBe(40);
+    expect(week.summary.targetHours).toBe(32);
+    expect(week.holidayServiceUnavailable).toBe(false);
+  });
+
+  it("schreibt Urlaub je Tag höchstens bis zum Soll gut", async () => {
+    prismaMock.timeEntry.findMany.mockResolvedValue([
+      entry("2026-12-28", 4, "VACATION"),
+      entry("2026-12-28", 4),
+      entry("2026-12-29", 8, "VACATION"),
+      entry("2026-12-29", 8, "SICK"),
+      // Urlaub am Feiertag zählt nicht
+      entry("2027-01-01", 8, "VACATION"),
+    ]);
+    const week = await weekService.getWeekData("u1", 2026, 53);
+
+    const [mon, tue, , , fri] = week.days;
+    expect(mon.totalHours).toBe(4);
+    expect(mon.absenceHours).toBe(4);
+    expect(mon.difference).toBe(0);
+    expect(tue.absenceHours).toBe(8);
+    expect(tue.difference).toBe(0);
+    expect(fri.absenceHours).toBe(0);
+    expect(week.summary.absenceHours).toBe(12);
+    expect(week.summary.weekBalance).toBe(4 + 12 - 32);
   });
 
   it("rechnet das Soll nach den eingestellten Arbeitstagen", async () => {
@@ -88,5 +111,21 @@ describe("getWeekData (KW 53/2026 mit Neujahr)", () => {
 
     expect(week.days.every((d) => d.holiday === null)).toBe(true);
     expect(week.summary.targetHours).toBe(40);
+    expect(week.holidayServiceUnavailable).toBe(true);
+  });
+
+  it("nutzt ohne Feiertags-Dienst die importierten Feiertage", async () => {
+    officialHolidaysMock.mockResolvedValue({
+      names: {},
+      unavailableYears: [2026, 2027],
+    });
+    prismaMock.timeEntry.findMany.mockResolvedValue([
+      { ...entry("2027-01-01", 8, "HOLIDAY"), description: "Neujahr" },
+    ]);
+    const week = await weekService.getWeekData("u1", 2026, 53);
+
+    expect(week.days[4].targetHours).toBe(0);
+    expect(week.days[4].holiday).toEqual({ name: "Neujahr", imported: true });
+    expect(week.summary.targetHours).toBe(32);
   });
 });

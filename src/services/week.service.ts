@@ -6,7 +6,8 @@ import {
   weekdayOfKey,
 } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
-import { loadOfficialHolidays } from "@/lib/reports/forecast-data";
+import { absenceCreditHours, dayTargetHours } from "@/lib/reports/year";
+import { loadOfficialHolidays } from "@/services/holiday.service";
 import type { EntryType } from "@/types/database";
 import type { DayData, WeekData, WeekSummary } from "@/types/statistics";
 
@@ -68,7 +69,8 @@ export class WeekService {
     const range = isoWeekRange(year, week);
     const { start, end } = range;
     // KW 53/KW 1 reichen über den Jahreswechsel: Feiertage beider Jahre laden.
-    // Ist der Feiertags-Dienst nicht erreichbar, bleiben nur importierte übrig.
+    // Ist der Feiertags-Dienst nicht erreichbar, bleiben nur importierte übrig
+    // (holidayServiceUnavailable).
     const years = [
       ...new Set(range.dayKeys.map((key) => Number(key.slice(0, 4)))),
     ];
@@ -127,15 +129,34 @@ export class WeekService {
             }
           : null;
 
-      // Soll an eingestellten Arbeitstagen. Wie im Saldo mindern nur
-      // importierte Feiertage das Soll; nicht importierte werden markiert.
-      const targetHours =
-        userSettings.workDays.includes(weekday) && !holidayEntry
-          ? userSettings.dailyHours
-          : 0;
+      // Soll wie im Saldo: Tagessoll an Arbeitstagen, offizielle und
+      // importierte Feiertage mindern es. Der Feiertags-Eintrag selbst zählt
+      // nicht als Arbeit.
+      const holidayKeys = new Set(holiday ? [dateKey] : []);
+      const targetHours = dayTargetHours(
+        dateKey,
+        {
+          workDays: userSettings.workDays,
+          dailyHours: userSettings.dailyHours,
+        },
+        holidayKeys,
+      );
 
-      // Berechne Differenz
-      const difference = workHours - targetHours;
+      // Urlaub/Krank wie im Saldo: je Tag summiert, höchstens bis zum Soll
+      const absenceHours = absenceCreditHours(
+        dayEntries
+          .filter(
+            (e) =>
+              (e.type === PrismaEntryType.VACATION ||
+                e.type === PrismaEntryType.SICK) &&
+              Number(e.duration) > 0,
+          )
+          .reduce((sum, e) => sum + Number(e.duration), 0),
+        targetHours,
+      );
+
+      // Differenz wie im Saldo: Arbeit + Gutschrift − Soll
+      const difference = workHours + absenceHours - targetHours;
 
       return {
         date: berlinDayStart(dateKey),
@@ -149,6 +170,7 @@ export class WeekService {
           description: e.description,
         })),
         totalHours: workHours,
+        absenceHours,
         targetHours,
         difference,
         isWeekend,
@@ -159,13 +181,16 @@ export class WeekService {
     // Berechne Wochensummen
     const weekSummary: WeekSummary = {
       totalWorkHours: dailyData.reduce((sum, day) => sum + day.totalHours, 0),
+      absenceHours: dailyData.reduce((sum, day) => sum + day.absenceHours, 0),
       targetHours: dailyData.reduce((sum, day) => sum + day.targetHours, 0),
       weekBalance: 0, // wird unten berechnet
       cumulativeBalance: 0, // wird unten berechnet
     };
 
     weekSummary.weekBalance =
-      weekSummary.totalWorkHours - weekSummary.targetHours;
+      weekSummary.totalWorkHours +
+      weekSummary.absenceHours -
+      weekSummary.targetHours;
 
     // Berechne kumulierten Saldo bis zu dieser Woche
     weekSummary.cumulativeBalance = await this.calculateCumulativeBalance(
@@ -181,6 +206,7 @@ export class WeekService {
       weekEndDate: end,
       days: dailyData,
       summary: weekSummary,
+      holidayServiceUnavailable: official.unavailableYears.length > 0,
     };
   }
 

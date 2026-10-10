@@ -29,6 +29,8 @@ interface DayView {
   day: DayData;
   key: string;
   actual: number;
+  /** Gutschrift für Urlaub/Krank in Minuten */
+  credit: number;
   target: number;
   isToday: boolean;
   isPast: boolean;
@@ -45,6 +47,7 @@ function toView(day: DayData, todayKey: string): DayView {
     day,
     key,
     actual: hoursToMinutes(day.totalHours),
+    credit: hoursToMinutes(day.absenceHours ?? 0),
     target: hoursToMinutes(day.targetHours),
     isToday: key === todayKey,
     isPast: key < todayKey,
@@ -63,7 +66,10 @@ function DayDelta({ view }: { view: DayView }) {
   if (view.isToday) return <RunningBadge />;
   if (!view.isPast) return <Delta minutes={null} />;
   return (
-    <Delta minutes={view.actual - view.target} noTarget={view.target === 0} />
+    <Delta
+      minutes={view.actual + view.credit - view.target}
+      noTarget={view.target === 0}
+    />
   );
 }
 
@@ -174,17 +180,8 @@ export function WeekDayList({
                 <EntryTypeBadge key={type} type={type} />
               ))}
               {day.holiday ? (
-                <StatusBadge
-                  tone={day.holiday.imported ? "neutral" : "warning"}
-                  title={
-                    day.holiday.imported
-                      ? "Feiertag, mindert das Soll"
-                      : "Feiertag nicht importiert – zählt im Saldo noch als Soll"
-                  }
-                >
-                  {day.holiday.imported
-                    ? day.holiday.name
-                    : `${day.holiday.name} · nicht importiert`}
+                <StatusBadge tone="neutral" title="Feiertag, mindert das Soll">
+                  {day.holiday.name}
                 </StatusBadge>
               ) : null}
             </>

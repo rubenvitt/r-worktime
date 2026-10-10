@@ -402,11 +402,6 @@ describe("buildAbsenceReport", () => {
       // Samstag: kein Arbeitstag, erscheint nicht und zählt nicht
       expect(report.days.some((d) => d.dateKey === "2026-10-03")).toBe(false);
       expect(report.nonWorkDayAbsences).toBe(0);
-      expect(report.notImportedHolidays).toEqual([
-        "2026-01-01",
-        "2026-04-03",
-        "2026-12-25",
-      ]);
     });
 
     it("zählt importierte Feiertage nicht doppelt", () => {
@@ -422,7 +417,6 @@ describe("buildAbsenceReport", () => {
         holidayName: "Neujahr",
         holidayImported: true,
       });
-      expect(report.notImportedHolidays).toEqual(["2026-04-03", "2026-12-25"]);
     });
 
     it("verbraucht an offiziellen Feiertagen keinen Urlaub", () => {

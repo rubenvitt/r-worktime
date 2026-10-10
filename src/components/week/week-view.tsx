@@ -33,11 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useWeekData } from "@/hooks/use-week-data";
 import { berlinTodayKey, shiftDateKey } from "@/lib/dates";
-import {
-  formatDateShort,
-  formatHoursDelta,
-  hoursToMinutes,
-} from "@/lib/format";
+import { formatHoursDelta, hoursToMinutes } from "@/lib/format";
 import type {
   StatisticsApiResponse,
   WeeklyStatistics,
@@ -211,10 +207,8 @@ export function WeekView({ year, week }: WeekViewProps) {
   const actualMinutes = hoursToMinutes(summary.totalWorkHours);
   const targetMinutes = hoursToMinutes(summary.targetHours);
   const hasEntries = days.some((d) => d.entries.length > 0);
-  // Nicht importierte Feiertage an Soll-Tagen: zählen im Saldo noch als Soll
-  const missingHolidays = days.filter(
-    (d) => d.holiday && !d.holiday.imported && d.targetHours > 0,
-  );
+  // Urlaub/Krank wie im Saldo: Gutschrift je Tag höchstens bis zum Soll
+  const creditMinutes = hoursToMinutes(summary.absenceHours ?? 0);
 
   return (
     <>
@@ -230,10 +224,21 @@ export function WeekView({ year, week }: WeekViewProps) {
             label="Woche"
             value={
               <Delta
-                minutes={isFuture ? null : actualMinutes - targetMinutes}
+                minutes={
+                  isFuture
+                    ? null
+                    : actualMinutes + creditMinutes - targetMinutes
+                }
               />
             }
-            hint={isCurrent ? "bis heute, Soll ganze Woche" : undefined}
+            hint={
+              [
+                isCurrent ? "bis heute, Soll ganze Woche" : null,
+                creditMinutes > 0 ? "inkl. Urlaub/Krank" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || undefined
+            }
           />
           <Stat
             label="Ø pro Arbeitstag"
@@ -248,25 +253,15 @@ export function WeekView({ year, week }: WeekViewProps) {
           />
         </StatStrip>
 
-        {missingHolidays.length > 0 ? (
+        {data.data.holidayServiceUnavailable ? (
           <p className="flex gap-2 text-[13px] text-muted-foreground">
             <TriangleAlert
               aria-hidden="true"
               className="mt-0.5 size-4 shrink-0 text-warning"
             />
             <span>
-              {missingHolidays
-                .map(
-                  (d) =>
-                    `${d.holiday?.name} (${formatDateShort(dayKeyOf(d.date))})`,
-                )
-                .join(", ")}{" "}
-              {missingHolidays.length === 1 ? "ist" : "sind"} nicht importiert
-              und {missingHolidays.length === 1 ? "zählt" : "zählen"} deshalb im
-              Soll wie im Saldo.{" "}
-              <Link href="/settings/overtime" className="underline">
-                Feiertage importieren
-              </Link>
+              Der Feiertags-Dienst war nicht erreichbar; nur importierte
+              Feiertage mindern das Soll.
             </span>
           </p>
         ) : null}

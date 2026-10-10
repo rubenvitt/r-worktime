@@ -223,7 +223,6 @@ describe("buildForecast", () => {
     entries: [...history, ...planned],
     schedule: MON_FRI,
     holidayKeys: new Set(["2026-12-25", "2027-01-01"]),
-    importedHolidayKeys: NO_HOLIDAYS,
     trackingStart: "2026-09-01",
     currentBalance: 10,
   });
@@ -297,7 +296,6 @@ describe("buildForecast", () => {
       entries: [...history, { ...absence("2026-12-24", "VACATION"), hours: 4 }],
       schedule: MON_FRI,
       holidayKeys: NO_HOLIDAYS,
-      importedHolidayKeys: NO_HOLIDAYS,
       trackingStart: "2026-09-01",
       currentBalance: 0,
     });
@@ -315,7 +313,6 @@ describe("buildForecast", () => {
       entries: [],
       schedule: MON_THU,
       holidayKeys: NO_HOLIDAYS,
-      importedHolidayKeys: NO_HOLIDAYS,
       trackingStart: null,
       currentBalance: -2,
     });
@@ -337,7 +334,6 @@ describe("buildForecast", () => {
       entries: history,
       schedule: MON_FRI,
       holidayKeys: NO_HOLIDAYS,
-      importedHolidayKeys: NO_HOLIDAYS,
       trackingStart: "2026-09-01",
       currentBalance: 0,
     });
@@ -354,7 +350,6 @@ describe("buildForecast", () => {
       baseMonths: 1,
       schedule: MON_FRI,
       holidayKeys: NO_HOLIDAYS,
-      importedHolidayKeys: NO_HOLIDAYS,
       trackingStart: "2026-09-01",
     };
 
@@ -425,7 +420,6 @@ describe("buildForecast", () => {
         entries: [...history, ...entries],
         schedule: MON_FRI,
         holidayKeys: NO_HOLIDAYS,
-        importedHolidayKeys: NO_HOLIDAYS,
         trackingStart: "2026-09-01",
         currentBalance: 0,
       }).months[1].absenceDays;
