@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/app/empty-state";
 import { ErrorState } from "@/components/app/error-state";
 import { FilterChips } from "@/components/app/filter-chips";
-import { closeRange, currentMonth, shiftMonth } from "@/components/app/month";
+import { closeRange, currentMonth } from "@/components/app/month";
 import { MonthClosePanel } from "@/components/app/month-close-panel";
 import { PageContainer } from "@/components/app/page-container";
 import { PageHeader } from "@/components/app/page-header";
@@ -59,7 +59,8 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useOdooExtension } from "@/hooks/use-odoo-extension";
-import { formatMonth } from "@/lib/format";
+import { shiftMonthKey } from "@/lib/dates";
+import { formatMonth, plural } from "@/lib/format";
 import {
   isRounding,
   ROUNDING_OPTIONS,
@@ -108,10 +109,6 @@ async function copyToClipboard(text: string, label: string) {
       "Kopieren nicht möglich – erlaube den Zugriff auf die Zwischenablage.",
     );
   }
-}
-
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
 }
 
 export function TimesheetView() {
@@ -520,8 +517,8 @@ export function TimesheetView() {
             label={monthLabel}
             prevLabel="Vorheriger Monat"
             nextLabel="Nächster Monat"
-            onPrev={() => changeMonth(shiftMonth(month, -1))}
-            onNext={() => changeMonth(shiftMonth(month, 1))}
+            onPrev={() => changeMonth(shiftMonthKey(month, -1))}
+            onNext={() => changeMonth(shiftMonthKey(month, 1))}
             onToday={() => changeMonth(currentMonth())}
             isCurrent={month === currentMonth()}
           >

@@ -12,8 +12,10 @@ import {
   isValidIsoWeek,
   monthEndKey,
   monthRange,
+  monthsEndingAt,
   shiftDateKey,
   shiftIsoWeek,
+  shiftMonthKey,
   weekdayOfKey,
 } from "./dates";
 
@@ -109,6 +111,24 @@ describe("monthEndKey", () => {
     expect(monthEndKey(2026, 8)).toBe("2026-09-30");
     expect(monthEndKey(2024, 1)).toBe("2024-02-29");
     expect(monthEndKey(2026, 11)).toBe("2026-12-31");
+  });
+});
+
+describe("shiftMonthKey / monthsEndingAt", () => {
+  it("verschiebt Monate über Jahresgrenzen", () => {
+    expect(shiftMonthKey("2026-01", -1)).toBe("2025-12");
+    expect(shiftMonthKey("2026-12", 1)).toBe("2027-01");
+    expect(shiftMonthKey("2026-10", -22)).toBe("2024-12");
+    expect(shiftMonthKey("2026-10", 0)).toBe("2026-10");
+  });
+
+  it("liefert count Monate bis einschließlich Endmonat", () => {
+    expect(monthsEndingAt("2026-02", 3)).toEqual([
+      "2025-12",
+      "2026-01",
+      "2026-02",
+    ]);
+    expect(monthsEndingAt("2026-10", 12)).toHaveLength(12);
   });
 });
 

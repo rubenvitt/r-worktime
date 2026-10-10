@@ -1,8 +1,8 @@
 import { EntrySource, type Prisma, type TimeEntry } from "@prisma/client";
+import { ADJUSTMENT_MARKER } from "@/lib/adjustment-marker";
 import { prisma } from "@/lib/prisma";
 
-/** Alter Text-Marker des Anfangs-Überstunden-Saldos (Fallback für Altdaten). */
-export const ADJUSTMENT_MARKER = "Anfangs-Überstunden-Saldo";
+export { ADJUSTMENT_MARKER, isAdjustmentEntry } from "@/lib/adjustment-marker";
 
 type TimeEntryReader = {
   timeEntry: Pick<Prisma.TransactionClient["timeEntry"], "findFirst">;
