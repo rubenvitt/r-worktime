@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Plus, Trash2 } from "lucide-react";
+import { CalendarRange, Download, Plus, Trash2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import { StickyActionBar } from "@/components/app/sticky-action-bar";
 import { BulkDeleteDialog } from "@/components/data/bulk-delete-dialog";
 import { DataTable, type DateRangeValue } from "@/components/data/data-table";
 import { ExportDialog } from "@/components/data/export-dialog";
+import { AbsenceRangeDialog } from "@/components/entries/absence-range-dialog";
 import { EditEntryDialog } from "@/components/entries/edit-entry-dialog";
 import { QuickEntryModal } from "@/components/problems/quick-entry-modal";
 import {
@@ -48,6 +49,7 @@ export function EntriesView() {
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [newEntryKey, setNewEntryKey] = useState<number | null>(null);
+  const [absenceKey, setAbsenceKey] = useState<number | null>(null);
   const [tableRefreshKey, setTableRefreshKey] = useState(0);
   const [totalCount, setTotalCount] = useState<number | null>(null);
 
@@ -112,6 +114,15 @@ export function EntriesView() {
               Export
             </Button>
             <Button
+              variant="outline"
+              onClick={() => setAbsenceKey(Date.now())}
+              className="h-11 md:h-9"
+              aria-label="Abwesenheit eintragen"
+            >
+              <CalendarRange />
+              <span className="hidden sm:inline">Abwesenheit</span>
+            </Button>
+            <Button
               onClick={() => setNewEntryKey(Date.now())}
               className="h-11 md:h-9"
               aria-label="Neuer Eintrag"
@@ -174,6 +185,17 @@ export function EntriesView() {
             setNewEntryKey(null);
             refreshTable();
           }}
+        />
+      ) : null}
+
+      {absenceKey !== null ? (
+        <AbsenceRangeDialog
+          key={absenceKey}
+          open
+          onOpenChange={(open) => {
+            if (!open) setAbsenceKey(null);
+          }}
+          onSuccess={refreshTable}
         />
       ) : null}
 

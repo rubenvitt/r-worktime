@@ -1,7 +1,9 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { CalendarPlus } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { ErrorState } from "@/components/app/error-state";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
@@ -11,10 +13,12 @@ import {
   SkeletonStatStrip,
 } from "@/components/app/skeletons";
 import { Stat, StatStrip } from "@/components/app/stat-strip";
+import { AbsenceRangeDialog } from "@/components/entries/absence-range-dialog";
 import { fetchJson } from "@/components/reports/fetch-json";
 import { ReportHeader } from "@/components/reports/report-header";
 import { ReportYearNav } from "@/components/reports/report-period-nav";
 import { useReportYear } from "@/components/reports/use-report-params";
+import { Button } from "@/components/ui/button";
 import type { AbsenceReport } from "@/lib/reports/absences";
 import { cn } from "@/lib/utils";
 import {
@@ -32,6 +36,7 @@ export function AbsencesView() {
   const { year, setYear, currentYear, maxYear } = useReportYear({
     maxOffset: 1,
   });
+  const [absenceKey, setAbsenceKey] = useState<number | null>(null);
 
   const query = useQuery({
     queryKey: ["reports", "absences", year],
@@ -58,7 +63,28 @@ export function AbsencesView() {
             onChange={setYear}
           />
         }
+        actions={
+          <Button
+            type="button"
+            size="sm"
+            className="h-11 md:h-8"
+            onClick={() => setAbsenceKey(Date.now())}
+          >
+            <CalendarPlus />
+            Abwesenheit eintragen
+          </Button>
+        }
       />
+
+      {absenceKey !== null ? (
+        <AbsenceRangeDialog
+          key={absenceKey}
+          open
+          onOpenChange={(open) => {
+            if (!open) setAbsenceKey(null);
+          }}
+        />
+      ) : null}
 
       {query.isPending ? (
         <div className="space-y-6" aria-busy="true">
@@ -155,11 +181,7 @@ function AbsencesContent({ report }: { report: AbsenceReport }) {
           <Stat
             label="Feiertage"
             value={formatDays(totals.days.holiday)}
-            hint={
-              report.notImportedHolidays.length > 0
-                ? `an Arbeitstagen, ${report.notImportedHolidays.length} nicht importiert`
-                : "an Arbeitstagen"
-            }
+            hint="an Arbeitstagen"
           />
           {showUnpaid ? (
             <Stat
@@ -226,21 +248,6 @@ function CountingRules({ report }: { report: AbsenceReport }) {
         Tagen, die unter Probleme mit diesem Grund als geprüft markiert sind und
         keine Arbeitseinträge haben; er verringert den Anspruch nicht.
       </p>
-      {report.notImportedHolidays.length > 0 ? (
-        <p className="text-warning">
-          {report.notImportedHolidays.length === 1
-            ? "1 Feiertag ist nicht importiert"
-            : `${report.notImportedHolidays.length} Feiertage sind nicht importiert`}
-          . Hier zählen sie mit, der Saldo nimmt sie aber erst nach dem Import
-          aus dem Soll.{" "}
-          <Link
-            href="/settings/overtime"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            Feiertage importieren
-          </Link>
-        </p>
-      ) : null}
       {report.holidayServiceUnavailable ? (
         <p className="text-warning">
           Der Feiertags-Dienst war nicht erreichbar; es sind nur importierte
