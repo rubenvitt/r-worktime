@@ -8,7 +8,7 @@ import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/app/empty-state";
 import { ErrorState } from "@/components/app/error-state";
-import { closeRange, currentMonth, shiftMonth } from "@/components/app/month";
+import { closeRange, currentMonth } from "@/components/app/month";
 import { PageContainer } from "@/components/app/page-container";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel } from "@/components/app/panel";
@@ -40,12 +40,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { berlinTodayKey, shiftDateKey } from "@/lib/dates";
+import { berlinTodayKey, shiftDateKey, shiftMonthKey } from "@/lib/dates";
 import {
   formatDateShort,
   formatHours,
   formatMonth,
   hoursToMinutes,
+  plural,
 } from "@/lib/format";
 
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
@@ -57,10 +58,6 @@ type SortBy = NonNullable<ProblemsQuery["sortBy"]>;
 
 /** Trigger-Höhe: mobil 44 px, ab md 32 px (data-size schlägt sonst h-*) */
 const TRIGGER = "data-[size=sm]:h-11 md:data-[size=sm]:h-8";
-
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
 
 function formatKeyDate(key: string): string {
   return `${key.slice(8, 10)}.${key.slice(5, 7)}.${key.slice(0, 4)}`;
@@ -488,8 +485,8 @@ export function ProblemsView() {
               label={monthLabel}
               prevLabel="Vorheriger Monat"
               nextLabel="Nächster Monat"
-              onPrev={() => changeMonth(shiftMonth(month, -1))}
-              onNext={() => changeMonth(shiftMonth(month, 1))}
+              onPrev={() => changeMonth(shiftMonthKey(month, -1))}
+              onNext={() => changeMonth(shiftMonthKey(month, 1))}
               onToday={() => changeMonth(thisMonth)}
               isCurrent={month === thisMonth}
               nextDisabled={month >= thisMonth}

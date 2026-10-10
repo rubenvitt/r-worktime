@@ -25,7 +25,7 @@ export function PageHeader({
       <div
         className={cn(
           "flex flex-col gap-3",
-          hasSide && "md:flex-row md:items-start md:justify-between md:gap-6",
+          hasSide && "lg:flex-row lg:items-start lg:justify-between lg:gap-6",
         )}
       >
         <div className="min-w-0 space-y-1">
@@ -42,7 +42,7 @@ export function PageHeader({
           ) : null}
         </div>
         {hasSide ? (
-          <div className="flex flex-wrap items-center gap-2 md:shrink-0 md:flex-nowrap md:gap-3">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 lg:shrink-0 lg:flex-nowrap">
             {period ? (
               <div className="min-w-[15rem] flex-1 md:w-auto md:min-w-0 md:flex-none">
                 {period}
@@ -55,7 +55,10 @@ export function PageHeader({
         ) : null}
       </div>
       {toolbar ? (
-        <div className="-mx-4 mt-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:mx-0 md:overflow-visible md:px-0">
+        // Bis lg scrollt die Leiste in sich (mit Seitenleiste ist der Inhalt bei
+        // md schmal). Das Polster gleicht das md:-mb-4 der Tab-Navigation aus,
+        // damit der aktive Strich nicht abgeschnitten wird.
+        <div className="-mx-4 mt-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:mx-0 md:-mb-[17px] md:px-0 md:pb-[17px] lg:mb-0 lg:overflow-visible lg:pb-0">
           {toolbar}
         </div>
       ) : null}

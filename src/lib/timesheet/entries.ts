@@ -1,6 +1,6 @@
 // Reine Abbildungen von TimeEntry-Zeilen auf Stundenzettel-Datensätze und Timing-JSON.
 
-import { ADJUSTMENT_MARKER } from "@/lib/adjustment";
+import { isAdjustmentEntry } from "@/lib/adjustment-marker";
 import { BERLIN_TIME_ZONE, berlinDateKey } from "@/lib/dates";
 import {
   joinTitleChain,
@@ -36,14 +36,7 @@ export interface TimesheetFilter {
   includeAbsences: boolean;
 }
 
-export function isAdjustmentEntry(
-  entry: Pick<TimesheetSourceEntry, "source" | "description">,
-): boolean {
-  return (
-    entry.source === "ADJUSTMENT" ||
-    (entry.description?.includes(ADJUSTMENT_MARKER) ?? false)
-  );
-}
+export { isAdjustmentEntry };
 
 /**
  * Filtert auf Typ, Projekt-Teilbaum und Berlin-Monat des Starts; der Saldo

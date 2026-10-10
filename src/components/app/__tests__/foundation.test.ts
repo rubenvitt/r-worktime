@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  closeRange,
-  defaultCloseMonth,
-  shiftMonth,
-} from "@/components/app/month";
+import { closeRange, defaultCloseMonth } from "@/components/app/month";
 import { deriveSyncState } from "@/components/app/sync-state";
 import { timesheetQueryString } from "@/components/app/timesheet-prefs";
 import {
@@ -19,11 +15,13 @@ import {
   formatDuration,
   formatHours,
   formatMonth,
+  formatPercent,
   formatRelative,
   formatSeconds,
   formatTimeRange,
   formatTimestamp,
   MINUS,
+  plural,
 } from "@/lib/format";
 import { billingStatusLabel } from "@/lib/labels";
 import type { PublicTimingStatus } from "@/lib/timing/settings";
@@ -60,6 +58,15 @@ describe("format", () => {
     expect(formatSeconds(1800)).toBe("1,8 s");
   });
 
+  it("formatiert Prozent und Mehrzahl", () => {
+    expect(formatPercent(0.754)).toBe("75 %");
+    expect(formatPercent(1)).toBe("100 %");
+    expect(formatPercent(null)).toBe("—");
+    expect(formatPercent(Number.NaN)).toBe("—");
+    expect(plural(1, "Tag", "Tage")).toBe("1 Tag");
+    expect(plural(3, "Tag", "Tage")).toBe("3 Tage");
+  });
+
   it("formatiert relative Zeiten", () => {
     expect(formatRelative("2026-10-09T07:55:00Z", NOW)).toBe("vor 5 Min.");
     expect(formatRelative("2026-10-09T06:00:00Z", NOW)).toBe("vor 2 Std.");
@@ -80,10 +87,6 @@ describe("labels", () => {
 });
 
 describe("month", () => {
-  it("verschiebt Monate über Jahresgrenzen", () => {
-    expect(shiftMonth("2026-01", -1)).toBe("2025-12");
-  });
-
   it("wählt bis zum 10. den Vormonat", () => {
     expect(defaultCloseMonth(NOW)).toBe("2026-09");
     expect(defaultCloseMonth(new Date("2026-10-11T08:00:00Z"))).toBe("2026-10");

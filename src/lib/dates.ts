@@ -125,6 +125,22 @@ export function monthRange(month: string): MonthRange {
   };
 }
 
+/** Verschiebt einen Monat "YYYY-MM" um n Monate: "2026-12", +1 → "2027-01". */
+export function shiftMonthKey(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const index = y * 12 + (m - 1) + delta;
+  const year = Math.floor(index / 12);
+  const monthNumber = index - year * 12 + 1;
+  return `${year}-${String(monthNumber).padStart(2, "0")}`;
+}
+
+/** count Monate bis einschließlich endMonth, aufsteigend. */
+export function monthsEndingAt(endMonth: string, count: number): string[] {
+  return Array.from({ length: count }, (_, i) =>
+    shiftMonthKey(endMonth, i - (count - 1)),
+  );
+}
+
 /**
  * Letzter Kalendertag eines Monats (monthIndex 0–11) als "YYYY-MM-DD".
  * Reine Kalenderrechnung, unabhängig von der Zeitzone des Browsers.

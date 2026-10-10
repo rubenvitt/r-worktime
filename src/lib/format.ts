@@ -95,6 +95,17 @@ export function formatDecimal(value: number, digits = 1): string {
   }).format(value);
 }
 
+/** Anteil 0–1 als ganze Prozent: 0,754 → "75 %"; null/undefined → "—" */
+export function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${formatDecimal(value * 100, 0)} %`;
+}
+
+/** Zahl mit passender Einzahl/Mehrzahl: plural(1, "Tag", "Tage") → "1 Tag" */
+export function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
 /** 1800 → "1,8 s" */
 export function formatSeconds(ms: number): string {
   return `${formatDecimal(ms / 1000, 1)} s`;
