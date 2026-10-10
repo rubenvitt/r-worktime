@@ -32,14 +32,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { formatHours } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
   DEFAULT_SETTINGS,
   type UserSettingsResponse,
@@ -50,15 +44,6 @@ import {
 import { SettingsSection } from "./settings-section";
 import { WorkDaysSelector } from "./work-days-selector";
 
-// Werte bleiben unverändert, nur die Beschriftung ohne GMT-Offset
-const TIMEZONES = [
-  { value: "Europe/Berlin", label: "Europa/Berlin" },
-  { value: "Europe/London", label: "Europa/London" },
-  { value: "Europe/Paris", label: "Europa/Paris" },
-  { value: "Europe/Zurich", label: "Europa/Zürich" },
-  { value: "America/New_York", label: "Amerika/New York" },
-];
-
 // Satz aus DEFAULT_SETTINGS, damit der Text zur Server-Logik passt
 const DEFAULT_DAYS = (DEFAULT_SETTINGS.workDays ?? [])
   .map((day) =>
@@ -66,10 +51,9 @@ const DEFAULT_DAYS = (DEFAULT_SETTINGS.workDays ?? [])
   )
   .join(", ");
 const DEFAULTS_SUMMARY = [
-  `Setzt die Werte dieser Seite zurück: ${DEFAULT_SETTINGS.weeklyWorkHours ?? 40} Wochenstunden`,
+  `Setzt die Werte dieser Seite zurück: ${DEFAULT_SETTINGS.weeklyWorkHours} Wochenstunden`,
   DEFAULT_DAYS,
-  `${DEFAULT_SETTINGS.defaultStartTime}–${DEFAULT_SETTINGS.defaultEndTime}`,
-  `Pause ${formatHours(DEFAULT_SETTINGS.breakDuration ?? 0)}.`,
+  `${formatDays(DEFAULT_SETTINGS.annualVacationDays)} Urlaub.`,
 ].join(", ");
 
 const baseResolver = zodResolver(userSettingsUpdateSchema);
@@ -86,17 +70,24 @@ const resolver: typeof baseResolver = async (values, context, options) => {
   return result;
 };
 
+/** 30 → "30 Tage", 1 → "1 Tag", 27.5 → "27,5 Tage" */
+function formatDays(days: number): string {
+  const text = days.toLocaleString("de-DE", { maximumFractionDigits: 1 });
+  return `${text} ${days === 1 ? "Tag" : "Tage"}`;
+}
+
 function toNumber(value: string): number {
   return Number.parseFloat(value.replace(",", "."));
 }
 
 function NumberWithSuffix({
   suffix,
+  className,
   ...props
 }: React.ComponentProps<typeof Input> & { suffix: string }) {
   return (
     <div className="relative w-full max-w-40">
-      <Input {...props} className="num pr-9" />
+      <Input {...props} className={cn("num pr-9", className)} />
       <span
         aria-hidden="true"
         className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground"
@@ -108,7 +99,7 @@ function NumberWithSuffix({
 }
 
 /**
- * Formular für Sollzeit und Standardzeiten. `children` sind weitere
+ * Formular für Sollzeit und Urlaubsanspruch. `children` sind weitere
  * Abschnitte der Seite (außerhalb des <form>), die Speicherleiste kommt danach.
  */
 export function UserSettingsForm({ children }: { children?: React.ReactNode }) {
@@ -138,20 +129,13 @@ export function UserSettingsForm({ children }: { children?: React.ReactNode }) {
     defaultValues: DEFAULT_SETTINGS,
   });
 
-  // Geladene Werte übernehmen. Sprache, Benachrichtigung und Theme sind
-  // nicht sichtbar, bleiben aber im Formularzustand und gehen unverändert mit.
+  // Geladene Werte übernehmen
   useEffect(() => {
     if (settings) {
       form.reset({
         weeklyWorkHours: settings.weeklyWorkHours,
         workDays: settings.workDays,
-        defaultStartTime: settings.defaultStartTime,
-        defaultEndTime: settings.defaultEndTime,
-        breakDuration: settings.breakDuration,
-        timezone: settings.timezone,
-        overtimeNotification: settings.overtimeNotification,
-        language: settings.language,
-        theme: settings.theme as "light" | "dark" | "system" | undefined,
+        annualVacationDays: settings.annualVacationDays,
       });
     }
   }, [settings, form]);
@@ -208,10 +192,6 @@ export function UserSettingsForm({ children }: { children?: React.ReactNode }) {
     name: "weeklyWorkHours",
   });
   const workDays = useWatch({ control: form.control, name: "workDays" });
-  const breakDuration = useWatch({
-    control: form.control,
-    name: "breakDuration",
-  });
   const dayCount = workDays?.length ?? 0;
   const dailyTarget =
     Number.isFinite(weeklyWorkHours) && weeklyWorkHours > 0 && dayCount > 0
@@ -318,91 +298,36 @@ export function UserSettingsForm({ children }: { children?: React.ReactNode }) {
           </SettingsSection>
 
           <SettingsSection
-            id="standardzeiten"
-            title="Standardzeiten fürs Auffüllen"
-            description="Wird beim Auffüllen verwendet, nicht für dein Soll."
+            id="urlaub"
+            title="Urlaub"
+            description="Grundlage für Resturlaub und Prognose in den Berichten."
           >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <FormField
-                control={form.control}
-                name="defaultStartTime"
-                render={({ field }) => (
-                  <FormItem className="min-w-0">
-                    <FormLabel>Start</FormLabel>
-                    <FormControl>
-                      <Input type="time" className="num" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="defaultEndTime"
-                render={({ field }) => (
-                  <FormItem className="min-w-0">
-                    <FormLabel>Ende</FormLabel>
-                    <FormControl>
-                      <Input type="time" className="num" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="breakDuration"
-                render={({ field }) => (
-                  <FormItem className="min-w-0">
-                    <FormLabel>Pause</FormLabel>
-                    <FormControl>
-                      <NumberWithSuffix
-                        suffix="h"
-                        type="number"
-                        inputMode="decimal"
-                        step="0.25"
-                        min="0"
-                        max="8"
-                        name={field.name}
-                        ref={field.ref}
-                        onBlur={field.onBlur}
-                        value={Number.isFinite(field.value) ? field.value : ""}
-                        onChange={(e) =>
-                          field.onChange(toNumber(e.target.value))
-                        }
-                      />
-                    </FormControl>
-                    <FormDescription className="num">
-                      {Number.isFinite(breakDuration) && breakDuration >= 0
-                        ? formatHours(breakDuration)
-                        : "—"}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
             <FormField
               control={form.control}
-              name="timezone"
+              name="annualVacationDays"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Zeitzone</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="w-full sm:w-64">
-                        <SelectValue placeholder="Zeitzone wählen" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {TIMEZONES.map((tz) => (
-                        <SelectItem key={tz.value} value={tz.value}>
-                          {tz.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FormLabel>Jahresurlaub</FormLabel>
+                  <FormControl>
+                    <NumberWithSuffix
+                      suffix="Tage"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.5"
+                      min="0"
+                      max="60"
+                      className="pr-14"
+                      name={field.name}
+                      ref={field.ref}
+                      onBlur={field.onBlur}
+                      value={Number.isFinite(field.value) ? field.value : ""}
+                      onChange={(e) => field.onChange(toNumber(e.target.value))}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Dein Urlaubsanspruch pro Kalenderjahr, halbe Tage sind
+                    möglich.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -442,8 +367,8 @@ export function UserSettingsForm({ children }: { children?: React.ReactNode }) {
                   Auf Standardwerte zurücksetzen?
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  Deine Sollzeit und Standardzeiten werden überschrieben. Das
-                  ändert auch dein Soll und damit den Saldo.
+                  Deine Sollzeit und dein Urlaubsanspruch werden überschrieben.
+                  Das ändert auch dein Soll und damit den Saldo.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

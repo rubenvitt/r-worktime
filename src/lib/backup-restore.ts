@@ -59,3 +59,58 @@ export function keepMissingSyncFields<
   }
   return merged;
 }
+
+export interface RestoredSettings {
+  weeklyWorkHours: number;
+  workDays: number[];
+  annualVacationDays: number;
+}
+
+const DEFAULT_RESTORED_SETTINGS: RestoredSettings = {
+  weeklyWorkHours: 40,
+  workDays: [1, 2, 3, 4, 5],
+  annualVacationDays: 30,
+};
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Einstellungen aus einem Backup. Übernimmt nur Felder, die es noch gibt;
+ * entfernte Felder alter Backups (Standardzeiten, Pause, Zeitzone, Sprache,
+ * Theme, Benachrichtigung) werden ignoriert. Decimal-Werte kommen aus dem
+ * Backup als String ("40") und werden in Zahlen umgewandelt.
+ */
+export function settingsFromBackup(raw: unknown): RestoredSettings {
+  const source =
+    raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+
+  const weeklyWorkHours = toFiniteNumber(source.weeklyWorkHours);
+  const annualVacationDays = toFiniteNumber(source.annualVacationDays);
+  const workDays =
+    Array.isArray(source.workDays) &&
+    source.workDays.length > 0 &&
+    source.workDays.every(
+      (day) => Number.isInteger(day) && day >= 0 && day <= 6,
+    )
+      ? [...new Set(source.workDays as number[])]
+      : DEFAULT_RESTORED_SETTINGS.workDays;
+
+  return {
+    weeklyWorkHours:
+      weeklyWorkHours !== null && weeklyWorkHours > 0
+        ? weeklyWorkHours
+        : DEFAULT_RESTORED_SETTINGS.weeklyWorkHours,
+    workDays,
+    annualVacationDays:
+      annualVacationDays !== null &&
+      annualVacationDays >= 0 &&
+      annualVacationDays <= 60
+        ? annualVacationDays
+        : DEFAULT_RESTORED_SETTINGS.annualVacationDays,
+  };
+}

@@ -21,19 +21,11 @@ export async function getUserSettings(
     settings = await prisma.userSettings.create({
       data: {
         userId,
-        weeklyWorkHours: new Prisma.Decimal(
-          DEFAULT_SETTINGS.weeklyWorkHours ?? 40,
+        weeklyWorkHours: new Prisma.Decimal(DEFAULT_SETTINGS.weeklyWorkHours),
+        workDays: DEFAULT_SETTINGS.workDays,
+        annualVacationDays: new Prisma.Decimal(
+          DEFAULT_SETTINGS.annualVacationDays,
         ),
-        workDays: DEFAULT_SETTINGS.workDays ?? [1, 2, 3, 4, 5],
-        defaultStartTime: DEFAULT_SETTINGS.defaultStartTime ?? "09:00",
-        defaultEndTime: DEFAULT_SETTINGS.defaultEndTime ?? "17:00",
-        breakDuration: new Prisma.Decimal(
-          DEFAULT_SETTINGS.breakDuration ?? 0.5,
-        ),
-        timezone: DEFAULT_SETTINGS.timezone ?? "Europe/Berlin",
-        overtimeNotification: DEFAULT_SETTINGS.overtimeNotification ?? true,
-        language: DEFAULT_SETTINGS.language ?? "de",
-        theme: DEFAULT_SETTINGS.theme ?? "system",
       },
     });
   }
@@ -54,13 +46,7 @@ export async function updateUserSettings(
   const updateData: Partial<{
     weeklyWorkHours: Prisma.Decimal;
     workDays: number[];
-    defaultStartTime: string;
-    defaultEndTime: string;
-    breakDuration: Prisma.Decimal;
-    timezone: string;
-    overtimeNotification: boolean;
-    language: string;
-    theme: string;
+    annualVacationDays: Prisma.Decimal;
     updatedAt: Date;
   }> = {};
 
@@ -70,26 +56,8 @@ export async function updateUserSettings(
   if (data.workDays !== undefined) {
     updateData.workDays = data.workDays;
   }
-  if (data.defaultStartTime !== undefined) {
-    updateData.defaultStartTime = data.defaultStartTime;
-  }
-  if (data.defaultEndTime !== undefined) {
-    updateData.defaultEndTime = data.defaultEndTime;
-  }
-  if (data.breakDuration !== undefined) {
-    updateData.breakDuration = new Prisma.Decimal(data.breakDuration);
-  }
-  if (data.timezone !== undefined) {
-    updateData.timezone = data.timezone;
-  }
-  if (data.overtimeNotification !== undefined) {
-    updateData.overtimeNotification = data.overtimeNotification;
-  }
-  if (data.language !== undefined) {
-    updateData.language = data.language;
-  }
-  if (data.theme !== undefined) {
-    updateData.theme = data.theme;
+  if (data.annualVacationDays !== undefined) {
+    updateData.annualVacationDays = new Prisma.Decimal(data.annualVacationDays);
   }
 
   updateData.updatedAt = new Date();
@@ -111,17 +79,11 @@ export async function resetUserSettings(
   const resetSettings = await prisma.userSettings.update({
     where: { userId },
     data: {
-      weeklyWorkHours: new Prisma.Decimal(
-        DEFAULT_SETTINGS.weeklyWorkHours ?? 40,
+      weeklyWorkHours: new Prisma.Decimal(DEFAULT_SETTINGS.weeklyWorkHours),
+      workDays: DEFAULT_SETTINGS.workDays,
+      annualVacationDays: new Prisma.Decimal(
+        DEFAULT_SETTINGS.annualVacationDays,
       ),
-      workDays: DEFAULT_SETTINGS.workDays ?? [1, 2, 3, 4, 5],
-      defaultStartTime: DEFAULT_SETTINGS.defaultStartTime ?? "09:00",
-      defaultEndTime: DEFAULT_SETTINGS.defaultEndTime ?? "17:00",
-      breakDuration: new Prisma.Decimal(DEFAULT_SETTINGS.breakDuration ?? 0.5),
-      timezone: DEFAULT_SETTINGS.timezone ?? "Europe/Berlin",
-      overtimeNotification: DEFAULT_SETTINGS.overtimeNotification ?? true,
-      language: DEFAULT_SETTINGS.language ?? "de",
-      theme: DEFAULT_SETTINGS.theme ?? "system",
       updatedAt: new Date(),
     },
   });
@@ -159,20 +121,6 @@ export function calculateExpectedHours(
 }
 
 /**
- * Calculate if overtime notification should be triggered
- */
-export function shouldNotifyOvertime(
-  settings: UserSettingsResponse,
-  actualHours: number,
-  date: Date,
-): boolean {
-  if (!settings.overtimeNotification) return false;
-
-  const expectedHours = calculateExpectedHours(settings, date);
-  return actualHours > expectedHours;
-}
-
-/**
  * Calculate total expected hours for a given date range
  */
 export function calculateTotalExpectedHours(
@@ -199,13 +147,7 @@ function formatSettingsResponse(settings: {
   userId: string;
   weeklyWorkHours: Prisma.Decimal;
   workDays: number[];
-  defaultStartTime: string;
-  defaultEndTime: string;
-  breakDuration: Prisma.Decimal;
-  timezone: string;
-  overtimeNotification: boolean;
-  language: string;
-  theme: string;
+  annualVacationDays: Prisma.Decimal;
   createdAt: Date;
   updatedAt: Date;
 }): UserSettingsResponse {
@@ -214,13 +156,7 @@ function formatSettingsResponse(settings: {
     userId: settings.userId,
     weeklyWorkHours: Number(settings.weeklyWorkHours),
     workDays: settings.workDays,
-    defaultStartTime: settings.defaultStartTime,
-    defaultEndTime: settings.defaultEndTime,
-    breakDuration: Number(settings.breakDuration),
-    timezone: settings.timezone,
-    overtimeNotification: settings.overtimeNotification,
-    language: settings.language,
-    theme: settings.theme,
+    annualVacationDays: Number(settings.annualVacationDays),
     createdAt: settings.createdAt,
     updatedAt: settings.updatedAt,
   };

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { PageContainer } from "@/components/app/page-container";
 import { WeekView } from "@/components/week/week-view";
 import { auth } from "@/lib/auth";
+import { isValidIsoWeek } from "@/lib/dates";
 
 interface WeekPageProps {
   params: Promise<{
@@ -22,8 +23,8 @@ export default async function WeekPage({ params }: WeekPageProps) {
   const year = parseInt(yearParam, 10);
   const week = parseInt(weekParam, 10);
 
-  // Validierung
-  if (Number.isNaN(year) || Number.isNaN(week) || week < 1 || week > 53) {
+  // Validierung: nur ISO-Wochen, die es im Jahr gibt
+  if (!isValidIsoWeek(year, week)) {
     redirect("/dashboard");
   }
 

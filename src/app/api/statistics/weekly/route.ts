@@ -1,7 +1,7 @@
-import { getWeek, getYear } from "date-fns";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { berlinDateKey, isoWeekOf, isValidIsoWeek } from "@/lib/dates";
 import { overtimeService } from "@/services/overtime.service";
 import type {
   StatisticsApiResponse,
@@ -41,29 +41,27 @@ export async function GET(request: NextRequest) {
 
     const validatedQuery = querySchema.parse(queryData);
 
-    // Bestimme Jahr und Woche
+    // Bestimme ISO-Wochenjahr und ISO-Woche (Berliner Kalendertag)
     let year: number;
     let week: number;
 
     if (validatedQuery.date) {
-      // Wenn ein Datum angegeben wurde, extrahiere Jahr und Woche
-      year = getYear(validatedQuery.date);
-      week = getWeek(validatedQuery.date, { weekStartsOn: 1 });
+      if (Number.isNaN(validatedQuery.date.getTime())) {
+        return NextResponse.json({ error: "Invalid date." }, { status: 400 });
+      }
+      ({ year, week } = isoWeekOf(berlinDateKey(validatedQuery.date)));
     } else if (validatedQuery.year && validatedQuery.week) {
-      // Wenn Jahr und Woche direkt angegeben wurden
       year = validatedQuery.year;
       week = validatedQuery.week;
     } else {
       // Default: Aktuelle Woche
-      const now = new Date();
-      year = getYear(now);
-      week = getWeek(now, { weekStartsOn: 1 });
+      ({ year, week } = isoWeekOf(berlinDateKey(new Date())));
     }
 
-    // Validiere Wochennummer
-    if (week < 1 || week > 53) {
+    // Validiere Wochennummer (KW 53 gibt es nur in manchen Jahren)
+    if (!isValidIsoWeek(year, week)) {
       return NextResponse.json(
-        { error: "Invalid week number. Must be between 1 and 53." },
+        { error: "Invalid ISO week for this year." },
         { status: 400 },
       );
     }
@@ -119,6 +117,13 @@ export async function POST(request: NextRequest) {
       if (!year || !Array.isArray(weeks)) {
         return NextResponse.json(
           { error: "year and weeks array are required for bulk fetch" },
+          { status: 400 },
+        );
+      }
+
+      if (!weeks.every((week) => isValidIsoWeek(year, week))) {
+        return NextResponse.json(
+          { error: "Invalid ISO week for this year." },
           { status: 400 },
         );
       }

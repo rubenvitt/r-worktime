@@ -1,18 +1,23 @@
 import { EntryType as PrismaEntryType } from "@prisma/client";
 import {
-  eachDayOfInterval,
-  endOfWeek,
-  format,
-  isWeekend,
-  setWeek,
-  setYear,
-  startOfWeek,
-  startOfYear,
-} from "date-fns";
-import { de } from "date-fns/locale";
+  berlinDayStart,
+  dateKeyFromDbDate,
+  isoWeekRange,
+  weekdayOfKey,
+} from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import type { EntryType } from "@/types/database";
 import type { DayData, WeekData, WeekSummary } from "@/types/statistics";
+
+const WEEKDAY_NAMES = [
+  "Sonntag",
+  "Montag",
+  "Dienstag",
+  "Mittwoch",
+  "Donnerstag",
+  "Freitag",
+  "Samstag",
+] as const;
 
 export class WeekService {
   private static instance: WeekService;
@@ -53,28 +58,14 @@ export class WeekService {
     };
   }
 
-  private getWeekDateRange(
-    year: number,
-    week: number,
-  ): { start: Date; end: Date } {
-    // Erstelle ein Datum für die gewünschte Woche
-    let date = new Date(year, 0, 1); // 1. Januar des Jahres
-    date = setYear(date, year);
-    date = setWeek(date, week);
-
-    // Hole Start und Ende der Woche (Montag bis Sonntag)
-    const start = startOfWeek(date, { weekStartsOn: 1 }); // Montag als Wochenstart
-    const end = endOfWeek(date, { weekStartsOn: 1 });
-
-    return { start, end };
-  }
-
   async getWeekData(
     userId: string,
     year: number,
     week: number,
   ): Promise<WeekData> {
-    const { start, end } = this.getWeekDateRange(year, week);
+    // ISO-8601-Woche auf Berliner Kalendertagen; wirft bei ungültiger Woche
+    const range = isoWeekRange(year, week);
+    const { start, end } = range;
     const userSettings = await this.getUserSettings(userId);
 
     // Hole alle TimeEntries für die Woche
@@ -92,7 +83,7 @@ export class WeekService {
     // Erstelle eine Map für schnellen Zugriff auf Einträge pro Tag
     const entriesByDate = new Map<string, typeof entries>();
     entries.forEach((entry) => {
-      const dateKey = format(entry.date, "yyyy-MM-dd");
+      const dateKey = dateKeyFromDbDate(entry.date);
       if (!entriesByDate.has(dateKey)) {
         entriesByDate.set(dateKey, []);
       }
@@ -100,9 +91,9 @@ export class WeekService {
     });
 
     // Erstelle Daten für jeden Tag der Woche
-    const days = eachDayOfInterval({ start, end });
-    const dailyData: DayData[] = days.map((day) => {
-      const dateKey = format(day, "yyyy-MM-dd");
+    const dailyData: DayData[] = range.dayKeys.map((dateKey) => {
+      const weekday = weekdayOfKey(dateKey);
+      const isWeekend = weekday === 0 || weekday === 6;
       const dayEntries = entriesByDate.get(dateKey) || [];
 
       // Berechne Arbeitsstunden für den Tag
@@ -115,14 +106,14 @@ export class WeekService {
         .reduce((sum, e) => sum + Number(e.duration), 0);
 
       // Berechne Soll-Stunden (0 für Wochenenden)
-      const targetHours = isWeekend(day) ? 0 : userSettings.dailyHours;
+      const targetHours = isWeekend ? 0 : userSettings.dailyHours;
 
       // Berechne Differenz
       const difference = workHours - targetHours;
 
       return {
-        date: day,
-        dayOfWeek: format(day, "EEEE", { locale: de }),
+        date: berlinDayStart(dateKey),
+        dayOfWeek: WEEKDAY_NAMES[weekday],
         entries: dayEntries.map((e) => ({
           id: e.id,
           startTime: e.startTime,
@@ -134,7 +125,7 @@ export class WeekService {
         totalHours: workHours,
         targetHours,
         difference,
-        isWeekend: isWeekend(day),
+        isWeekend,
       };
     });
 
@@ -172,8 +163,9 @@ export class WeekService {
     week: number,
   ): Promise<number> {
     const userSettings = await this.getUserSettings(userId);
-    const yearStart = startOfYear(new Date(year, 0, 1));
-    const { end: weekEnd } = this.getWeekDateRange(year, week);
+    // Ab Montag der KW 1 des ISO-Wochenjahrs, damit „week“ Wochen gezählt werden
+    const { start: yearStart } = isoWeekRange(year, 1);
+    const { end: weekEnd } = isoWeekRange(year, week);
 
     // Hole alle Arbeitsstunden bis zum Ende der angegebenen Woche
     const entries = await prisma.timeEntry.findMany({

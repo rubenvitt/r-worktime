@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { isValidIsoWeek } from "@/lib/dates";
 import { weekService } from "@/services/week.service";
 import type { WeekDataResponse } from "@/types/statistics";
 
@@ -24,10 +25,10 @@ export async function GET(
     const resolvedParams = await params;
     const validatedParams = paramsSchema.parse(resolvedParams);
 
-    // Validierung der Wochennummer (1-53)
-    if (validatedParams.week < 1 || validatedParams.week > 53) {
+    // Validierung der ISO-Woche (KW 53 gibt es nur in manchen Jahren)
+    if (!isValidIsoWeek(validatedParams.year, validatedParams.week)) {
       return NextResponse.json(
-        { error: "Invalid week number. Must be between 1 and 53" },
+        { error: "Invalid ISO week for this year" },
         { status: 400 },
       );
     }

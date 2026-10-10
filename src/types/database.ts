@@ -52,9 +52,8 @@ export interface UserSettings {
   id: string;
   userId: string;
   weeklyWorkHours: Prisma.Decimal; // Standard Arbeitsstunden pro Woche
-  overtimeNotification: boolean;
-  language: string;
-  theme: string;
+  workDays: number[];
+  annualVacationDays: Prisma.Decimal; // Jahresurlaubsanspruch in Tagen
   createdAt: Date;
   updatedAt: Date;
 }

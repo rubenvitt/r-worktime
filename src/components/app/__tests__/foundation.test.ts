@@ -6,7 +6,12 @@ import {
 } from "@/components/app/month";
 import { deriveSyncState } from "@/components/app/sync-state";
 import { timesheetQueryString } from "@/components/app/timesheet-prefs";
-import { activeNavKey, currentWeekHref } from "@/components/layout/nav-config";
+import {
+  activeNavKey,
+  currentWeekHref,
+  NAV_ITEMS,
+  navItem,
+} from "@/components/layout/nav-config";
 import {
   formatDateLong,
   formatDateShort,
@@ -66,6 +71,10 @@ describe("format", () => {
 describe("labels", () => {
   it("übersetzt den Abrechnungsstatus", () => {
     expect(billingStatusLabel("unbilled")).toBe("Offen");
+    expect(billingStatusLabel("billable")).toBe("Offen");
+    expect(billingStatusLabel("paid")).toBe("Bezahlt");
+    expect(billingStatusLabel("Not Billable")).toBe("Nicht abrechenbar");
+    expect(billingStatusLabel("Sonderfall")).toBe("Sonderfall");
     expect(billingStatusLabel(null)).toBe("—");
   });
 });
@@ -157,6 +166,21 @@ describe("nav-config", () => {
     expect(activeNavKey("/settings/overtime")).toBe("settings");
     expect(activeNavKey("/upload")).toBe("settings");
     expect(activeNavKey("/timesheetx")).toBeNull();
+    expect(activeNavKey("/reports")).toBe("reports");
+    expect(activeNavKey("/reports/year")).toBe("reports");
+    expect(activeNavKey("/reportsx")).toBeNull();
+  });
+
+  it("hat eindeutige Tastenkürzel", () => {
+    const shortcuts = NAV_ITEMS.flatMap((item) =>
+      item.shortcut ? [item.shortcut] : [],
+    );
+    expect(new Set(shortcuts).size).toBe(shortcuts.length);
+    expect(navItem("reports")).toMatchObject({
+      href: "/reports",
+      group: "Auswertung",
+      shortcut: "g b",
+    });
   });
 
   it("verlinkt die ISO-Woche", () => {

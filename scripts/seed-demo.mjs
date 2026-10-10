@@ -251,9 +251,7 @@ async function main() {
       settings: {
         create: {
           weeklyWorkHours: 40,
-          overtimeNotification: true,
-          language: "de",
-          theme: "light",
+          annualVacationDays: 30,
         },
       },
     },

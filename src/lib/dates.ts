@@ -1,6 +1,8 @@
 // Kalendertage in Europe/Berlin. Ein Datums-Key ist "YYYY-MM-DD";
 // @db.Date-Spalten speichern ihn als UTC-Mitternacht des Keys.
 
+import { getISOWeek, getISOWeekYear } from "date-fns";
+
 export const BERLIN_TIME_ZONE = "Europe/Berlin";
 
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -130,4 +132,105 @@ export function monthRange(month: string): MonthRange {
 export function monthEndKey(year: number, monthIndex: number): string {
   return monthRange(`${year}-${String(monthIndex + 1).padStart(2, "0")}`)
     .lastKey;
+}
+
+// ---------------------------------------------------------------------------
+// ISO-8601-Kalenderwochen: Woche beginnt Montag, KW 1 enthält den 4. Januar
+// (= den ersten Donnerstag). Gerechnet wird immer auf dem Berliner Kalendertag.
+
+export interface IsoWeek {
+  /** ISO-Wochenjahr; weicht um den Jahreswechsel vom Kalenderjahr ab */
+  year: number;
+  week: number;
+}
+
+/** Mittag UTC eines Keys – date-fns rechnet dann in jeder Rechner-Zeitzone denselben Tag. */
+function noonOfKey(key: string): Date {
+  return new Date(`${key}T12:00:00Z`);
+}
+
+/** ISO-Woche eines Kalendertags ("YYYY-MM-DD"). */
+export function isoWeekOf(key: string): IsoWeek {
+  if (!isDateKey(key)) {
+    throw new RangeError(`Ungültiger Datums-Key: ${key}`);
+  }
+  const date = noonOfKey(key);
+  return { year: getISOWeekYear(date), week: getISOWeek(date) };
+}
+
+/** Anzahl der ISO-Wochen eines Wochenjahrs (52 oder 53). Der 28.12. liegt immer in der letzten. */
+export function isoWeeksInYear(year: number): number {
+  return isoWeekOf(`${String(year).padStart(4, "0")}-12-28`).week;
+}
+
+export function isValidIsoWeek(year: number, week: number): boolean {
+  return (
+    Number.isInteger(year) &&
+    Number.isInteger(week) &&
+    year >= 1000 &&
+    year <= 9999 &&
+    week >= 1 &&
+    week <= isoWeeksInYear(year)
+  );
+}
+
+/**
+ * Montag einer ISO-Woche als "YYYY-MM-DD". Reine Kalenderrechnung;
+ * Wochen außerhalb des Jahres laufen ins Nachbarjahr über (für Verschiebungen).
+ */
+export function isoWeekMonday(year: number, week: number): string {
+  // Der 4. Januar liegt immer in KW 1.
+  const jan4 = new Date(Date.UTC(year, 0, 4, 12));
+  const weekday = (jan4.getUTCDay() + 6) % 7; // Mo = 0
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - weekday + (week - 1) * 7);
+  return monday.toISOString().slice(0, 10);
+}
+
+/** Verschiebt eine ISO-Woche um n Wochen. */
+export function shiftIsoWeek(
+  year: number,
+  week: number,
+  delta: number,
+): IsoWeek {
+  return isoWeekOf(shiftDateKey(isoWeekMonday(year, week), delta * 7));
+}
+
+export interface IsoWeekRange extends IsoWeek {
+  /** Montag, "YYYY-MM-DD" */
+  firstKey: string;
+  /** Sonntag, "YYYY-MM-DD" (inklusive) */
+  lastKey: string;
+  /** Alle sieben Tage Montag bis Sonntag */
+  dayKeys: string[];
+  /** UTC-Mitternacht des Montags (inklusive, für @db.Date gte) */
+  start: Date;
+  /** UTC-Mitternacht des Sonntags (inklusive, für @db.Date lte) */
+  end: Date;
+}
+
+/** Grenzen einer ISO-Woche; wirft bei Wochen, die es im Jahr nicht gibt (z. B. KW 53/2027). */
+export function isoWeekRange(year: number, week: number): IsoWeekRange {
+  if (!isValidIsoWeek(year, week)) {
+    throw new RangeError(`Ungültige ISO-Woche: ${year}-W${week}`);
+  }
+  const firstKey = isoWeekMonday(year, week);
+  const dayKeys = Array.from({ length: 7 }, (_, i) =>
+    shiftDateKey(firstKey, i),
+  );
+  const lastKey = dayKeys[6];
+  return {
+    year,
+    week,
+    firstKey,
+    lastKey,
+    dayKeys,
+    start: berlinDayStart(firstKey),
+    end: berlinDayStart(lastKey),
+  };
+}
+
+/** Wochentag eines Keys: 0 = Sonntag, 1 = Montag, …, 6 = Samstag (wie UserSettings.workDays). */
+export function weekdayOfKey(key: string): number {
+  return berlinDayStart(key).getUTCDay();
 }

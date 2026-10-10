@@ -25,6 +25,7 @@ model User {
   timeEntries   TimeEntry[]
   importLogs    ImportLog[]
   reviewedDays  ReviewedDay[]
+  travelDays    TravelDay[]
   timingIntegration TimingIntegration?
 
   @@index([email])
@@ -33,19 +34,13 @@ model User {
 
 // User Settings - Individuelle Benutzereinstellungen
 model UserSettings {
-  id                    String   @id @default(cuid())
-  userId                String   @unique
-  weeklyWorkHours       Decimal  @default(40.0) @db.Decimal(4, 2)
-  workDays              Int[]    @default([1, 2, 3, 4, 5]) // 0=Sonntag, 1=Montag, ..., 6=Samstag
-  defaultStartTime      String   @default("09:00") // Format: HH:mm
-  defaultEndTime        String   @default("17:00") // Format: HH:mm
-  breakDuration         Decimal  @default(0.5) @db.Decimal(3, 2) // In Stunden
-  timezone              String   @default("Europe/Berlin")
-  overtimeNotification  Boolean  @default(true)
-  language              String   @default("de")
-  theme                 String   @default("light")
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  weeklyWorkHours    Decimal  @default(40.0) @db.Decimal(4, 2)
+  workDays           Int[]    @default([1, 2, 3, 4, 5]) // 0=Sonntag, 1=Montag, ..., 6=Samstag
+  annualVacationDays Decimal  @default(30) @db.Decimal(4, 1) // Jahresurlaubsanspruch in Tagen
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -120,6 +115,23 @@ model ReviewedDay {
   @@unique([userId, date])
   @@index([userId, date])
   @@map("reviewed_days")
+}
+
+// Travel Day - Manuelle Festlegung, ob ein Tag ein Reisetag ist
+model TravelDay {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @db.Date
+  isTravel  Boolean  // true = Reisetag, false = ausdrücklich kein Reisetag
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("travel_days")
 }
 
 // Timing Integration - REST-Sync-Konfiguration (bewusst getrennt von UserSettings,

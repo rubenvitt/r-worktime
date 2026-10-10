@@ -57,9 +57,6 @@ export async function POST(request: NextRequest) {
         settings: {
           create: {
             weeklyWorkHours: 40.0,
-            overtimeNotification: true,
-            language: "de",
-            theme: "light",
           },
         },
       },

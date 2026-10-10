@@ -18,9 +18,7 @@ async function main() {
       settings: {
         create: {
           weeklyWorkHours: 40.0,
-          overtimeNotification: true,
-          language: "de",
-          theme: "light",
+          annualVacationDays: 30,
         },
       },
     },
@@ -42,9 +40,7 @@ async function main() {
       settings: {
         create: {
           weeklyWorkHours: 38.5,
-          overtimeNotification: true,
-          language: "de",
-          theme: "light",
+          annualVacationDays: 30,
         },
       },
     },
