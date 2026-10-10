@@ -15,6 +15,10 @@
 //   Arbeit nachgetragen wird).
 //   Sie verringern den Urlaubsanspruch nicht. Andere Gründe werden ignoriert.
 // - Urlaub bis einschließlich heute ist „genommen“, danach „geplant“.
+// - Offizielle Feiertage (Feiertags-Dienst) zählen an Arbeitstagen als ganzer
+//   Feiertag, auch ohne importierten HOLIDAY-Eintrag. Nicht importierte
+//   Feiertage werden gemeldet, weil der Saldo sie erst nach dem Import aus dem
+//   Soll nimmt.
 
 import { weekdayOfKey } from "@/lib/dates";
 
@@ -68,6 +72,10 @@ export interface AbsenceReportInput {
   reviewedDays: ReviewedDayInput[];
   /** Tage mit Arbeitseinträgen; dort zählt „Unbezahlter Urlaub“ nicht */
   workedDateKeys?: readonly string[];
+  /** Offizielle Feiertage: Datum → Name */
+  holidays?: Readonly<Record<string, string>>;
+  /** Feiertags-Dienst nicht erreichbar: nur importierte Feiertage bekannt */
+  holidayServiceUnavailable?: boolean;
 }
 
 export interface AbsenceDay {
@@ -81,6 +89,10 @@ export interface AbsenceDay {
   days: CategoryValues;
   /** Kategorie für die Farbe im Kalender */
   primary: AbsenceCategory;
+  /** Name des offiziellen Feiertags, falls bekannt */
+  holidayName?: string;
+  /** Feiertag mit importiertem HOLIDAY-Eintrag (nur bei Feiertagen gesetzt) */
+  holidayImported?: boolean;
 }
 
 export interface AbsenceMonth {
@@ -113,6 +125,9 @@ export interface AbsenceReport {
   account: VacationAccount;
   /** Tage mit erfasster Abwesenheit an Nicht-Arbeitstagen (nicht gezählt) */
   nonWorkDayAbsences: number;
+  /** Offizielle Feiertage an Arbeitstagen ohne HOLIDAY-Eintrag, aufsteigend */
+  notImportedHolidays: string[];
+  holidayServiceUnavailable: boolean;
 }
 
 function emptyValues(): CategoryValues {
@@ -208,12 +223,19 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
     values[category] += entry.hours;
   }
 
+  const officialHolidays = new Map(
+    Object.entries(input.holidays ?? {}).filter(([key]) =>
+      key.startsWith(yearPrefix),
+    ),
+  );
+
   const workedKeys = new Set(input.workedDateKeys ?? []);
   const unpaidKeys = new Set<string>();
   for (const reviewed of input.reviewedDays) {
     if (!reviewed.dateKey.startsWith(yearPrefix)) continue;
     if (!isUnpaidLeaveReason(reviewed.reason)) continue;
     if (hoursByDay.has(reviewed.dateKey)) continue;
+    if (officialHolidays.has(reviewed.dateKey)) continue;
     if (workedKeys.has(reviewed.dateKey)) continue;
     if (!workDays.has(weekdayOfKey(reviewed.dateKey))) continue;
     unpaidKeys.add(reviewed.dateKey);
@@ -228,20 +250,24 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
       hours[category] = round2(rawHours[category]);
     }
     const isWorkDay = workDays.has(weekdayOfKey(dateKey));
+    const holidayName = officialHolidays.get(dateKey);
     const counted = emptyValues();
     if (isWorkDay) {
       let capacity = 1;
       for (const category of PRECEDENCE) {
-        const value = Math.min(
-          hoursToAbsenceDays(hours[category], dailyHours),
-          capacity,
-        );
+        // Offizieller Feiertag: ganzer Tag, unabhängig von erfassten Stunden
+        const categoryDays =
+          category === "holiday" && holidayName !== undefined
+            ? 1
+            : hoursToAbsenceDays(hours[category], dailyHours);
+        const value = Math.min(categoryDays, capacity);
         counted[category] = value;
         capacity -= value;
       }
     } else {
       nonWorkDayAbsences++;
     }
+    const isHoliday = hours.holiday > 0 || holidayName !== undefined;
     days.push({
       dateKey,
       isWorkDay,
@@ -249,8 +275,32 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
       hours,
       days: counted,
       primary: primaryOf({ hours, days: counted }),
+      ...(holidayName !== undefined ? { holidayName } : {}),
+      ...(isHoliday ? { holidayImported: hours.holiday > 0 } : {}),
     });
   }
+
+  // Offizielle Feiertage ohne jeden Eintrag (nur an Arbeitstagen sichtbar)
+  const notImportedHolidays: string[] = [];
+  for (const [dateKey, holidayName] of officialHolidays) {
+    if (!workDays.has(weekdayOfKey(dateKey))) continue;
+    if ((hoursByDay.get(dateKey)?.holiday ?? 0) > 0) continue;
+    notImportedHolidays.push(dateKey);
+    if (hoursByDay.has(dateKey)) continue;
+    const counted = emptyValues();
+    counted.holiday = 1;
+    days.push({
+      dateKey,
+      isWorkDay: true,
+      isFuture: dateKey > todayKey,
+      hours: emptyValues(),
+      days: counted,
+      primary: "holiday",
+      holidayName,
+      holidayImported: false,
+    });
+  }
+  notImportedHolidays.sort();
 
   for (const dateKey of unpaidKeys) {
     const counted = emptyValues();
@@ -316,5 +366,7 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
       remaining: entitlement - taken - planned,
     },
     nonWorkDayAbsences,
+    notImportedHolidays,
+    holidayServiceUnavailable: input.holidayServiceUnavailable ?? false,
   };
 }

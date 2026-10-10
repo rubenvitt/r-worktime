@@ -136,6 +136,38 @@ async function officialHolidays(year: number): Promise<Map<string, string>> {
   }
 }
 
+export interface OfficialHolidayData {
+  /** Datum → Name, nur offizielle Feiertage */
+  names: Record<string, string>;
+  /** Jahre, für die der Feiertags-Service nicht erreichbar war */
+  unavailableYears: number[];
+}
+
+/** Offizielle Feiertage (Niedersachsen) – Fehler einzelner Jahre werden gemeldet. */
+export async function loadOfficialHolidays(
+  years: number[],
+): Promise<OfficialHolidayData> {
+  const sortedYears = [...new Set(years)].sort((a, b) => a - b);
+  const results = await Promise.all(
+    sortedYears.map((year) =>
+      officialHolidays(year).then(
+        (map) => ({ year, map }),
+        (error: unknown) => {
+          console.error(`Feiertage ${year} nicht verfügbar:`, error);
+          return { year, map: null };
+        },
+      ),
+    ),
+  );
+  const names: Record<string, string> = {};
+  const unavailableYears: number[] = [];
+  for (const { year, map } of results) {
+    if (!map) unavailableYears.push(year);
+    else for (const [key, name] of map) names[key] = name;
+  }
+  return { names, unavailableYears };
+}
+
 export interface HolidayData {
   /** Importierte HOLIDAY-Einträge – mindern das Soll im Saldo */
   importedKeys: Set<string>;
@@ -179,17 +211,7 @@ export async function loadHolidays(
       },
       select: { date: true, description: true },
     }),
-    Promise.all(
-      sortedYears.map((year) =>
-        officialHolidays(year).then(
-          (map) => ({ year, map }),
-          (error: unknown) => {
-            console.error(`Feiertage ${year} nicht verfügbar:`, error);
-            return { year, map: null };
-          },
-        ),
-      ),
-    ),
+    loadOfficialHolidays(sortedYears),
   ]);
 
   const importedKeys = new Set<string>();
@@ -203,21 +225,18 @@ export async function loadHolidays(
   }
 
   const allKeys = new Set(importedKeys);
-  const unavailableYears: number[] = [];
-  const notImportedYears: number[] = [];
-  for (const { year, map } of official) {
-    if (!map) {
-      unavailableYears.push(year);
-      continue;
+  const yearsOnWorkDay = new Set<number>();
+  for (const [key, name] of Object.entries(official.names)) {
+    allKeys.add(key);
+    names[key] ??= name;
+    if (workDays.includes(weekdayOfKey(key))) {
+      yearsOnWorkDay.add(Number(key.slice(0, 4)));
     }
-    let onWorkDay = false;
-    for (const [key, name] of map) {
-      allKeys.add(key);
-      names[key] ??= name;
-      if (workDays.includes(weekdayOfKey(key))) onWorkDay = true;
-    }
-    if (onWorkDay && !importedYears.has(year)) notImportedYears.push(year);
   }
+  const unavailableYears = official.unavailableYears;
+  const notImportedYears = sortedYears.filter(
+    (year) => yearsOnWorkDay.has(year) && !importedYears.has(year),
+  );
 
   return { importedKeys, allKeys, names, unavailableYears, notImportedYears };
 }

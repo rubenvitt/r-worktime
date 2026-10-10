@@ -245,7 +245,7 @@ export function TravelReport() {
           <Link href="/timesheet" className="underline underline-offset-2">
             Stundenzettel
           </Link>{" "}
-          – ohne Saldo-Korrekturen und ohne Projektfilter; Bulk-Fill-Einträge
+          – ohne Saldo-Korrekturen und ohne Projektfilter; aufgefüllte Tage
           zählen mit ihrer eingetragenen Dauer.
         </p>
 

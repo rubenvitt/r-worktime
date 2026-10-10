@@ -69,10 +69,15 @@ export function describeAbsenceDay(day: AbsenceDay): string {
       if (day.days.unpaid > 0) parts.push("Unbezahlter Urlaub (geprüfter Tag)");
       continue;
     }
+    const label =
+      category === "holiday" && day.holidayName
+        ? `${ABSENCE_CATEGORY_LABELS.holiday} (${day.holidayName})`
+        : ABSENCE_CATEGORY_LABELS[category];
     if (day.hours[category] > 0) {
-      parts.push(
-        `${ABSENCE_CATEGORY_LABELS[category]} ${formatHoursLabel(day.hours[category])}`,
-      );
+      parts.push(`${label} ${formatHoursLabel(day.hours[category])}`);
+    } else if (category === "holiday" && day.holidayImported === false) {
+      // Offizieller Feiertag ohne Eintrag
+      parts.push(`${label}, nicht importiert`);
     }
   }
   if (day.isFuture && day.days.vacation > 0) parts.push("geplant");

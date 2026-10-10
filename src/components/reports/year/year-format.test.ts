@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  billableShare,
   formatDayCount,
   formatDayMonth,
   monthLabel,
@@ -21,11 +20,6 @@ describe("year-format", () => {
     expect(formatDayCount(1)).toBe("1 Tag");
     expect(formatDayCount(2.5)).toBe("2,5 Tage");
     expect(formatDayMonth("2026-12-25")).toBe("25.12.");
-  });
-
-  it("rechnet die Abrechnungsquote ohne unbekannten Status", () => {
-    expect(billableShare(6, 2)).toBe(0.75);
-    expect(billableShare(0, 0)).toBeNull();
   });
 
   it("liefert runde Achsenwerte in Stunden inklusive 0", () => {

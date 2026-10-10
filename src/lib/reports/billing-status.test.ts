@@ -4,6 +4,7 @@ import {
   BILLING_STATUS_CLASS,
   BILLING_STATUS_LABELS,
   BILLING_STATUS_ORDER,
+  billableShare,
   classifyBillingStatus,
   normalizeBillingStatus,
 } from "./billing-status";
@@ -54,5 +55,13 @@ describe("normalizeBillingStatus", () => {
     }
     expect(BILLING_STATUS_LABELS.open).toBe("Offen");
     expect(BILLING_CLASS_LABELS.nonBillable).toBe("Nicht abrechenbar");
+  });
+});
+
+describe("billableShare", () => {
+  it("rechnet abrechenbar / gesamt, ohne Status zählt im Nenner mit", () => {
+    // 6 h abrechenbar, 2 h nicht abrechenbar, 2 h ohne Status
+    expect(billableShare(6, 10)).toBe(0.6);
+    expect(billableShare(0, 0)).toBeNull();
   });
 });

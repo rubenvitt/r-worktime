@@ -38,6 +38,18 @@ async function saveTravelDecision({ date, isTravel }: TravelDecisionInput) {
   return body;
 }
 
+/**
+ * Festlegung beim Umschalten: Entspricht der neue Wert dem Vorschlag, wird die
+ * Festlegung entfernt (null), sonst gespeichert. So folgt der Tag weiter dem
+ * Vorschlag, auch wenn der sich später ändert.
+ */
+export function travelDecisionFor(
+  suggestion: boolean,
+  value: boolean,
+): boolean | null {
+  return value === suggestion ? null : value;
+}
+
 function isTimesheetResponse(value: unknown): value is TimesheetResponse {
   return (
     !!value &&

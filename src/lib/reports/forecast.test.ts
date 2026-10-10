@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildAbsenceReport } from "./absences";
 import {
   buildForecast,
   computeBaseline,
@@ -159,7 +160,7 @@ describe("computeBaseline", () => {
     expect(baseline.billableQuote).toBeNull();
   });
 
-  it("berechnet die Abrechnungsquote ohne unbekannten Status", () => {
+  it("berechnet die Abrechnungsquote abrechenbar / gesamt wie der Abrechnungsbericht", () => {
     const baseline = computeBaseline({
       todayKey: "2026-10-10",
       baseMonths: 1,
@@ -172,7 +173,8 @@ describe("computeBaseline", () => {
       holidayKeys: NO_HOLIDAYS,
       trackingStart: null,
     });
-    expect(baseline.billableQuote).toBe(0.75);
+    // 6 h abrechenbar von 18 h gesamt; ohne Status zählt im Nenner mit
+    expect(baseline.billableQuote).toBe(6 / 18);
     expect(baseline.billableHours).toBe(6);
     expect(baseline.nonBillableHours).toBe(2);
     expect(baseline.unknownBillingHours).toBe(10);
@@ -341,5 +343,124 @@ describe("buildForecast", () => {
     });
     expect(lastDay.months[0].availableDays).toBe(0);
     expect(lastDay.months[0].from).toBeNull();
+  });
+
+  describe("heutiger Tag", () => {
+    // Mo 12.10.2026; Basis September mit 8 h an jedem Werktag (= Tagessoll)
+    const september = workEveryWeekday("2026-09-01", "2026-09-30", 8);
+    const base = {
+      todayKey: "2026-10-12",
+      horizon: 3,
+      baseMonths: 1,
+      schedule: MON_FRI,
+      holidayKeys: NO_HOLIDAYS,
+      importedHolidayKeys: NO_HOLIDAYS,
+      trackingStart: "2026-09-01",
+    };
+
+    it("rechnet den Rest von heute mit, wenn noch nichts erfasst ist", () => {
+      // Der Saldo enthält das Soll von heute, aber noch keine Arbeit
+      const forecast = buildForecast({
+        ...base,
+        entries: september,
+        currentBalance: -8,
+      });
+      expect(forecast.months[0].todayRemainingHours).toBe(8);
+      expect(forecast.months[0].deltaHours).toBe(8);
+      expect(forecast.endBalance).toBe(0);
+    });
+
+    it("zieht bereits erfasste Arbeit von heute ab", () => {
+      const forecast = buildForecast({
+        ...base,
+        entries: [...september, work("2026-10-12", 3)],
+        currentBalance: -5,
+      });
+      expect(forecast.months[0].todayRemainingHours).toBe(5);
+      expect(forecast.endBalance).toBe(0);
+    });
+
+    it("ergänzt nichts an Feiertagen, bei Abwesenheit und am Wochenende", () => {
+      const holiday = buildForecast({
+        ...base,
+        entries: september,
+        holidayKeys: new Set(["2026-10-12"]),
+        currentBalance: 0,
+      });
+      expect(holiday.months[0].todayRemainingHours).toBe(0);
+
+      const vacation = buildForecast({
+        ...base,
+        entries: [...september, absence("2026-10-12", "VACATION")],
+        currentBalance: 0,
+      });
+      expect(vacation.months[0].todayRemainingHours).toBe(0);
+
+      const saturday = buildForecast({
+        ...base,
+        todayKey: "2026-10-10",
+        entries: september,
+        currentBalance: 0,
+      });
+      expect(saturday.months[0].todayRemainingHours).toBe(0);
+      expect(saturday.months[1].todayRemainingHours).toBe(0);
+    });
+  });
+
+  describe("geplante Abwesenheit wie im Abwesenheiten-Bericht", () => {
+    const vacation = (date: string, hours: number): ReportEntry => ({
+      ...absence(date, "VACATION"),
+      hours,
+    });
+    const sick = (date: string, hours: number): ReportEntry => ({
+      ...absence(date, "SICK"),
+      hours,
+    });
+
+    function novemberAbsenceDays(entries: ReportEntry[]): number {
+      return buildForecast({
+        todayKey: "2026-10-10",
+        horizon: 3,
+        baseMonths: 1,
+        entries: [...history, ...entries],
+        schedule: MON_FRI,
+        holidayKeys: NO_HOLIDAYS,
+        importedHolidayKeys: NO_HOLIDAYS,
+        trackingStart: "2026-09-01",
+        currentBalance: 0,
+      }).months[1].absenceDays;
+    }
+
+    it("rundet auf halbe Tage wie der Abwesenheiten-Bericht", () => {
+      const planned = [vacation("2026-11-02", 3), vacation("2026-11-03", 6)];
+      const report = buildAbsenceReport({
+        year: 2026,
+        todayKey: "2026-10-10",
+        settings: {
+          weeklyWorkHours: 40,
+          workDays: [1, 2, 3, 4, 5],
+          annualVacationDays: 30,
+        },
+        entries: planned.map((e) => ({
+          dateKey: e.date,
+          type: "VACATION" as const,
+          hours: e.hours,
+        })),
+        reviewedDays: [],
+      });
+      expect(report.months[10].plannedVacationDays).toBe(1.5);
+      expect(novemberAbsenceDays(planned)).toBe(1.5);
+    });
+
+    it("ignoriert Einträge mit 0 h", () => {
+      expect(novemberAbsenceDays([vacation("2026-11-02", 0)])).toBe(0);
+    });
+
+    it("rechnet Urlaub und Krankheit eines Tages je Typ um", () => {
+      // je 2 h → je ½ Tag, zusammen ein ganzer Tag (wie im Bericht)
+      expect(
+        novemberAbsenceDays([vacation("2026-11-02", 2), sick("2026-11-02", 2)]),
+      ).toBe(1);
+    });
   });
 });

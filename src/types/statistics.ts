@@ -95,6 +95,8 @@ export interface DayData {
   targetHours: number;
   difference: number;
   isWeekend: boolean;
+  /** Feiertag (offiziell oder importiert); imported = HOLIDAY-Eintrag vorhanden */
+  holiday: { name: string; imported: boolean } | null;
 }
 
 export interface TimeEntryData {

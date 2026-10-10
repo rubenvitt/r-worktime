@@ -5,13 +5,18 @@
 //   Arbeitstage − Feiertage − geplanter Urlaub/Krank.
 // - Erwartetes Ist = Ø Ist je verfügbarem Arbeitstag aus den letzten N
 //   abgeschlossenen Monaten × verfügbare Arbeitstage.
-// - Erwartet abrechenbar = historische Quote abrechenbar / (abrechenbar +
-//   nicht abrechenbar) × erwartetes Ist; Einträge ohne Status bleiben außen vor.
-// - Der Saldo startet beim aktuellen Saldo. Der zählt den heutigen Tag
-//   bereits mit, deshalb beginnt die Prognose im laufenden Monat morgen.
+// - Erwartet abrechenbar = historische Quote abrechenbar / gesamt × erwartetes
+//   Ist (dieselbe Definition wie im Abrechnungsbericht; Stunden wie überall
+//   hier je Eintrag auf Viertelstunden gerundet).
+// - Der Saldo startet beim aktuellen Saldo. Darin steckt das Soll von heute,
+//   aber nur die bisher erfasste Arbeit. Ist heute ein verfügbarer Arbeitstag,
+//   kommt deshalb der Rest von heute dazu (Ø je Tag − bisher erfasst, kein
+//   weiteres Soll); die übrigen Tage prognostiziert die Rechnung ab morgen.
+// - Geplanter Urlaub/Krank wird wie im Abwesenheiten-Bericht in Tage
+//   umgerechnet (je Typ auf halbe Tage, Krankheit vor Urlaub, höchstens 1).
 //
 // Erfahrungswerte nur aus echter Arbeit: Anfangssaldo, Feiertags-Einträge und
-// Massen-Auffüllung (synthetische Uhrzeiten, Soll-Werte) zählen nicht. Tage, die
+// Auffüllung (synthetische Uhrzeiten, Soll-Werte) zählen nicht. Tage, die
 // nur aufgefüllt wurden, fallen auch aus den verfügbaren Tagen der Basis.
 
 import {
@@ -21,11 +26,16 @@ import {
   shiftMonthKey,
   weekdayOfKey,
 } from "@/lib/dates";
-import { classifyBillingStatus } from "@/lib/reports/billing-status";
+import { hoursToAbsenceDays } from "@/lib/reports/absences";
+import {
+  billableShare,
+  classifyBillingStatus,
+} from "@/lib/reports/billing-status";
 import {
   dateKeysBetween,
   isAbsence,
   isRealWork,
+  isWorkEntry,
   type RangeSummary,
   type ReportEntry,
   roundToQuarterHour,
@@ -104,6 +114,7 @@ export interface Baseline {
   months: BaseMonth[];
   /** Gepoolt: Σ Arbeit / Σ verfügbare Tage */
   hoursPerDay: number | null;
+  /** abrechenbar / gesamt; null, wenn kein Eintrag einen Status hat */
   billableQuote: number | null;
   billableHours: number;
   nonBillableHours: number;
@@ -209,13 +220,18 @@ export function computeBaseline(input: BaselineInput): Baseline {
     (sum, m) => sum + m.unknownBillingHours,
     0,
   );
-  const classified = billableHours + nonBillableHours;
 
   return {
     consideredMonths,
     months,
     hoursPerDay: totalDays > 0 ? totalHours / totalDays : null,
-    billableQuote: classified > 0 ? billableHours / classified : null,
+    billableQuote:
+      billableHours > 0 || nonBillableHours > 0
+        ? billableShare(
+            billableHours,
+            billableHours + nonBillableHours + unknownBillingHours,
+          )
+        : null,
     billableHours,
     nonBillableHours,
     unknownBillingHours,
@@ -253,6 +269,12 @@ export interface ForecastMonth {
   deltaHours: number;
   /** Saldo am Monatsende */
   balanceHours: number;
+  /**
+   * Nur im laufenden Monat: erwartete Arbeit für den Rest von heute (in
+   * `expectedHours` und `deltaHours` enthalten; das Soll von heute steckt
+   * schon im aktuellen Saldo). Sonst 0.
+   */
+  todayRemainingHours: number;
   /** Nur im laufenden Monat: bereits erfasst bis heute */
   toDate: ForecastToDate | null;
 }
@@ -327,23 +349,41 @@ export function buildForecast(input: ForecastInput): Forecast {
   const hoursPerDay = baseline.hoursPerDay ?? schedule.dailyHours;
   const quote = baseline.billableQuote;
 
-  // Geplante Abwesenheiten liegen nach heute. Anteil je Tag wie im
-  // Abwesenheiten-Bericht: Stunden / Tagessoll, höchstens ein Tag
-  // (4 h Urlaub bei 8 h Tagessoll = halber Tag).
-  const plannedHours = new Map<string, number>();
+  // Geplante Abwesenheiten liegen nach heute. Umrechnung wie im
+  // Abwesenheiten-Bericht: je Typ Stunden / Tagessoll auf halbe Tage
+  // (mindestens ½), Krankheit vor Urlaub, zusammen höchstens ein Tag.
+  const plannedHours = new Map<string, { sick: number; vacation: number }>();
   for (const entry of input.entries) {
     if (!isAbsence(entry) || entry.date <= todayKey) continue;
-    plannedHours.set(
-      entry.date,
-      (plannedHours.get(entry.date) ?? 0) + entry.hours,
-    );
+    const hours = plannedHours.get(entry.date) ?? { sick: 0, vacation: 0 };
+    if (entry.type === "SICK") hours.sick += entry.hours;
+    else hours.vacation += entry.hours;
+    plannedHours.set(entry.date, hours);
   }
   const plannedShare = (key: string): number => {
     const hours = plannedHours.get(key);
-    if (hours === undefined) return 0;
-    if (schedule.dailyHours <= 0 || hours <= 0) return 1;
-    return Math.min(1, hours / schedule.dailyHours);
+    if (!hours) return 0;
+    const sick = hoursToAbsenceDays(hours.sick, schedule.dailyHours);
+    const vacation = hoursToAbsenceDays(hours.vacation, schedule.dailyHours);
+    return sick + Math.min(vacation, 1 - sick);
   };
+
+  // Rest von heute: nur an einem verfügbaren Arbeitstag (kein Feiertag,
+  // keine Abwesenheit). Arbeit zählt wie im Saldo, je Eintrag gerundet.
+  let todayWork = 0;
+  let todayAbsent = false;
+  for (const entry of input.entries) {
+    if (entry.date !== todayKey) continue;
+    if (isAbsence(entry)) todayAbsent = true;
+    else if (isWorkEntry(entry)) todayWork += roundToQuarterHour(entry.hours);
+  }
+  const todayAvailable =
+    schedule.workDays.includes(weekdayOfKey(todayKey)) &&
+    !holidayKeys.has(todayKey) &&
+    !todayAbsent;
+  const todayRemaining = todayAvailable
+    ? Math.max(0, hoursPerDay - todayWork)
+    : 0;
 
   const tomorrow = shiftDateKey(todayKey, 1);
   let balance = input.currentBalance;
@@ -368,8 +408,9 @@ export function buildForecast(input: ForecastInput): Forecast {
       }
     }
     const availableDays = workDays - holidays.length - absenceDays;
+    const todayRemainingHours = isCurrent ? todayRemaining : 0;
     const targetHours = availableDays * schedule.dailyHours;
-    const expectedHours = availableDays * hoursPerDay;
+    const expectedHours = availableDays * hoursPerDay + todayRemainingHours;
     const deltaHours = expectedHours - targetHours;
     balance += deltaHours;
 
@@ -408,6 +449,7 @@ export function buildForecast(input: ForecastInput): Forecast {
       expectedBillableHours: quote === null ? null : expectedHours * quote,
       deltaHours,
       balanceHours: balance,
+      todayRemainingHours,
       toDate,
     };
   });

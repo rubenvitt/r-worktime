@@ -137,11 +137,16 @@ export class OvertimeService {
     let initialBalance = 0;
 
     if (adjustmentEntry) {
-      // Starte Sollzeit-Berechnung am Tag nach dem Adjustment
-      const adjustmentDate = new Date(adjustmentEntry.date);
-      adjustmentDate.setDate(adjustmentDate.getDate() + 1);
+      // Der Anfangssaldo deckt seinen eigenen Tag schon ab: Soll und Ist zählen
+      // erst ab dem Folgetag. Über den Datums-Key gerechnet, damit der Tag nach
+      // der Zeitumstellung nicht um 01:00 UTC beginnt (@db.Date = 00:00 UTC).
+      const dayAfterAdjustment = berlinDayStart(
+        shiftDateKey(dateKeyFromDbDate(adjustmentEntry.date), 1),
+      );
       calculationStartDate =
-        startDate && startDate > adjustmentDate ? startDate : adjustmentDate;
+        startDate && startDate > dayAfterAdjustment
+          ? startDate
+          : dayAfterAdjustment;
 
       // Der Anfangssaldo selbst (z.B. 0 bedeutet: bis zu diesem Tag genau Sollzeit gearbeitet)
       initialBalance = adjustmentEntry.duration.toNumber();
@@ -165,11 +170,11 @@ export class OvertimeService {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Query für TimeEntries (ohne den Adjustment-Eintrag selbst, aber ab seinem Datum)
+    // Query für TimeEntries ab demselben Tag wie das Soll (ohne Anfangssaldo)
     const whereClause: Prisma.TimeEntryWhereInput = {
       userId,
       date: {
-        gte: adjustmentEntry ? adjustmentEntry.date : calculationStartDate,
+        gte: calculationStartDate,
         lte: calculationEndDate,
       },
       // Anfangssaldo ausschließen, Einträge ohne description behalten

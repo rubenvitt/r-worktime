@@ -19,7 +19,7 @@ export function formatDayLabel(dateKey: string): string {
 }
 
 const TRAVEL_HINT =
-  "Vorschlag aus Schlüsselwörtern im Titel und in den Notizen des Tages. Umschalten speichert eine Festlegung für diesen Tag – sie gilt auch im Bericht „Reisetage“.";
+  "Vorschlag aus Schlüsselwörtern im Titel und in den Notizen des Tages. Weicht der Schalter vom Vorschlag ab, wird das als Festlegung für diesen Tag gespeichert – sie gilt auch im Bericht „Reisetage“.";
 
 interface TimesheetDayCardProps {
   day: TimesheetDayView;
@@ -144,7 +144,7 @@ export function TimesheetDayCard({
             <span className="text-muted-foreground">(Vorschlag)</span>
           ) : null}
         </Label>
-        {hasOverride && travelFee !== day.travelFee ? (
+        {hasOverride ? (
           <Button
             type="button"
             variant="link"

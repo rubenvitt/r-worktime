@@ -6,6 +6,7 @@ import {
   weekdayOfKey,
 } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import { loadOfficialHolidays } from "@/lib/reports/forecast-data";
 import type { EntryType } from "@/types/database";
 import type { DayData, WeekData, WeekSummary } from "@/types/statistics";
 
@@ -66,7 +67,15 @@ export class WeekService {
     // ISO-8601-Woche auf Berliner Kalendertagen; wirft bei ungültiger Woche
     const range = isoWeekRange(year, week);
     const { start, end } = range;
-    const userSettings = await this.getUserSettings(userId);
+    // KW 53/KW 1 reichen über den Jahreswechsel: Feiertage beider Jahre laden.
+    // Ist der Feiertags-Dienst nicht erreichbar, bleiben nur importierte übrig.
+    const years = [
+      ...new Set(range.dayKeys.map((key) => Number(key.slice(0, 4)))),
+    ];
+    const [userSettings, official] = await Promise.all([
+      this.getUserSettings(userId),
+      loadOfficialHolidays(years),
+    ]);
 
     // Hole alle TimeEntries für die Woche
     const entries = await prisma.timeEntry.findMany({
@@ -105,8 +114,25 @@ export class WeekService {
         )
         .reduce((sum, e) => sum + Number(e.duration), 0);
 
-      // Berechne Soll-Stunden (0 für Wochenenden)
-      const targetHours = isWeekend ? 0 : userSettings.dailyHours;
+      // Feiertag: importiert (HOLIDAY-Eintrag) oder nur offiziell bekannt
+      const holidayEntry = dayEntries.find(
+        (e) => e.type === PrismaEntryType.HOLIDAY,
+      );
+      const officialName = official.names[dateKey];
+      const holiday =
+        holidayEntry || officialName
+          ? {
+              name: officialName ?? holidayEntry?.description ?? "Feiertag",
+              imported: Boolean(holidayEntry),
+            }
+          : null;
+
+      // Soll an eingestellten Arbeitstagen. Wie im Saldo mindern nur
+      // importierte Feiertage das Soll; nicht importierte werden markiert.
+      const targetHours =
+        userSettings.workDays.includes(weekday) && !holidayEntry
+          ? userSettings.dailyHours
+          : 0;
 
       // Berechne Differenz
       const difference = workHours - targetHours;
@@ -126,13 +152,14 @@ export class WeekService {
         targetHours,
         difference,
         isWeekend,
+        holiday,
       };
     });
 
     // Berechne Wochensummen
     const weekSummary: WeekSummary = {
       totalWorkHours: dailyData.reduce((sum, day) => sum + day.totalHours, 0),
-      targetHours: userSettings.weeklyHours,
+      targetHours: dailyData.reduce((sum, day) => sum + day.targetHours, 0),
       weekBalance: 0, // wird unten berechnet
       cumulativeBalance: 0, // wird unten berechnet
     };
