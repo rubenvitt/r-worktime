@@ -1,19 +1,21 @@
-import { EmptyState } from "@/components/app/empty-state";
-import { PageHeader } from "@/components/app/page-header";
-import { Panel } from "@/components/app/panel";
-import { ReportsNav } from "@/components/reports/reports-nav";
+import { Suspense } from "react";
+import {
+  PatternsSkeleton,
+  PatternsView,
+} from "@/components/reports/patterns/patterns-view";
+import { ReportFallback } from "@/components/reports/report-header";
 
 export default function PatternsReportPage() {
+  // useSearchParams (?period, ?key) braucht eine Suspense-Grenze
   return (
-    <>
-      <PageHeader
-        title="Arbeitszeit"
-        description="Wann du arbeitest: Beginn, Ende und Muster über die Woche."
-        toolbar={<ReportsNav />}
-      />
-      <Panel>
-        <EmptyState title="Folgt" description="Dieser Bericht ist in Arbeit." />
-      </Panel>
-    </>
+    <Suspense
+      fallback={
+        <ReportFallback report="patterns">
+          <PatternsSkeleton />
+        </ReportFallback>
+      }
+    >
+      <PatternsView />
+    </Suspense>
   );
 }
