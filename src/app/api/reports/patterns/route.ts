@@ -15,8 +15,8 @@ import {
   resolvePatternRange,
 } from "@/lib/reports/patterns";
 
-// GET /api/reports/patterns?period=month&month=YYYY-MM
-//   | period=quarter&year=YYYY&quarter=1-4 | period=year&year=YYYY | period=last90
+// GET /api/reports/patterns?period=month|quarter|year&key=2026-10|2026-Q4|2026
+//   | period=last90
 export async function GET(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
