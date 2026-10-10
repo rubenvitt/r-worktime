@@ -19,12 +19,15 @@ export function formatDayLabel(dateKey: string): string {
 }
 
 const TRAVEL_HINT =
-  "Vorschlag aus Schlüsselwörtern in den Notizen des Tages. Du kannst ihn umschalten.";
+  "Vorschlag aus Schlüsselwörtern im Titel und in den Notizen des Tages. Umschalten speichert eine Festlegung für diesen Tag – sie gilt auch im Bericht „Reisetage“.";
 
 interface TimesheetDayCardProps {
   day: TimesheetDayView;
+  /** effektiver Wert: Festlegung, sonst Vorschlag */
   travelFee: boolean;
   onTravelFeeChange: (value: boolean) => void;
+  /** Festlegung entfernen, zurück auf den Vorschlag */
+  onTravelFeeReset: () => void;
   onCopy: (text: string, label: string) => void;
   /** true, solange noch Daten der vorherigen Einstellung angezeigt werden */
   copyDisabled?: boolean;
@@ -35,6 +38,7 @@ export function TimesheetDayCard({
   day,
   travelFee,
   onTravelFeeChange,
+  onTravelFeeReset,
   onCopy,
   copyDisabled = false,
 }: TimesheetDayCardProps) {
@@ -48,7 +52,7 @@ export function TimesheetDayCard({
   const dayLabel = formatDayLabel(day.date);
   const tooLong = day.text.length > MAX_TEXT_LENGTH;
   const textOpen = expanded || showFullText;
-  const manual = travelFee !== day.travelFee;
+  const hasOverride = day.travelOverride !== null;
 
   // Erkennen, ob der Tagestext abgeschnitten ist (nur dann „Ganzen Text zeigen“)
   useEffect(() => {
@@ -134,12 +138,29 @@ export function TimesheetDayCard({
           className="min-h-11 text-[13px] font-normal md:min-h-0"
         >
           Dienstreise
-          {manual ? (
-            <span className="text-muted-foreground">(manuell)</span>
+          {hasOverride ? (
+            <span className="text-muted-foreground">(festgelegt)</span>
           ) : day.travelFee ? (
             <span className="text-muted-foreground">(Vorschlag)</span>
           ) : null}
         </Label>
+        {hasOverride && travelFee !== day.travelFee ? (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="h-11 px-0 text-[13px] text-muted-foreground md:h-auto"
+            onClick={onTravelFeeReset}
+            aria-label={`Dienstreise am ${dayLabel} auf den Vorschlag zurücksetzen`}
+            title={
+              day.travelFee
+                ? "Vorschlag: Dienstreise"
+                : "Vorschlag: keine Dienstreise"
+            }
+          >
+            Vorschlag
+          </Button>
+        ) : null}
       </div>
 
       {/* Tagestext */}

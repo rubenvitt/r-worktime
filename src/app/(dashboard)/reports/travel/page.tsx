@@ -1,19 +1,23 @@
-import { EmptyState } from "@/components/app/empty-state";
-import { PageHeader } from "@/components/app/page-header";
+import { Suspense } from "react";
 import { Panel } from "@/components/app/panel";
-import { ReportsNav } from "@/components/reports/reports-nav";
+import { SkeletonRows, SkeletonStatStrip } from "@/components/app/skeletons";
+import { ReportFallback } from "@/components/reports/report-header";
+import { TravelReport } from "@/components/reports/travel/travel-report";
 
 export default function TravelReportPage() {
+  // useSearchParams (?year) braucht eine Suspense-Grenze
   return (
-    <>
-      <PageHeader
-        title="Reisetage"
-        description="Reisetage im Jahr, automatisch erkannt und manuell festgelegt."
-        toolbar={<ReportsNav />}
-      />
-      <Panel>
-        <EmptyState title="Folgt" description="Dieser Bericht ist in Arbeit." />
-      </Panel>
-    </>
+    <Suspense
+      fallback={
+        <ReportFallback report="travel">
+          <SkeletonStatStrip tiles={4} />
+          <Panel>
+            <SkeletonRows count={6} height={52} />
+          </Panel>
+        </ReportFallback>
+      }
+    >
+      <TravelReport />
+    </Suspense>
   );
 }

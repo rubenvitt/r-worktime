@@ -61,6 +61,7 @@ import { Switch } from "@/components/ui/switch";
 import { useOdooExtension } from "@/hooks/use-odoo-extension";
 import { shiftMonthKey } from "@/lib/dates";
 import { formatMonth, plural } from "@/lib/format";
+import { resolveTravel } from "@/lib/reports/travel";
 import {
   isRounding,
   ROUNDING_OPTIONS,
@@ -70,35 +71,21 @@ import {
   ackErrorMessage,
   validateTimesheetPayload,
 } from "@/lib/timesheet/extension-protocol";
-import type { TimesheetResponse } from "@/lib/timesheet/types";
+import type {
+  TimesheetDayView,
+  TimesheetResponse,
+} from "@/lib/timesheet/types";
 import { cn } from "@/lib/utils";
 import { GapRow } from "./gap-row";
 import { formatDayLabel, TimesheetDayCard } from "./timesheet-day-card";
+import { useLegacyTravelImport, useTravelDecision } from "./use-travel-days";
 
 const EXTENSION_DOCS_URL =
   "https://github.com/rubenvitt/r-worktime/tree/main/extension#readme";
 const ALL_ROOTS = "__all__";
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
-const travelKey = (month: string) => `rwt.timesheet.travel.${month}`;
 
 type DayFilter = "all" | "missing-notes" | "travel";
-
-function readJson<T>(key: string): T | null {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeJson(key: string, value: unknown) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Speicher nicht verfügbar – Einstellung gilt dann nur für diese Sitzung
-  }
-}
 
 async function copyToClipboard(text: string, label: string) {
   try {
@@ -119,14 +106,14 @@ export function TimesheetView() {
 
   const [month, setMonth] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<TimesheetPrefs>(DEFAULT_TIMESHEET_PREFS);
-  const [travelOverrides, setTravelOverrides] = useState<
-    Record<string, boolean>
-  >({});
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [filter, setFilter] = useState<DayFilter>("all");
   const [gapDay, setGapDay] = useState<ProblemDayDto | null>(null);
   const extension = useOdooExtension();
+  const travelDecision = useTravelDecision();
+  // frühere Korrekturen aus dem localStorage einmalig in die DB übernehmen
+  useLegacyTravelImport();
 
   // localStorage und Query-Parameter erst nach dem Mount lesen (einmalig,
   // kein Hydration-Mismatch). Spätere Wechsel schreibt die Seite per replace.
@@ -142,11 +129,8 @@ export function TimesheetView() {
     }
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Fehler beim Monatswechsel verwerfen
   useEffect(() => {
-    if (!month) return;
-    setTravelOverrides(
-      readJson<Record<string, boolean>>(travelKey(month)) ?? {},
-    );
     setSendError(null);
   }, [month]);
 
@@ -190,9 +174,11 @@ export function TimesheetView() {
     [data, month],
   );
 
+  // Effektiver Wert wie im Server-Payload: Festlegung, sonst Vorschlag
   const travelFeeFor = useCallback(
-    (date: string, suggested: boolean) => travelOverrides[date] ?? suggested,
-    [travelOverrides],
+    (day: Pick<TimesheetDayView, "travelFee" | "travelOverride">) =>
+      resolveTravel(day.travelFee, day.travelOverride).isTravel,
+    [],
   );
 
   const payload: TimesheetEntry[] = useMemo(
@@ -201,7 +187,7 @@ export function TimesheetView() {
         date: day.date,
         hours: day.hours,
         text: day.text,
-        travelFee: travelFeeFor(day.date, day.travelFee),
+        travelFee: travelFeeFor(day),
       })),
     [days, travelFeeFor],
   );
@@ -218,16 +204,9 @@ export function TimesheetView() {
     [month, payload],
   );
 
-  const setTravelFee = (date: string, value: boolean, suggested: boolean) => {
-    if (!month) return;
-    setTravelOverrides((current) => {
-      const next = { ...current };
-      if (value === suggested) delete next[date];
-      else next[date] = value;
-      writeJson(travelKey(month), next);
-      return next;
-    });
-  };
+  // Umschalten speichert immer eine Festlegung; „Vorschlag“ entfernt sie wieder
+  const setTravelFee = (date: string, isTravel: boolean | null) =>
+    travelDecision.mutate({ date, isTravel });
 
   const handleSend = async () => {
     if (!month || isPlaceholderData) return;
@@ -325,8 +304,7 @@ export function TimesheetView() {
   const visibleDays = useMemo(() => {
     if (filter === "missing-notes")
       return days.filter((d) => d.criticalCount > 0);
-    if (filter === "travel")
-      return days.filter((d) => travelFeeFor(d.date, d.travelFee));
+    if (filter === "travel") return days.filter((d) => travelFeeFor(d));
     return days;
   }, [days, filter, travelFeeFor]);
 
@@ -663,12 +641,12 @@ export function TimesheetView() {
                     {row.kind === "day" ? (
                       <TimesheetDayCard
                         day={row.day}
-                        travelFee={travelFeeFor(
-                          row.day.date,
-                          row.day.travelFee,
-                        )}
+                        travelFee={travelFeeFor(row.day)}
                         onTravelFeeChange={(value) =>
-                          setTravelFee(row.day.date, value, row.day.travelFee)
+                          setTravelFee(row.day.date, value)
+                        }
+                        onTravelFeeReset={() =>
+                          setTravelFee(row.day.date, null)
                         }
                         onCopy={copyToClipboard}
                         copyDisabled={isPlaceholderData}

@@ -1,5 +1,6 @@
 // Serverseitig: lädt die Einträge eines Monats und baut die Stundenzettel-Antwort.
 
+import type { EntryType } from "@prisma/client";
 import { z } from "zod";
 import {
   berlinDayStart,
@@ -8,6 +9,7 @@ import {
   shiftDateKey,
 } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import type { TravelOverrides } from "@/lib/reports/travel";
 import {
   aggregateTimesheet,
   buildTimesheetPayload,
@@ -76,6 +78,47 @@ export function parseTimesheetQuery(
   };
 }
 
+const SOURCE_ENTRY_SELECT = {
+  id: true,
+  startTime: true,
+  endTime: true,
+  type: true,
+  source: true,
+  title: true,
+  notes: true,
+  description: true,
+  projectPath: true,
+  billingStatus: true,
+  duration: true,
+} as const;
+
+/**
+ * Rohzeilen der Typen `types` mit Berliner Starttag zwischen firstKey und
+ * lastKey – ungefiltert, mit ±1 Tag Puffer auf der date-Spalte; entscheidend
+ * ist der Berlin-Tag des Starts, den die Aufrufer selbst filtern.
+ */
+export async function loadSourceEntries(
+  userId: string,
+  firstKey: string,
+  lastKey: string,
+  types: readonly string[],
+): Promise<TimesheetSourceEntry[]> {
+  const rows = await prisma.timeEntry.findMany({
+    where: {
+      userId,
+      type: { in: [...types] as EntryType[] },
+      source: { not: "ADJUSTMENT" },
+      date: {
+        gte: berlinDayStart(shiftDateKey(firstKey, -1)),
+        lte: berlinDayStart(shiftDateKey(lastKey, 1)),
+      },
+    },
+    select: SOURCE_ENTRY_SELECT,
+    orderBy: [{ startTime: "asc" }, { id: "asc" }],
+  });
+  return rows.map((row) => ({ ...row, duration: row.duration.toNumber() }));
+}
+
 /** Einträge des Berlin-Monats (nach Start), gefiltert, in Eingabereihenfolge. */
 export async function loadTimesheetEntries(
   userId: string,
@@ -85,38 +128,13 @@ export async function loadTimesheetEntries(
   const types = filter.includeAbsences
     ? [...WORK_TYPES, ...ABSENCE_TYPES]
     : [...WORK_TYPES];
-
-  // ±1 Tag Puffer: entscheidend ist der Berlin-Tag des Starts, nicht die date-Spalte
-  const rows = await prisma.timeEntry.findMany({
-    where: {
-      userId,
-      type: { in: types },
-      source: { not: "ADJUSTMENT" },
-      date: {
-        gte: berlinDayStart(shiftDateKey(range.firstKey, -1)),
-        lte: berlinDayStart(shiftDateKey(range.lastKey, 1)),
-      },
-    },
-    select: {
-      id: true,
-      startTime: true,
-      endTime: true,
-      type: true,
-      source: true,
-      title: true,
-      notes: true,
-      description: true,
-      projectPath: true,
-      billingStatus: true,
-      duration: true,
-    },
-    orderBy: [{ startTime: "asc" }, { id: "asc" }],
-  });
-
-  return filterTimesheetEntries(
-    rows.map((row) => ({ ...row, duration: row.duration.toNumber() })),
-    filter,
+  const rows = await loadSourceEntries(
+    userId,
+    range.firstKey,
+    range.lastKey,
+    types,
   );
+  return filterTimesheetEntries(rows, filter);
 }
 
 export async function loadAvailableRoots(userId: string): Promise<string[]> {
@@ -128,18 +146,25 @@ export async function loadAvailableRoots(userId: string): Promise<string[]> {
   return expandProjectRoots(rows.map((row) => row.projectPath));
 }
 
+/**
+ * `travelOverrides`: gespeicherte Reisetag-Festlegungen des Monats. Der
+ * Payload trägt den effektiven Wert (Festlegung, sonst Vorschlag); die Tage
+ * behalten in `travelFee` den Vorschlag und bekommen `travelOverride` dazu.
+ */
 export function buildTimesheetResponse(
   entries: TimesheetSourceEntry[],
   query: ParsedTimesheetQuery,
   availableRoots: string[],
+  travelOverrides: TravelOverrides = {},
 ): TimesheetResponse {
   const { rounding } = query;
   const aggregated = aggregateTimesheet(entries.map(toTimesheetRecord), {
     dayBoundary: "Europe/Berlin",
   });
-  const payload = buildTimesheetPayload(aggregated, rounding);
+  const payload = buildTimesheetPayload(aggregated, rounding, travelOverrides);
   const days = aggregated.map((day, index) => ({
     ...day,
+    travelOverride: travelOverrides[day.date] ?? null,
     activities: day.activities.map((activity) => ({
       ...activity,
       hours: formatMinutes(activity.minutes, rounding),

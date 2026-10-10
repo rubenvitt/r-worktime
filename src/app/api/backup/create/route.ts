@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { dateKeyFromDbDate } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
     const { includeSettings = true } = body;
 
     // Get all user data
-    const [user, userSettings, timeEntries] = await Promise.all([
+    const [user, userSettings, timeEntries, travelDays] = await Promise.all([
       prisma.user.findUnique({
         where: { id: session.user.id },
         select: {
@@ -32,6 +33,11 @@ export async function POST(request: NextRequest) {
       prisma.timeEntry.findMany({
         where: { userId: session.user.id },
         orderBy: { date: "asc" },
+      }),
+      prisma.travelDay.findMany({
+        where: { userId: session.user.id },
+        orderBy: { date: "asc" },
+        select: { date: true, isTravel: true },
       }),
     ]);
 
@@ -60,6 +66,7 @@ export async function POST(request: NextRequest) {
         (sum, entry) => sum + parseFloat(entry.duration.toString()),
         0,
       ),
+      travelDays: travelDays.length,
     };
 
     // Create backup data structure
@@ -90,6 +97,11 @@ export async function POST(request: NextRequest) {
           billingStatus: entry.billingStatus,
           createdAt: entry.createdAt.toISOString(),
           updatedAt: entry.updatedAt.toISOString(),
+        })),
+        // Reisetag-Festlegungen; ältere Backups haben dieses Feld nicht
+        travelDays: travelDays.map((day) => ({
+          date: dateKeyFromDbDate(day.date),
+          isTravel: day.isTravel,
         })),
       },
     };
@@ -122,19 +134,21 @@ export async function GET(_request: NextRequest) {
     }
 
     // Get backup statistics
-    const [entryCount, oldestEntry, newestEntry] = await Promise.all([
-      prisma.timeEntry.count({ where: { userId: session.user.id } }),
-      prisma.timeEntry.findFirst({
-        where: { userId: session.user.id },
-        orderBy: { date: "asc" },
-        select: { date: true },
-      }),
-      prisma.timeEntry.findFirst({
-        where: { userId: session.user.id },
-        orderBy: { date: "desc" },
-        select: { date: true },
-      }),
-    ]);
+    const [entryCount, travelDayCount, oldestEntry, newestEntry] =
+      await Promise.all([
+        prisma.timeEntry.count({ where: { userId: session.user.id } }),
+        prisma.travelDay.count({ where: { userId: session.user.id } }),
+        prisma.timeEntry.findFirst({
+          where: { userId: session.user.id },
+          orderBy: { date: "asc" },
+          select: { date: true },
+        }),
+        prisma.timeEntry.findFirst({
+          where: { userId: session.user.id },
+          orderBy: { date: "desc" },
+          select: { date: true },
+        }),
+      ]);
 
     const hasSettings = await prisma.userSettings.findUnique({
       where: { userId: session.user.id },
@@ -143,6 +157,7 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({
       stats: {
         totalEntries: entryCount,
+        totalTravelDays: travelDayCount,
         hasSettings: !!hasSettings,
         dateRange:
           oldestEntry && newestEntry
