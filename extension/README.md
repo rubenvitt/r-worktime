@@ -5,7 +5,7 @@ Diese Extension trägt Stundenzettel in die INNOQ-Odoo-Timesheet-Tabelle ein. Di
 - **Direktversand aus R-Worktime** (neu in 1.1.0): Auf der Seite „Stundenzettel“ in R-Worktime schickt „An Odoo-Extension senden“ den Monat an die Extension.
 - **Zwischenablage**: wie bisher, JSON aus R-Worktime oder R-Times kopieren und im Popup importieren.
 
-Die Extension ist eine Kopie von `r-times/chrome-extension` mit den Änderungen für R-Worktime. Es gibt keine Build-Toolchain, alle Dateien werden direkt geladen.
+Die Extension ist eine Kopie von `r-times/chrome-extension` mit den Änderungen für R-Worktime. Es gibt keine Build-Toolchain, alle Dateien werden direkt geladen. Nur das Manifest unterscheidet sich je Browser, siehe Abschnitt „Firefox“.
 
 ## Funktionen
 
@@ -21,7 +21,7 @@ Die Extension ist eine Kopie von `r-times/chrome-extension` mit den Änderungen 
 1. Öffne Chrome und navigiere zu `chrome://extensions/`.
 2. Aktiviere den „Entwicklermodus“ (oben rechts).
 3. Klicke auf „Entpackte Erweiterung laden“.
-4. Wähle den Ordner `extension/` aus diesem Repository aus.
+4. Wähle den Ordner `extension/` aus diesem Repository aus (oder `dist/extension/chrome/` nach `pnpm build:extension`).
 
 Nach einem Update der Dateien auf `chrome://extensions/` bei der Extension auf „Neu laden“ klicken und offene R-Worktime- und Odoo-Tabs neu laden.
 
@@ -114,11 +114,19 @@ Prüfung im Service Worker (`lib/timesheet-schema.js`, `validateTimesheetPayload
 
 ## Firefox
 
-Die Brücke funktioniert grundsätzlich auch in Firefox (MV3, `background.scripts` als Fallback). Nicht verifiziert sind `persistAcrossSessions`, `storage.local.setAccessLevel` und eine eventuell nötige `browser_specific_settings.gecko.id`. Host-Berechtigungen sind in Firefox faktisch optional; auch für localhost musst du sie dort eventuell in den Extension-Einstellungen erlauben.
+Firefox unterstützt in MV3 keinen Service Worker, sondern nur `background.scripts`. Chrome warnt umgekehrt bei `background.scripts` („requires manifest version of 2 or lower“). Deshalb enthält `extension/manifest.json` nur `service_worker`; die Firefox-Variante erzeugt das Build-Skript:
+
+```bash
+pnpm build:extension   # → dist/extension/chrome/ und dist/extension/firefox/
+```
+
+In Firefox `about:debugging#/runtime/this-firefox` öffnen, „Temporäres Add-on laden“ und `dist/extension/firefox/manifest.json` wählen.
+
+Die Brücke funktioniert grundsätzlich auch in Firefox. Nicht verifiziert sind `persistAcrossSessions`, `storage.local.setAccessLevel` und eine eventuell nötige `browser_specific_settings.gecko.id`. Host-Berechtigungen sind in Firefox faktisch optional; auch für localhost musst du sie dort eventuell in den Extension-Einstellungen erlauben.
 
 ## Entwicklung
 
-- `manifest.json`: Konfiguration der Extension
+- `manifest.json`: Konfiguration der Extension (Chrome; die Firefox-Variante erzeugt `scripts/build-extension.mjs`)
 - `background.js`: Service Worker (Router, Prüfung, Speichern, Registrierung der Brücke, Badge)
 - `lib/timesheet-schema.js`: gemeinsame Prüfung für SW, Popup und Content Scripts
 - `content/rwt-bridge.js`: Brücke auf der R-Worktime-Seite
