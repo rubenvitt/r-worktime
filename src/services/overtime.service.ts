@@ -11,6 +11,7 @@ import {
   weekdayOfKey,
 } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import { splitHoursByBillingClass } from "@/lib/reports/billing";
 import { EntryType } from "@/types/database";
 import type {
   CacheEntry,
@@ -411,20 +412,21 @@ export class OvertimeService {
     // Aggregiere Monatsdaten
     let totalHours = 0;
     let targetHours = 0;
-    let billableHours = 0;
-    let nonBillableHours = 0;
+    const roundedEntries = entries.map((entry) => ({
+      type: entry.type,
+      source: entry.source,
+      description: entry.description,
+      billingStatus: entry.billingStatus,
+      hours: this.roundToQuarterHour(entry.duration.toNumber()),
+    }));
 
-    entries.forEach((entry) => {
-      const hours = this.roundToQuarterHour(entry.duration.toNumber());
-      totalHours += hours;
+    for (const entry of roundedEntries) {
+      totalHours += entry.hours;
+    }
 
-      // Da billable nicht in der DB ist, nehmen wir an dass WORK billable ist
-      if (entry.type === EntryType.WORK) {
-        billableHours += hours;
-      } else {
-        nonBillableHours += hours;
-      }
-    });
+    // Abrechnung nach Timing-Status; nur echte Arbeit (ohne Abwesenheiten
+    // und Anfangssaldo). Einträge ohne Status zählen als „unbekannt“.
+    const billing = splitHoursByBillingClass(roundedEntries);
 
     // Berechne Target Hours für den Monat
     const settings = await this.getUserSettings(userId);
@@ -446,8 +448,9 @@ export class OvertimeService {
       targetHours: this.roundToQuarterHour(targetHours),
       overtimeHours: this.roundToQuarterHour(totalHours - targetHours),
       weeklyBreakdown,
-      billableHours: this.roundToQuarterHour(billableHours),
-      nonBillableHours: this.roundToQuarterHour(nonBillableHours),
+      billableHours: this.roundToQuarterHour(billing.billable),
+      nonBillableHours: this.roundToQuarterHour(billing.nonBillable),
+      unknownHours: this.roundToQuarterHour(billing.unknown),
     };
 
     this.setCache(cacheKey, monthlyStats);

@@ -1,19 +1,21 @@
-import { EmptyState } from "@/components/app/empty-state";
-import { PageHeader } from "@/components/app/page-header";
-import { Panel } from "@/components/app/panel";
-import { ReportsNav } from "@/components/reports/reports-nav";
+import { Suspense } from "react";
+import {
+  BillingSkeleton,
+  BillingView,
+} from "@/components/reports/billing/billing-view";
+import { ReportFallback } from "@/components/reports/report-header";
 
 export default function BillingReportPage() {
+  // useSearchParams (?period, ?key, ?depth) braucht eine Suspense-Grenze
   return (
-    <>
-      <PageHeader
-        title="Abrechnung"
-        description="Abrechenbare Stunden nach Abrechnungsstatus."
-        toolbar={<ReportsNav />}
-      />
-      <Panel>
-        <EmptyState title="Folgt" description="Dieser Bericht ist in Arbeit." />
-      </Panel>
-    </>
+    <Suspense
+      fallback={
+        <ReportFallback report="billing">
+          <BillingSkeleton />
+        </ReportFallback>
+      }
+    >
+      <BillingView />
+    </Suspense>
   );
 }
