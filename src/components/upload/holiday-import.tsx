@@ -110,7 +110,9 @@ export function HolidayImport() {
   return (
     <div className="space-y-3">
       <p className="max-w-prose text-sm text-muted-foreground">
-        Für {currentYear} sind noch keine Feiertage hinterlegt.
+        Offizielle Feiertage kommen automatisch aus dem Feiertags-Dienst und
+        mindern das Soll. Der Import legt sie für {currentYear} zusätzlich als
+        Einträge an – als Rückfall, falls der Dienst nicht erreichbar ist.
       </p>
       <Button
         type="button"

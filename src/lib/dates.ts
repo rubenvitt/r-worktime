@@ -250,3 +250,12 @@ export function isoWeekRange(year: number, week: number): IsoWeekRange {
 export function weekdayOfKey(key: string): number {
   return berlinDayStart(key).getUTCDay();
 }
+
+/** Kalenderjahre von from bis to ("YYYY-MM-DD", beide inklusive), aufsteigend. */
+export function yearsOfRange(from: string, to: string): number[] {
+  const years: number[] = [];
+  for (let y = Number(from.slice(0, 4)); y <= Number(to.slice(0, 4)); y++) {
+    years.push(y);
+  }
+  return years;
+}

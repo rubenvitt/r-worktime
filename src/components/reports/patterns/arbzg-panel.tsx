@@ -32,7 +32,7 @@ export function ArbzgPanel({
   counts: Record<ArbzgRule, number>;
   findingDays: number;
   workDays: number;
-  /** Feiertagseinträge im Zeitraum vorhanden */
+  /** Feiertage (offiziell oder importiert) im Zeitraum vorhanden */
   hasHolidays: boolean;
 }) {
   const [filter, setFilter] = useState<RuleFilter>("all");
@@ -134,9 +134,9 @@ export function ArbzgPanel({
 
         <p className="text-xs text-muted-foreground">
           Netto = Vereinigung aller Einträge eines Tages; als Ruhepause (§ 4)
-          zählen nur Lücken ab 15 Minuten. Feiertage stammen aus den
-          importierten Feiertagseinträgen
-          {hasHolidays ? "" : " – für diesen Zeitraum sind keine hinterlegt"}.
+          zählen nur Lücken ab 15 Minuten. Feiertage (Niedersachsen) stammen aus
+          dem Feiertags-Dienst und den importierten Feiertagseinträgen
+          {hasHolidays ? "" : " – in diesem Zeitraum liegt keiner"}.
         </p>
       </PanelBody>
     </Panel>

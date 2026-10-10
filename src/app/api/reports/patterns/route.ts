@@ -6,6 +6,7 @@ import {
   berlinTodayKey,
   dateKeyFromDbDate,
   shiftDateKey,
+  yearsOfRange,
 } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import {
@@ -14,6 +15,7 @@ import {
   parsePatternPeriod,
   resolvePatternRange,
 } from "@/lib/reports/patterns";
+import { loadOfficialHolidays } from "@/services/holiday.service";
 
 // GET /api/reports/patterns?period=month|quarter|year&key=2026-10|2026-Q4|2026
 //   | period=last90
@@ -32,8 +34,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const empty = range.isEmpty;
-    const [entries, holidayEntries] = empty
-      ? [[], []]
+    const [entries, holidayEntries, official] = empty
+      ? [[], [], { names: {}, unavailableYears: [] }]
       : await Promise.all([
           // Puffer: Vortag für die Ruhezeit (§5), Folgetag für Arbeit nach Mitternacht
           prisma.timeEntry.findMany({
@@ -64,11 +66,17 @@ export async function GET(request: NextRequest) {
             },
             select: { date: true, description: true, title: true },
           }),
+          // § 9 gilt an jedem Feiertag, auch am Samstag: alle offiziellen
+          loadOfficialHolidays(yearsOfRange(range.from, range.effectiveTo)),
         ]);
 
+    // Offizielle Feiertage plus importierte; ohne Feiertags-Dienst nur importierte
     const holidays: Record<string, string> = {};
+    for (const [key, name] of Object.entries(official.names)) {
+      if (key >= range.from && key <= range.effectiveTo) holidays[key] = name;
+    }
     for (const holiday of holidayEntries) {
-      holidays[dateKeyFromDbDate(holiday.date)] =
+      holidays[dateKeyFromDbDate(holiday.date)] ??=
         holiday.title || holiday.description || "Feiertag";
     }
 

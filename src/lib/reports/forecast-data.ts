@@ -3,19 +3,14 @@
 
 import { EntryType } from "@prisma/client";
 import { excludeAdjustmentFilter, findAdjustmentEntry } from "@/lib/adjustment";
-import {
-  berlinDayStart,
-  dateKeyFromDbDate,
-  shiftDateKey,
-  weekdayOfKey,
-} from "@/lib/dates";
+import { berlinDayStart, dateKeyFromDbDate, shiftDateKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import type {
   ReportEntry,
   ReportEntryType,
   WorkSchedule,
 } from "@/lib/reports/year";
-import { HolidayService } from "@/services/holiday.service";
+import { loadOfficialHolidays } from "@/services/holiday.service";
 import { overtimeService } from "@/services/overtime.service";
 
 export interface ReportContext {
@@ -100,111 +95,31 @@ export async function loadReportEntries(
 }
 
 // ---------------------------------------------------------------------------
-// Feiertage: importierte HOLIDAY-Einträge plus offizielle Feiertage aus dem
-// Feiertags-Service (Niedersachsen, wie der Import unter Einstellungen).
+// Feiertage: offizielle Feiertage aus dem Feiertags-Dienst (Niedersachsen, mit
+// Cache) plus importierte HOLIDAY-Einträge. Beide mindern das Soll – im Saldo,
+// in der Woche, in Jahresübersicht und Prognose.
 
-const holidayService = new HolidayService();
-const HOLIDAY_CACHE_TTL = 24 * 60 * 60 * 1000;
-/** Fehlschläge kurz merken: sonst wartet jede Wochen-/Berichtsseite den Timeout ab */
-const HOLIDAY_FAILURE_TTL = 5 * 60 * 1000;
-const HOLIDAY_FETCH_TIMEOUT = 5_000;
-const holidayCache = new Map<
-  number,
-  { fetchedAt: number; ttl: number; holidays: Promise<Map<string, string>> }
->();
-
-async function officialHolidays(year: number): Promise<Map<string, string>> {
-  const cached = holidayCache.get(year);
-  if (cached && Date.now() - cached.fetchedAt < cached.ttl) {
-    return cached.holidays;
-  }
-  // Ohne Timeout bliebe ein hängender Abruf 24 h im Cache und blockierte die Routen
-  const holidays = Promise.race([
-    holidayService.fetchHolidaysForYear(year),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("Feiertags-Dienst antwortet nicht")),
-        HOLIDAY_FETCH_TIMEOUT,
-      ),
-    ),
-  ]).then((list) => new Map(list.map((h) => [h.date.slice(0, 10), h.fname])));
-  holidayCache.set(year, {
-    fetchedAt: Date.now(),
-    ttl: HOLIDAY_CACHE_TTL,
-    holidays,
-  });
-  try {
-    return await holidays;
-  } catch (error) {
-    // Fehlschlag nur kurz cachen, danach erneut versuchen
-    holidayCache.set(year, {
-      fetchedAt: Date.now(),
-      ttl: HOLIDAY_FAILURE_TTL,
-      holidays,
-    });
-    throw error;
-  }
-}
-
-export interface OfficialHolidayData {
-  /** Datum → Name, nur offizielle Feiertage */
-  names: Record<string, string>;
-  /** Jahre, für die der Feiertags-Service nicht erreichbar war */
-  unavailableYears: number[];
-}
-
-/** Offizielle Feiertage (Niedersachsen) – Fehler einzelner Jahre werden gemeldet. */
-export async function loadOfficialHolidays(
-  years: number[],
-): Promise<OfficialHolidayData> {
-  const sortedYears = [...new Set(years)].sort((a, b) => a - b);
-  const results = await Promise.all(
-    sortedYears.map((year) =>
-      officialHolidays(year).then(
-        (map) => ({ year, map }),
-        (error: unknown) => {
-          console.error(`Feiertage ${year} nicht verfügbar:`, error);
-          return { year, map: null };
-        },
-      ),
-    ),
-  );
-  const names: Record<string, string> = {};
-  const unavailableYears: number[] = [];
-  for (const { year, map } of results) {
-    if (!map) unavailableYears.push(year);
-    else for (const [key, name] of map) names[key] = name;
-  }
-  return { names, unavailableYears };
-}
+export {
+  loadOfficialHolidays,
+  type OfficialHolidayData,
+} from "@/services/holiday.service";
 
 export interface HolidayData {
-  /** Importierte HOLIDAY-Einträge – mindern das Soll im Saldo */
-  importedKeys: Set<string>;
-  /** Offizielle und importierte Feiertage */
+  /** Offizielle und importierte Feiertage – mindern an Arbeitstagen das Soll */
   allKeys: Set<string>;
   /** Datum → Name */
   names: Record<string, string>;
-  /** Jahre, für die der Feiertags-Service nicht erreichbar war */
+  /** Jahre, für die der Feiertags-Dienst nicht erreichbar war (nur Import zählt) */
   unavailableYears: number[];
-  /** Jahre mit offiziellen Feiertagen auf Arbeitstagen, aber ohne Import */
-  notImportedYears: number[];
 }
 
 export async function loadHolidays(
   userId: string,
   years: number[],
-  workDays: readonly number[],
 ): Promise<HolidayData> {
   const sortedYears = [...new Set(years)].sort((a, b) => a - b);
   if (sortedYears.length === 0) {
-    return {
-      importedKeys: new Set(),
-      allKeys: new Set(),
-      names: {},
-      unavailableYears: [],
-      notImportedYears: [],
-    };
+    return { allKeys: new Set(), names: {}, unavailableYears: [] };
   }
 
   const first = sortedYears[0];
@@ -224,31 +139,19 @@ export async function loadHolidays(
     loadOfficialHolidays(sortedYears),
   ]);
 
-  const importedKeys = new Set<string>();
+  const allKeys = new Set<string>();
   const names: Record<string, string> = {};
-  const importedYears = new Set<number>();
-  for (const row of imported) {
-    const key = dateKeyFromDbDate(row.date);
-    importedKeys.add(key);
-    importedYears.add(Number(key.slice(0, 4)));
-    if (row.description) names[key] = row.description;
-  }
-
-  const allKeys = new Set(importedKeys);
-  const yearsOnWorkDay = new Set<number>();
   for (const [key, name] of Object.entries(official.names)) {
     allKeys.add(key);
-    names[key] ??= name;
-    if (workDays.includes(weekdayOfKey(key))) {
-      yearsOnWorkDay.add(Number(key.slice(0, 4)));
-    }
+    names[key] = name;
   }
-  const unavailableYears = official.unavailableYears;
-  const notImportedYears = sortedYears.filter(
-    (year) => yearsOnWorkDay.has(year) && !importedYears.has(year),
-  );
+  for (const row of imported) {
+    const key = dateKeyFromDbDate(row.date);
+    allKeys.add(key);
+    names[key] ??= row.description || "Feiertag";
+  }
 
-  return { importedKeys, allKeys, names, unavailableYears, notImportedYears };
+  return { allKeys, names, unavailableYears: official.unavailableYears };
 }
 
 /** Aktueller Saldo – dieselbe Quelle wie /overtime. */

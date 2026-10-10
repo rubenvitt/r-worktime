@@ -27,8 +27,12 @@ function work(
   };
 }
 
-function absence(date: string, type: "VACATION" | "SICK"): ReportEntry {
-  return { date, hours: 8, type, source: "MANUAL", billingStatus: null };
+function absence(
+  date: string,
+  type: "VACATION" | "SICK",
+  hours = 8,
+): ReportEntry {
+  return { date, hours, type, source: "MANUAL", billingStatus: null };
 }
 
 /** WORK-Einträge an allen Mo–Fr eines Zeitraums, außer den ausgelassenen Tagen. */
@@ -148,6 +152,79 @@ describe("summarizeRange", () => {
     expect(summary.unknownBillingHours).toBe(1);
     // Anfangssaldo zählt nicht als Arbeit
     expect(summary.workHours).toBe(7.5);
+  });
+});
+
+describe("summarizeRange (Urlaub/Krank je Tag)", () => {
+  const oneDay = (entries: ReportEntry[], holidayKeys = NO_HOLIDAYS) =>
+    summarizeRange(entries, {
+      from: "2026-03-02",
+      to: "2026-03-02",
+      schedule: MON_FRI,
+      holidayKeys,
+    });
+
+  it("schreibt einen halben Urlaubstag mit seinen Stunden gut", () => {
+    const summary = oneDay([
+      absence("2026-03-02", "VACATION", 4),
+      work("2026-03-02", 4),
+    ]);
+    expect(summary.targetHours).toBe(8);
+    expect(summary.actualHours).toBe(8);
+    expect(summary.absenceDays).toBe(0.5);
+  });
+
+  it("summiert Urlaub und Krankheit eines Tags, höchstens bis zum Tagessoll", () => {
+    const summary = oneDay([
+      absence("2026-03-02", "VACATION", 6),
+      absence("2026-03-02", "SICK", 6),
+    ]);
+    expect(summary.actualHours).toBe(8);
+    expect(summary.absenceDays).toBe(1);
+  });
+
+  it("schreibt an Feiertagen nichts gut", () => {
+    const summary = oneDay(
+      [absence("2026-03-02", "VACATION")],
+      new Set(["2026-03-02"]),
+    );
+    expect(summary.targetHours).toBe(0);
+    expect(summary.actualHours).toBe(0);
+    expect(summary.absenceDays).toBe(0);
+  });
+
+  it("wertet einen 0-h-Eintrag nicht als ganzen Tag", () => {
+    const summary = oneDay([absence("2026-03-02", "VACATION", 0)]);
+    expect(summary.actualHours).toBe(0);
+    expect(summary.absenceDays).toBe(0);
+  });
+
+  it("schreibt bei krummem Tagessoll das volle Soll gut (39 h → 7,8 h)", () => {
+    // Der Dialog legt 7,8 h an; Viertelstunden-Rundung (7,75 h) ließe pro
+    // Urlaubstag 3 Minuten Minus stehen
+    const week = summarizeRange(
+      [
+        "2026-03-02",
+        "2026-03-03",
+        "2026-03-04",
+        "2026-03-05",
+        "2026-03-06",
+      ].map((date) => absence(date, "VACATION", 7.8)),
+      {
+        from: "2026-03-02",
+        to: "2026-03-06",
+        schedule: { workDays: [1, 2, 3, 4, 5], dailyHours: 7.8 },
+        holidayKeys: NO_HOLIDAYS,
+      },
+    );
+    expect(week.actualHours).toBeCloseTo(week.targetHours, 9);
+  });
+
+  it("zählt Abwesenheitstage wie der Abwesenheiten-Bericht", () => {
+    // 3 h → ½ Tag (gerundet), Gutschrift bleibt 3 h
+    const summary = oneDay([absence("2026-03-02", "SICK", 3)]);
+    expect(summary.actualHours).toBe(3);
+    expect(summary.absenceDays).toBe(0.5);
   });
 });
 

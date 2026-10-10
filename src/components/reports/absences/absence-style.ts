@@ -76,8 +76,8 @@ export function describeAbsenceDay(day: AbsenceDay): string {
     if (day.hours[category] > 0) {
       parts.push(`${label} ${formatHoursLabel(day.hours[category])}`);
     } else if (category === "holiday" && day.holidayImported === false) {
-      // Offizieller Feiertag ohne Eintrag
-      parts.push(`${label}, nicht importiert`);
+      // Offizieller Feiertag ohne Eintrag: zählt wie ein importierter
+      parts.push(label);
     }
   }
   if (day.isFuture && day.days.vacation > 0) parts.push("geplant");

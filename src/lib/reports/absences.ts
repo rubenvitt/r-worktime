@@ -16,9 +16,12 @@
 //   Sie verringern den Urlaubsanspruch nicht. Andere Gründe werden ignoriert.
 // - Urlaub bis einschließlich heute ist „genommen“, danach „geplant“.
 // - Offizielle Feiertage (Feiertags-Dienst) zählen an Arbeitstagen als ganzer
-//   Feiertag, auch ohne importierten HOLIDAY-Eintrag. Nicht importierte
-//   Feiertage werden gemeldet, weil der Saldo sie erst nach dem Import aus dem
-//   Soll nimmt.
+//   Feiertag, auch ohne importierten HOLIDAY-Eintrag – wie im Saldo, der sie
+//   ebenfalls aus dem Soll nimmt.
+// - Abstimmung mit dem Saldo (year.ts › summarizeRange): gleicher Kalendertag,
+//   gleiche Arbeitstage, an Feiertagen keine Gutschrift, höchstens ein Tag.
+//   Der Saldo schreibt die Stunden gut (4 h Urlaub = 4 h), der Bericht zählt
+//   Tage in halben Schritten (4 h = ½ Tag); 0-h-Einträge zählen in beiden nicht.
 
 import { weekdayOfKey } from "@/lib/dates";
 
@@ -125,8 +128,7 @@ export interface AbsenceReport {
   account: VacationAccount;
   /** Tage mit erfasster Abwesenheit an Nicht-Arbeitstagen (nicht gezählt) */
   nonWorkDayAbsences: number;
-  /** Offizielle Feiertage an Arbeitstagen ohne HOLIDAY-Eintrag, aufsteigend */
-  notImportedHolidays: string[];
+  /** Feiertags-Dienst nicht erreichbar: nur importierte Feiertage bekannt */
   holidayServiceUnavailable: boolean;
 }
 
@@ -163,6 +165,21 @@ export function hoursToAbsenceDays(hours: number, dailyHours: number): number {
   const target = dailyHours > 0 ? dailyHours : DEFAULT_DAILY_HOURS;
   const halves = Math.round((hours / target) * 2);
   return Math.min(1, Math.max(0.5, halves / 2));
+}
+
+/**
+ * Abwesenheitstage eines Tags aus Krankheits- und Urlaubsstunden: je Typ auf
+ * halbe Tage gerundet, Krankheit vor Urlaub, zusammen höchstens ein Tag.
+ * Dieselbe Umrechnung nutzen Jahresübersicht und Prognose.
+ */
+export function absenceDayShare(
+  sickHours: number,
+  vacationHours: number,
+  dailyHours: number,
+): number {
+  const sick = hoursToAbsenceDays(sickHours, dailyHours);
+  const vacation = hoursToAbsenceDays(vacationHours, dailyHours);
+  return sick + Math.min(vacation, 1 - sick);
 }
 
 /** Grund eines geprüften Tags ist „Unbezahlter Urlaub“ (Schreibweise egal). */
@@ -281,11 +298,8 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
   }
 
   // Offizielle Feiertage ohne jeden Eintrag (nur an Arbeitstagen sichtbar)
-  const notImportedHolidays: string[] = [];
   for (const [dateKey, holidayName] of officialHolidays) {
     if (!workDays.has(weekdayOfKey(dateKey))) continue;
-    if ((hoursByDay.get(dateKey)?.holiday ?? 0) > 0) continue;
-    notImportedHolidays.push(dateKey);
     if (hoursByDay.has(dateKey)) continue;
     const counted = emptyValues();
     counted.holiday = 1;
@@ -300,7 +314,6 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
       holidayImported: false,
     });
   }
-  notImportedHolidays.sort();
 
   for (const dateKey of unpaidKeys) {
     const counted = emptyValues();
@@ -366,7 +379,6 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
       remaining: entitlement - taken - planned,
     },
     nonWorkDayAbsences,
-    notImportedHolidays,
     holidayServiceUnavailable: input.holidayServiceUnavailable ?? false,
   };
 }

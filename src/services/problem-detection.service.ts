@@ -1,6 +1,16 @@
 import type { Prisma } from "@prisma/client";
-import { addDays, endOfDay, format, isWeekend, startOfDay } from "date-fns";
+import { startOfDay } from "date-fns";
+import {
+  berlinDateKey,
+  berlinDayStart,
+  berlinTodayKey,
+  dateKeyFromDbDate,
+  shiftDateKey,
+  weekdayOfKey,
+  yearsOfRange,
+} from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import { loadOfficialHolidays } from "@/services/holiday.service";
 import type {
   DateRange,
   ProblemDay,
@@ -17,40 +27,63 @@ export class ProblemDetectionService {
     userId: string,
     filters?: ProblemFilters,
   ): Promise<{ problems: ProblemDay[]; stats: ProblemStats }> {
-    const range = filters?.dateRange || this.getDefaultDateRange();
+    // Tage als Berliner Kalendertage, unabhängig von der Serverzeit
+    const { fromKey, toKey } = filters?.dateRange
+      ? {
+          fromKey: berlinDateKey(filters.dateRange.startDate),
+          toKey: berlinDateKey(filters.dateRange.endDate),
+        }
+      : this.getDefaultDayRange();
+    const dateFilter = {
+      gte: berlinDayStart(fromKey),
+      lte: berlinDayStart(toKey),
+    };
 
-    // Hole alle Zeiteinträge im Zeitraum
-    const entries = await prisma.timeEntry.findMany({
-      where: {
-        userId,
-        date: {
-          gte: range.startDate,
-          lte: range.endDate,
-        },
-      },
-      orderBy: { date: "desc" },
-    });
-
-    // Hole reviewed days
-    const reviewedDays = await prisma.reviewedDay.findMany({
-      where: {
-        userId,
-        date: {
-          gte: range.startDate,
-          lte: range.endDate,
-        },
-      },
-    });
-
-    // Hole User Settings für Arbeitsstunden
-    const userSettings = await prisma.userSettings.findUnique({
-      where: { userId },
-    });
+    // Hole alle Zeiteinträge, geprüften Tage, Einstellungen und offiziellen
+    // Feiertage im Zeitraum
+    const [entries, reviewedDays, userSettings, official] = await Promise.all([
+      prisma.timeEntry.findMany({
+        where: { userId, date: dateFilter },
+        orderBy: { date: "desc" },
+      }),
+      prisma.reviewedDay.findMany({
+        where: { userId, date: dateFilter },
+      }),
+      prisma.userSettings.findUnique({
+        where: { userId },
+      }),
+      fromKey <= toKey
+        ? loadOfficialHolidays(yearsOfRange(fromKey, toKey))
+        : Promise.resolve({ names: {}, unavailableYears: [] }),
+    ]);
 
     const weeklyWorkHours = userSettings?.weeklyWorkHours
       ? Number(userSettings.weeklyWorkHours)
       : this.DEFAULT_WEEKLY_HOURS;
-    const dailyWorkHours = weeklyWorkHours / 5;
+    const workDays = new Set(
+      userSettings?.workDays?.length ? userSettings.workDays : [1, 2, 3, 4, 5],
+    );
+    // Tagessoll wie im Saldo: Wochenstunden / Anzahl Arbeitstage
+    const dailyWorkHours = weeklyWorkHours / workDays.size;
+
+    const entriesByKey = new Map<string, typeof entries>();
+    for (const entry of entries) {
+      const key = dateKeyFromDbDate(entry.date);
+      const list = entriesByKey.get(key) ?? [];
+      list.push(entry);
+      entriesByKey.set(key, list);
+    }
+    const reviewedKeys = new Set(
+      reviewedDays.map((r) => dateKeyFromDbDate(r.date)),
+    );
+    // Feiertag = offiziell (Feiertags-Dienst) oder importiert (HOLIDAY-Eintrag);
+    // ohne Dienst bleiben die importierten
+    const holidayKeys = new Set(Object.keys(official.names));
+    for (const entry of entries) {
+      if (entry.type === "HOLIDAY") {
+        holidayKeys.add(dateKeyFromDbDate(entry.date));
+      }
+    }
 
     // Analysiere jeden Tag im Zeitraum
     const problems: ProblemDay[] = [];
@@ -61,32 +94,22 @@ export class ProblemDetectionService {
       incompleteDays: 0,
     };
 
-    let currentDate = new Date(range.startDate);
-    while (currentDate <= range.endDate) {
-      const dayEntries = entries.filter(
-        (e) =>
-          format(e.date, "yyyy-MM-dd") === format(currentDate, "yyyy-MM-dd"),
-      );
-
-      const isReviewed = reviewedDays.some(
-        (r) =>
-          format(r.date, "yyyy-MM-dd") === format(currentDate, "yyyy-MM-dd"),
-      );
+    for (let key = fromKey; key <= toKey; key = shiftDateKey(key, 1)) {
+      const dayEntries = entriesByKey.get(key) ?? [];
 
       // Skip reviewed days unless showing all
-      if (isReviewed && filters?.reviewStatus === "unreviewed") {
-        currentDate = addDays(currentDate, 1);
+      if (reviewedKeys.has(key) && filters?.reviewStatus === "unreviewed") {
         continue;
       }
 
-      const weekend = isWeekend(currentDate);
-      const holiday = await this.isHoliday(currentDate);
+      const weekday = weekdayOfKey(key);
+      const weekend = weekday === 0 || weekday === 6;
+      const holiday = holidayKeys.has(key);
+      // Kein Soll: freier Tag laut Einstellungen oder Feiertag
+      const noTarget = !workDays.has(weekday) || holiday;
 
-      // Skip weekends and holidays unless they have entries
-      if ((weekend || holiday) && dayEntries.length === 0) {
-        currentDate = addDays(currentDate, 1);
-        continue;
-      }
+      // Skip days without target unless they have entries
+      if (noTarget && dayEntries.length === 0) continue;
 
       const totalHours = dayEntries.reduce(
         (sum, entry) => sum + Number(entry.duration),
@@ -98,10 +121,11 @@ export class ProblemDetectionService {
       if (dayEntries.length === 0) {
         problemType = "missing";
         stats.missingDays++;
-      } else if (totalHours === 0) {
+      } else if (totalHours === 0 && !holiday) {
+        // Ein 0-h-Feiertagseintrag ist kein Problem
         problemType = "zero_hours";
         stats.zeroHoursDays++;
-      } else if (totalHours < dailyWorkHours && !weekend && !holiday) {
+      } else if (totalHours < dailyWorkHours && !noTarget) {
         problemType = "incomplete";
         stats.incompleteDays++;
       }
@@ -114,10 +138,10 @@ export class ProblemDetectionService {
           !filters?.problemType)
       ) {
         const problem: ProblemDay = {
-          date: new Date(currentDate),
+          date: berlinDayStart(key),
           type: problemType,
           currentHours: totalHours,
-          expectedHours: weekend || holiday ? 0 : dailyWorkHours,
+          expectedHours: noTarget ? 0 : dailyWorkHours,
           entries: dayEntries.map((e) => ({
             ...e,
             duration: Number(e.duration),
@@ -127,7 +151,7 @@ export class ProblemDetectionService {
           suggestion: this.getSuggestion(
             problemType,
             dayEntries.length,
-            weekend,
+            noTarget,
             holiday,
           ),
         };
@@ -135,8 +159,6 @@ export class ProblemDetectionService {
         problems.push(problem);
         stats.totalProblems++;
       }
-
-      currentDate = addDays(currentDate, 1);
     }
 
     // Apply sorting
@@ -176,29 +198,10 @@ export class ProblemDetectionService {
     return "bulk_fill";
   }
 
-  private getDefaultDateRange(): DateRange {
-    const endDate = endOfDay(new Date());
-    const startDate = startOfDay(addDays(endDate, -30));
-    return { startDate, endDate };
-  }
-
-  private async isHoliday(date: Date): Promise<boolean> {
-    // Hier könnte eine Holiday API oder DB-Tabelle verwendet werden
-    // Fürs Erste: nur hardcoded deutsche Feiertage
-    const holidays = [
-      "2025-01-01", // Neujahr
-      "2025-04-18", // Karfreitag
-      "2025-04-21", // Ostermontag
-      "2025-05-01", // Tag der Arbeit
-      "2025-05-29", // Christi Himmelfahrt
-      "2025-06-09", // Pfingstmontag
-      "2025-10-03", // Tag der Deutschen Einheit
-      "2025-12-25", // 1. Weihnachtstag
-      "2025-12-26", // 2. Weihnachtstag
-    ];
-
-    const dateStr = format(date, "yyyy-MM-dd");
-    return holidays.includes(dateStr);
+  /** Die letzten 30 Tage bis heute (Berliner Kalendertage). */
+  private getDefaultDayRange(): { fromKey: string; toKey: string } {
+    const toKey = berlinTodayKey();
+    return { fromKey: shiftDateKey(toKey, -30), toKey };
   }
 
   async markAsReviewed(

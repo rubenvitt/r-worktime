@@ -37,10 +37,8 @@ export interface ForecastResponse {
   holidays: {
     /** Datum → Name für alle Feiertage im Zeitraum */
     names: Record<string, string>;
-    /** Feiertags-Service nicht erreichbar: nur importierte Feiertage berücksichtigt */
+    /** Feiertags-Dienst nicht erreichbar: nur importierte Feiertage berücksichtigt */
     unavailableYears: number[];
-    /** Jahre ohne importierte Feiertage – der Saldo zählt sie dort als Soll */
-    notImportedYears: number[];
   };
 }
 
@@ -77,7 +75,7 @@ export async function GET(request: NextRequest) {
     const context = await loadReportContext(userId);
     const [entries, holidays, currentBalance] = await Promise.all([
       loadReportEntries(userId, from, to),
-      loadHolidays(userId, years, context.schedule.workDays),
+      loadHolidays(userId, years),
       loadCurrentBalance(userId),
     ]);
 
@@ -88,7 +86,6 @@ export async function GET(request: NextRequest) {
       entries,
       schedule: context.schedule,
       holidayKeys: holidays.allKeys,
-      importedHolidayKeys: holidays.importedKeys,
       trackingStart: context.trackingStart,
       currentBalance,
     });
@@ -108,9 +105,6 @@ export async function GET(request: NextRequest) {
           ),
         ),
         unavailableYears: holidays.unavailableYears.filter(
-          (y) => y >= currentYear,
-        ),
-        notImportedYears: holidays.notImportedYears.filter(
           (y) => y >= currentYear,
         ),
       },

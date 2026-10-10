@@ -1,5 +1,3 @@
-import { weekdayOfKey } from "@/lib/dates";
-
 export interface Holiday {
   date: string;
   fname: string;
@@ -32,26 +30,18 @@ export class HolidayService {
       const data: HolidayApiResponse = await response.json();
 
       // Check if response is successful
+      // Keine Daten ist ein Fehler, kein „Jahr ohne Feiertage“ – sonst würde
+      // das leere Ergebnis einen Tag lang gecacht
       if (data.status !== "success" || !data.feiertage) {
-        return [];
+        throw new Error("Feiertags-Dienst lieferte keine Feiertage");
       }
 
-      // Filter holidays - only include those valid in Niedersachsen (ni) and on weekdays
-      const filteredHolidays: Holiday[] = [];
-
-      for (const holiday of data.feiertage) {
-        // Check if holiday is valid in Niedersachsen
-        if (holiday.ni !== "1" && holiday.all_states !== "1") {
-          continue;
-        }
-
-        // Only include weekdays (Monday to Friday); reiner Kalendertag,
-        // unabhängig von der Zeitzone des Servers
-        const weekday = weekdayOfKey(holiday.date);
-        if (weekday !== 0 && weekday !== 6) {
-          filteredHolidays.push(holiday);
-        }
-      }
+      // Nur Feiertage in Niedersachsen. Alle Wochentage: ob ein Feiertag das
+      // Soll mindert, entscheidet der Aufrufer anhand der Arbeitstage
+      // (UserSettings.workDays) – auch Samstag oder Sonntag kann einer sein.
+      const filteredHolidays = data.feiertage.filter(
+        (holiday) => holiday.ni === "1" || holiday.all_states === "1",
+      );
 
       return filteredHolidays.sort((a, b) => a.date.localeCompare(b.date));
     } catch (error) {
@@ -87,4 +77,91 @@ export class HolidayService {
 
     return { startTime, endTime };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Offizielle Feiertage mit Cache: eine Quelle für Saldo, Woche, Berichte,
+// Problemerkennung und Auffüllung. Erfolgreiche Abrufe gelten einen Tag,
+// Fehlschläge nur kurz – sonst wartet jede Seite erneut den Timeout ab.
+
+const holidayService = new HolidayService();
+const HOLIDAY_CACHE_TTL = 24 * 60 * 60 * 1000;
+/** Fehlschläge kurz merken: sonst wartet jede Wochen-/Berichtsseite den Timeout ab */
+const HOLIDAY_FAILURE_TTL = 5 * 60 * 1000;
+const HOLIDAY_FETCH_TIMEOUT = 5_000;
+const holidayCache = new Map<
+  number,
+  { fetchedAt: number; ttl: number; holidays: Promise<Map<string, string>> }
+>();
+
+async function officialHolidays(year: number): Promise<Map<string, string>> {
+  const cached = holidayCache.get(year);
+  if (cached && Date.now() - cached.fetchedAt < cached.ttl) {
+    return cached.holidays;
+  }
+  // Ohne Timeout bliebe ein hängender Abruf 24 h im Cache und blockierte die Routen
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const holidays = Promise.race([
+    holidayService.fetchHolidaysForYear(year),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("Feiertags-Dienst antwortet nicht")),
+        HOLIDAY_FETCH_TIMEOUT,
+      );
+    }),
+  ])
+    .then((list) => new Map(list.map((h) => [h.date.slice(0, 10), h.fname])))
+    .finally(() => clearTimeout(timer));
+  holidayCache.set(year, {
+    fetchedAt: Date.now(),
+    ttl: HOLIDAY_CACHE_TTL,
+    holidays,
+  });
+  try {
+    return await holidays;
+  } catch (error) {
+    // Fehlschlag nur kurz cachen, danach erneut versuchen
+    holidayCache.set(year, {
+      fetchedAt: Date.now(),
+      ttl: HOLIDAY_FAILURE_TTL,
+      holidays,
+    });
+    throw error;
+  }
+}
+
+export interface OfficialHolidayData {
+  /** Datum → Name, alle offiziellen Feiertage (auch am Wochenende) */
+  names: Record<string, string>;
+  /** Jahre, für die der Feiertags-Dienst nicht erreichbar war */
+  unavailableYears: number[];
+}
+
+/**
+ * Offizielle Feiertage (Niedersachsen) – Fehler einzelner Jahre werden
+ * gemeldet, nicht geworfen. Aufrufer fallen dann auf importierte
+ * HOLIDAY-Einträge zurück.
+ */
+export async function loadOfficialHolidays(
+  years: number[],
+): Promise<OfficialHolidayData> {
+  const sortedYears = [...new Set(years)].sort((a, b) => a - b);
+  const results = await Promise.all(
+    sortedYears.map((year) =>
+      officialHolidays(year).then(
+        (map) => ({ year, map }),
+        (error: unknown) => {
+          console.error(`Feiertage ${year} nicht verfügbar:`, error);
+          return { year, map: null };
+        },
+      ),
+    ),
+  );
+  const names: Record<string, string> = {};
+  const unavailableYears: number[] = [];
+  for (const { year, map } of results) {
+    if (!map) unavailableYears.push(year);
+    else for (const [key, name] of map) names[key] = name;
+  }
+  return { names, unavailableYears };
 }

@@ -1,17 +1,27 @@
-import type { Prisma } from "@prisma/client";
 import { excludeAdjustmentFilter, findAdjustmentEntry } from "@/lib/adjustment";
 import {
+  berlinDateKey,
   berlinDayStart,
+  berlinTodayKey,
   dateKeyFromDbDate,
   type IsoWeek,
   isoWeekOf,
   isoWeekRange,
   monthRange,
   shiftDateKey,
-  weekdayOfKey,
+  yearsOfRange,
 } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { splitHoursByBillingClass } from "@/lib/reports/billing";
+import {
+  absenceCreditHours,
+  dayTargetHours,
+  type ReportEntry,
+  type ReportEntryType,
+  summarizeRange,
+  type WorkSchedule,
+} from "@/lib/reports/year";
+import { loadOfficialHolidays } from "@/services/holiday.service";
 import { EntryType } from "@/types/database";
 import type {
   CacheEntry,
@@ -21,6 +31,39 @@ import type {
   OvertimeCalculationParams,
   WeeklyStatistics,
 } from "@/types/statistics";
+
+/** Zeile der time_entries-Tabelle, soweit die Rechnung sie braucht. */
+interface EntryRow {
+  date: Date;
+  duration: { toNumber(): number };
+  type: string;
+  source?: string | null;
+  billingStatus?: string | null;
+}
+
+function toReportEntry(row: EntryRow): ReportEntry {
+  return {
+    date: dateKeyFromDbDate(row.date),
+    hours: row.duration.toNumber(),
+    type: row.type as ReportEntryType,
+    source: row.source ?? "",
+    billingStatus: row.billingStatus ?? null,
+  };
+}
+
+/**
+ * Kalendertag eines Zeitraum-Parameters: @db.Date-Werte und Routen-Parameter
+ * wie "2026-03-30" sind UTC-Mitternacht des Tags, andere Zeitpunkte (z. B.
+ * `new Date()`) zählen mit ihrem Berliner Kalendertag.
+ */
+function dayKeyOfParam(date: Date): string {
+  const isUtcMidnight =
+    date.getUTCHours() === 0 &&
+    date.getUTCMinutes() === 0 &&
+    date.getUTCSeconds() === 0 &&
+    date.getUTCMilliseconds() === 0;
+  return isUtcMidnight ? dateKeyFromDbDate(date) : berlinDateKey(date);
+}
 
 export class OvertimeService {
   private static instance: OvertimeService;
@@ -112,6 +155,35 @@ export class OvertimeService {
     };
   }
 
+  /**
+   * Feiertage im Zeitraum: offizielle aus dem Feiertags-Dienst plus
+   * importierte HOLIDAY-Einträge. Ist der Dienst nicht erreichbar, bleiben
+   * nur die importierten (der Dienst meldet das selbst im Log).
+   */
+  private async loadHolidayKeys(
+    fromKey: string,
+    toKey: string,
+    entries: readonly ReportEntry[],
+  ): Promise<{ keys: Set<string>; unavailable: boolean }> {
+    const keys = new Set<string>();
+    if (fromKey > toKey) return { keys, unavailable: false };
+    const official = await loadOfficialHolidays(yearsOfRange(fromKey, toKey));
+    for (const key of Object.keys(official.names)) {
+      if (key >= fromKey && key <= toKey) keys.add(key);
+    }
+    for (const entry of entries) {
+      if (entry.type === "HOLIDAY") keys.add(entry.date);
+    }
+    return { keys, unavailable: official.unavailableYears.length > 0 };
+  }
+
+  private scheduleOf(settings: {
+    dailyHours: number;
+    workDays: number[];
+  }): WorkSchedule {
+    return { workDays: settings.workDays, dailyHours: settings.dailyHours };
+  }
+
   async calculateBalance(
     params: OvertimeCalculationParams,
   ): Promise<OvertimeBalance> {
@@ -131,103 +203,58 @@ export class OvertimeService {
     // Prüfe ob es einen Anfangssaldo gibt
     const adjustmentEntry = await findAdjustmentEntry(userId);
 
-    // Bestimme den Zeitraum für die Berechnung
-    // Wenn es einen Anfangssaldo gibt, starte die Sollzeit-Berechnung erst ab dem Tag NACH dem Adjustment
-    let calculationStartDate: Date;
+    // Zeitraum als Berliner Kalendertage. Mit Anfangssaldo zählen Soll und
+    // Ist erst ab dem Tag NACH dem Adjustment – der Anfangssaldo deckt seinen
+    // eigenen Tag schon ab.
+    const todayKey = berlinTodayKey();
+    let fromKey = startDate
+      ? dayKeyOfParam(startDate)
+      : `${todayKey.slice(0, 4)}-01-01`;
     let initialBalance = 0;
 
     if (adjustmentEntry) {
-      // Der Anfangssaldo deckt seinen eigenen Tag schon ab: Soll und Ist zählen
-      // erst ab dem Folgetag. Über den Datums-Key gerechnet, damit der Tag nach
-      // der Zeitumstellung nicht um 01:00 UTC beginnt (@db.Date = 00:00 UTC).
-      const dayAfterAdjustment = berlinDayStart(
-        shiftDateKey(dateKeyFromDbDate(adjustmentEntry.date), 1),
+      const dayAfterAdjustment = shiftDateKey(
+        dateKeyFromDbDate(adjustmentEntry.date),
+        1,
       );
-      calculationStartDate =
-        startDate && startDate > dayAfterAdjustment
-          ? startDate
-          : dayAfterAdjustment;
-
+      if (!startDate || fromKey < dayAfterAdjustment) {
+        fromKey = dayAfterAdjustment;
+      }
       // Der Anfangssaldo selbst (z.B. 0 bedeutet: bis zu diesem Tag genau Sollzeit gearbeitet)
       initialBalance = adjustmentEntry.duration.toNumber();
-    } else {
-      calculationStartDate =
-        startDate || new Date(new Date().getFullYear(), 0, 1);
     }
 
-    const calculationEndDate = endDate || new Date();
+    const toKey = endDate ? dayKeyOfParam(endDate) : todayKey;
 
-    // Berechne die Sollzeit für ALLE Arbeitstage im Zeitraum (ab Adjustment-Datum oder Start)
-    let targetHours = 0;
-    const currentDate = new Date(calculationStartDate);
+    const rows =
+      fromKey <= toKey
+        ? await prisma.timeEntry.findMany({
+            where: {
+              userId,
+              date: {
+                gte: berlinDayStart(fromKey),
+                lte: berlinDayStart(toKey),
+              },
+              // Anfangssaldo ausschließen, Einträge ohne description behalten
+              ...excludeAdjustmentFilter(),
+            },
+            orderBy: { date: "asc" },
+          })
+        : [];
+    const entries = rows.map(toReportEntry);
+    const holidays = await this.loadHolidayKeys(fromKey, toKey, entries);
 
-    while (currentDate <= calculationEndDate) {
-      const dayOfWeek = currentDate.getDay();
-      // Prüfe ob es ein Arbeitstag ist (Montag = 1, Dienstag = 2, etc.)
-      if (settings.workDays.includes(dayOfWeek)) {
-        targetHours += settings.dailyHours;
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    // Query für TimeEntries ab demselben Tag wie das Soll (ohne Anfangssaldo)
-    const whereClause: Prisma.TimeEntryWhereInput = {
-      userId,
-      date: {
-        gte: calculationStartDate,
-        lte: calculationEndDate,
-      },
-      // Anfangssaldo ausschließen, Einträge ohne description behalten
-      ...excludeAdjustmentFilter(),
-    };
-
-    const entries = await prisma.timeEntry.findMany({
-      where: whereClause,
-      orderBy: { date: "asc" },
+    // Dieselbe Tagesregel wie Jahresübersicht und Prognose: Soll an
+    // Arbeitstagen ohne Feiertag, Arbeit je Eintrag gerundet, Urlaub/Krank je
+    // Tag summiert und höchstens bis zum Tagessoll gutgeschrieben.
+    const summary = summarizeRange(entries, {
+      from: fromKey,
+      to: toKey,
+      schedule: this.scheduleOf(settings),
+      holidayKeys: holidays.keys,
     });
-
-    // Berechne tatsächliche Arbeitsstunden (ohne Anfangssaldo)
-    let actualHours = 0;
-    const holidayDates = new Set<string>(); // Track Feiertage
-
-    for (const entry of entries) {
-      const dayOfWeek = entry.date.getDay();
-      const isWorkDay = settings.workDays.includes(dayOfWeek);
-      const dateStr = entry.date.toISOString().split("T")[0];
-      const durationNumber = entry.duration.toNumber();
-
-      switch (entry.type) {
-        case EntryType.WORK:
-          actualHours += this.roundToQuarterHour(durationNumber);
-          break;
-
-        case EntryType.VACATION:
-        case EntryType.SICK:
-          // Bei Urlaub/Krankheit zählen die normalen Arbeitsstunden
-          if (isWorkDay) {
-            actualHours += settings.dailyHours;
-          }
-          break;
-
-        case EntryType.HOLIDAY:
-          // Feiertage reduzieren die Sollzeit
-          if (isWorkDay && !holidayDates.has(dateStr)) {
-            targetHours -= settings.dailyHours;
-            holidayDates.add(dateStr);
-          }
-          break;
-
-        case EntryType.OVERTIME:
-          // Überstunden-Einträge (aber nicht der Anfangssaldo)
-          actualHours += this.roundToQuarterHour(durationNumber);
-          break;
-
-        default:
-          // Alle anderen Einträge
-          actualHours += this.roundToQuarterHour(durationNumber);
-          break;
-      }
-    }
+    const actualHours = summary.actualHours;
+    const targetHours = summary.targetHours;
 
     // Berechne finale Überstunden: Anfangssaldo + (gearbeitete Stunden - Sollzeit)
     const overtimeHours = this.roundToQuarterHour(
@@ -287,17 +314,15 @@ export class OvertimeService {
       orderBy: { date: "asc" },
     });
 
-    // Gruppiere Entries nach Tag
-    const entriesByDay = new Map<string, typeof entries>();
-    entries.forEach((entry) => {
-      const dateKey = dateKeyFromDbDate(entry.date);
-      if (!entriesByDay.has(dateKey)) {
-        entriesByDay.set(dateKey, []);
-      }
-      entriesByDay.get(dateKey)?.push(entry);
-    });
+    const reportEntries = entries.map(toReportEntry);
+    const holidays = await this.loadHolidayKeys(
+      range.firstKey,
+      range.lastKey,
+      reportEntries,
+    );
+    const schedule = this.scheduleOf(settings);
 
-    // Berechne tägliche Statistiken
+    // Tage nach derselben Regel wie der Saldo (summarizeRange je Tag)
     const dailyBreakdown: DailyStatistics[] = [];
     let totalHours = 0;
     let targetHours = 0;
@@ -309,48 +334,45 @@ export class OvertimeService {
     };
 
     for (const dateKey of range.dayKeys) {
-      const dayEntries = entriesByDay.get(dateKey) || [];
-      const dayOfWeek = weekdayOfKey(dateKey);
-      const isWorkDay = settings.workDays.includes(dayOfWeek);
+      const dayEntries = reportEntries.filter((e) => e.date === dateKey);
+      const day = summarizeRange(dayEntries, {
+        from: dateKey,
+        to: dateKey,
+        schedule,
+        holidayKeys: holidays.keys,
+      });
+      const dayTarget = dayTargetHours(dateKey, schedule, holidays.keys);
 
-      let dayActual = 0;
-      let dayTarget = isWorkDay ? settings.dailyHours : 0;
-      let primaryType = EntryType.WORK;
+      // Gutschrift wie im Abwesenheiten-Bericht verteilt: Krankheit vor Urlaub
+      const sumOf = (type: ReportEntryType) =>
+        dayEntries
+          .filter((e) => e.type === type && e.hours > 0)
+          .reduce((sum, e) => sum + e.hours, 0);
+      const sick = absenceCreditHours(sumOf("SICK"), dayTarget);
+      const vacation = absenceCreditHours(sumOf("VACATION"), dayTarget - sick);
+      const isHoliday = holidays.keys.has(dateKey);
 
-      for (const entry of dayEntries) {
-        const hours = this.roundToQuarterHour(entry.duration.toNumber());
+      entryTypes.work += day.workHours;
+      entryTypes.sick += sick;
+      entryTypes.vacation += vacation;
+      // Feiertag an einem Arbeitstag: das entfallene Tagessoll
+      if (day.holidayDays > 0) entryTypes.holiday += schedule.dailyHours;
 
-        switch (entry.type) {
-          case EntryType.WORK:
-            dayActual += hours;
-            entryTypes.work += hours;
-            break;
-          case EntryType.VACATION:
-            dayActual = settings.dailyHours;
-            entryTypes.vacation += settings.dailyHours;
-            primaryType = EntryType.VACATION;
-            break;
-          case EntryType.SICK:
-            dayActual = settings.dailyHours;
-            entryTypes.sick += settings.dailyHours;
-            primaryType = EntryType.SICK;
-            break;
-          case EntryType.HOLIDAY:
-            dayTarget = 0;
-            entryTypes.holiday += settings.dailyHours;
-            primaryType = EntryType.HOLIDAY;
-            break;
-        }
-      }
+      let primaryType: EntryType = EntryType.WORK;
+      if (isHoliday) primaryType = EntryType.HOLIDAY;
+      else if (sick > 0) primaryType = EntryType.SICK;
+      else if (vacation > 0) primaryType = EntryType.VACATION;
 
-      totalHours += dayActual;
-      targetHours += dayTarget;
+      totalHours += day.actualHours;
+      targetHours += day.targetHours;
 
       dailyBreakdown.push({
         date: berlinDayStart(dateKey),
-        actualHours: this.roundToQuarterHour(dayActual),
-        targetHours: dayTarget,
-        overtimeHours: this.roundToQuarterHour(dayActual - dayTarget),
+        actualHours: this.roundToQuarterHour(day.actualHours),
+        targetHours: day.targetHours,
+        overtimeHours: this.roundToQuarterHour(
+          day.actualHours - day.targetHours,
+        ),
         entryType: primaryType,
       });
     }
@@ -414,36 +436,38 @@ export class OvertimeService {
       weeklyBreakdown.push(weekStats);
     }
 
-    // Aggregiere Monatsdaten
-    let totalHours = 0;
-    let targetHours = 0;
-    const roundedEntries = entries.map((entry) => ({
-      type: entry.type,
-      source: entry.source,
-      description: entry.description,
-      billingStatus: entry.billingStatus,
-      hours: this.roundToQuarterHour(entry.duration.toNumber()),
-    }));
-
-    for (const entry of roundedEntries) {
-      totalHours += entry.hours;
-    }
+    // Soll und Ist nach derselben Tagesregel wie der Saldo; Feiertags-
+    // Einträge und der Anfangssaldo zählen nicht als Ist
+    const settings = await this.getUserSettings(userId);
+    const schedule: WorkSchedule = settings
+      ? this.scheduleOf(settings)
+      : { workDays: [1, 2, 3, 4, 5], dailyHours: this.DEFAULT_DAILY_HOURS };
+    const reportEntries = entries.map(toReportEntry);
+    const holidays = await this.loadHolidayKeys(
+      range.firstKey,
+      range.lastKey,
+      reportEntries,
+    );
+    const summary = summarizeRange(reportEntries, {
+      from: range.firstKey,
+      to: range.lastKey,
+      schedule,
+      holidayKeys: holidays.keys,
+    });
+    const totalHours = summary.actualHours;
+    const targetHours = summary.targetHours;
 
     // Abrechnung nach Timing-Status; nur echte Arbeit (ohne Abwesenheiten
     // und Anfangssaldo). Einträge ohne Status zählen als „unbekannt“.
-    const billing = splitHoursByBillingClass(roundedEntries);
-
-    // Berechne Target Hours für den Monat
-    const settings = await this.getUserSettings(userId);
-    let workDaysInMonth = 0;
-    for (
-      let key = range.firstKey;
-      key <= range.lastKey;
-      key = shiftDateKey(key, 1)
-    ) {
-      if (settings?.workDays.includes(weekdayOfKey(key))) workDaysInMonth++;
-    }
-    targetHours = workDaysInMonth * (settings?.dailyHours || 8);
+    const billing = splitHoursByBillingClass(
+      entries.map((entry) => ({
+        type: entry.type,
+        source: entry.source,
+        description: entry.description,
+        billingStatus: entry.billingStatus,
+        hours: this.roundToQuarterHour(entry.duration.toNumber()),
+      })),
+    );
 
     const monthlyStats: MonthlyStatistics = {
       userId,

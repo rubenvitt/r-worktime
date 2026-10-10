@@ -472,16 +472,6 @@ export function ForecastSection({ data }: { data: ForecastResponse }) {
               nur, wenn sie als Eintrag mit zukünftigem Datum vorliegen
               {totals.absenceDays === 0 ? " – derzeit keiner" : ""}.
             </Notice>
-            {holidays.notImportedYears.length > 0 ? (
-              <Notice warning>
-                Für {holidays.notImportedYears.join(" und ")} sind keine
-                Feiertage importiert. Die Prognose rechnet sie trotzdem heraus;
-                der Saldo zählt sie erst nach dem Import nicht mehr als Soll.{" "}
-                <Link href="/settings/overtime" className="underline">
-                  Feiertage importieren
-                </Link>
-              </Notice>
-            ) : null}
             {holidays.unavailableYears.length > 0 ? (
               <Notice warning>
                 Der Feiertags-Dienst war für{" "}

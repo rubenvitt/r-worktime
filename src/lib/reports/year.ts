@@ -1,15 +1,20 @@
 // Jahres- und Quartalsübersicht (reine Funktionen, testbar).
 //
-// Die Regeln folgen dem Überstunden-Saldo (overtime.service › calculateBalance),
+// summarizeRange ist die eine Tagesregel für Soll und Ist; der Überstunden-
+// Saldo (overtime.service › calculateBalance) rechnet mit derselben Funktion,
 // damit der kumulierte Verlauf zu /overtime passt:
-// - Soll: Tagessoll an jedem konfigurierten Arbeitstag, außer an Feiertagen.
-// - Ist: WORK und OVERTIME, jeder Eintrag auf Viertelstunden gerundet;
-//   Urlaub/Krank schreibt an einem Soll-Tag das Tagessoll gut.
+// - Soll: Tagessoll an jedem konfigurierten Arbeitstag, außer an Feiertagen
+//   (offiziell laut Feiertags-Dienst oder als HOLIDAY-Eintrag importiert).
+// - Ist: WORK und OVERTIME, jeder Eintrag auf Viertelstunden gerundet.
+//   HOLIDAY-Einträge zählen nicht als Ist, sie mindern nur das Soll.
+// - Urlaub/Krank: je Kalendertag werden die Stunden (ungerundet) summiert und höchstens
+//   bis zum Soll des Tags gutgeschrieben – an Feiertagen und freien Tagen
+//   also nichts. Ein Eintrag mit 0 h schreibt nichts gut (wie im
+//   Abwesenheiten-Bericht, der ihn mit 0 Tagen zählt).
 // - Gezählt wird erst ab dem Erfassungsbeginn (Tag nach dem Anfangssaldo).
-// Abweichung zum Saldo: Urlaub/Krank zählt pro Tag nur einmal und an
-// Feiertagen gar nicht (der Saldo schreibt pro Eintrag gut).
 
 import { monthRange, shiftDateKey, weekdayOfKey } from "@/lib/dates";
+import { absenceDayShare } from "@/lib/reports/absences";
 import { classifyBillingStatus } from "@/lib/reports/billing-status";
 
 export type ReportEntryType =
@@ -85,7 +90,7 @@ export interface RangeSummary {
   workDays: number;
   /** Feiertage, die auf einen Arbeitstag fallen */
   holidayDays: number;
-  /** Urlaubs-/Krankheitstage an Soll-Tagen */
+  /** Urlaubs-/Krankheitstage an Soll-Tagen, halbe Tage anteilig (wie im Abwesenheiten-Bericht) */
   absenceDays: number;
 }
 
@@ -124,6 +129,25 @@ export interface RangeOptions {
   holidayKeys: ReadonlySet<string>;
 }
 
+/** Soll eines Kalendertags: Tagessoll an Arbeitstagen ohne Feiertag, sonst 0. */
+export function dayTargetHours(
+  key: string,
+  schedule: WorkSchedule,
+  holidayKeys: ReadonlySet<string>,
+): number {
+  if (!schedule.workDays.includes(weekdayOfKey(key))) return 0;
+  return holidayKeys.has(key) ? 0 : schedule.dailyHours;
+}
+
+/** Gutschrift für Urlaub/Krank eines Tags: Summe der Stunden, höchstens das Soll. */
+export function absenceCreditHours(
+  absenceHours: number,
+  targetHours: number,
+): number {
+  if (!(absenceHours > 0) || !(targetHours > 0)) return 0;
+  return Math.min(absenceHours, targetHours);
+}
+
 /** Soll, Ist und Abrechnung für einen Zeitraum (inklusive Grenzen). */
 export function summarizeRange(
   entries: readonly ReportEntry[],
@@ -132,11 +156,17 @@ export function summarizeRange(
   const summary = emptySummary();
   if (from > to) return summary;
 
-  const absenceDays = new Set<string>();
+  // Urlaub/Krank je Tag und Typ, ungerundet: Abwesenheiten tragen das
+  // Tagessoll (z. B. 7,8 h), Viertelstunden-Rundung ließe sonst je Tag ein Minus
+  const absenceHours = new Map<string, { sick: number; vacation: number }>();
   for (const entry of entries) {
     if (entry.date < from || entry.date > to) continue;
     if (isAbsence(entry)) {
-      absenceDays.add(entry.date);
+      if (!(entry.hours > 0)) continue;
+      const hours = absenceHours.get(entry.date) ?? { sick: 0, vacation: 0 };
+      if (entry.type === "SICK") hours.sick += entry.hours;
+      else hours.vacation += entry.hours;
+      absenceHours.set(entry.date, hours);
       continue;
     }
     if (!isWorkEntry(entry)) continue;
@@ -156,10 +186,19 @@ export function summarizeRange(
       continue;
     }
     summary.targetHours += schedule.dailyHours;
-    if (absenceDays.has(key)) {
-      summary.absenceDays++;
-      summary.actualHours += schedule.dailyHours;
-    }
+    const absence = absenceHours.get(key);
+    if (!absence) continue;
+    const credit = absenceCreditHours(
+      absence.sick + absence.vacation,
+      schedule.dailyHours,
+    );
+    if (credit <= 0) continue;
+    summary.actualHours += credit;
+    summary.absenceDays += absenceDayShare(
+      absence.sick,
+      absence.vacation,
+      schedule.dailyHours,
+    );
   }
   summary.actualHours += summary.workHours;
   return summary;

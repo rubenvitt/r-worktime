@@ -85,17 +85,23 @@ export interface WeekData {
   weekEndDate: Date;
   days: DayData[];
   summary: WeekSummary;
+  /** Feiertags-Dienst nicht erreichbar: nur importierte Feiertage mindern das Soll */
+  holidayServiceUnavailable: boolean;
 }
 
 export interface DayData {
   date: Date;
   dayOfWeek: string;
   entries: TimeEntryData[];
+  /** Arbeit (WORK/OVERTIME) */
   totalHours: number;
+  /** Gutschrift für Urlaub/Krank: Stunden des Tags, höchstens das Soll */
+  absenceHours: number;
   targetHours: number;
+  /** Arbeit + Gutschrift − Soll */
   difference: number;
   isWeekend: boolean;
-  /** Feiertag (offiziell oder importiert); imported = HOLIDAY-Eintrag vorhanden */
+  /** Feiertag (offiziell oder importiert), mindert das Soll; imported = HOLIDAY-Eintrag vorhanden */
   holiday: { name: string; imported: boolean } | null;
 }
 
@@ -110,6 +116,8 @@ export interface TimeEntryData {
 
 export interface WeekSummary {
   totalWorkHours: number;
+  /** Gutschrift für Urlaub/Krank der Woche */
+  absenceHours: number;
   targetHours: number;
   weekBalance: number;
   cumulativeBalance: number;

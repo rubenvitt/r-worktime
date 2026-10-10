@@ -1,6 +1,7 @@
 import { EntrySource } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { weekdayOfKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { HolidayService } from "@/services/holiday.service";
 
@@ -138,7 +139,16 @@ export async function POST(request: NextRequest) {
 
     // Fetch holidays from API
     console.log("Fetching holidays from API for year:", yearNum);
-    const holidays = await holidayService.fetchHolidaysForYear(yearNum);
+    // Der Dienst liefert alle Feiertage; importiert werden nur die an
+    // eingestellten Arbeitstagen (nur dort mindern sie das Soll)
+    const workDays = userSettings?.workDays?.length
+      ? userSettings.workDays
+      : [1, 2, 3, 4, 5];
+    const holidays = (
+      await holidayService.fetchHolidaysForYear(yearNum)
+    ).filter((holiday) =>
+      workDays.includes(weekdayOfKey(holiday.date.slice(0, 10))),
+    );
     console.log("Fetched holidays:", holidays.length);
 
     // Create TimeEntry records for each holiday

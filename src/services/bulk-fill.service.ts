@@ -1,6 +1,8 @@
 import { EntrySource, type Prisma } from "@prisma/client";
 import { addDays, endOfDay, format, isWeekend, startOfDay } from "date-fns";
+import { dateKeyFromDbDate, yearsOfRange } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import { loadOfficialHolidays } from "@/services/holiday.service";
 import { EntryType } from "@/types/database";
 
 export interface BulkFillRequest {
@@ -22,6 +24,27 @@ export interface BulkFillResponse {
     holiday: number;
     existing: number;
   };
+}
+
+/**
+ * Feiertage im Zeitraum: importierte HOLIDAY-Einträge plus offizielle aus dem
+ * Feiertags-Dienst – an offiziellen Feiertagen ist kein Soll, Auffüllen
+ * würde dort Überstunden erzeugen. Ohne Dienst bleiben die importierten.
+ */
+async function holidayKeysFor(
+  startDate: Date,
+  endDate: Date,
+  imported: { date: Date }[],
+): Promise<Set<string>> {
+  const keys = new Set(imported.map((h) => dateKeyFromDbDate(h.date)));
+  const official = await loadOfficialHolidays(
+    yearsOfRange(
+      format(startDate, "yyyy-MM-dd"),
+      format(endDate, "yyyy-MM-dd"),
+    ),
+  );
+  for (const key of Object.keys(official.names)) keys.add(key);
+  return keys;
 }
 
 export class BulkFillService {
@@ -90,9 +113,7 @@ export class BulkFillService {
       },
     });
 
-    const holidayDates = new Set(
-      holidays.map((h) => format(h.date, "yyyy-MM-dd")),
-    );
+    const holidayDates = await holidayKeysFor(startDate, endDate, holidays);
 
     // Hole alle existierenden Einträge im Zeitraum
     const existingEntries = skipExisting
@@ -111,7 +132,7 @@ export class BulkFillService {
       : [];
 
     const existingDates = new Set(
-      existingEntries.map((e) => format(e.date, "yyyy-MM-dd")),
+      existingEntries.map((e) => dateKeyFromDbDate(e.date)),
     );
 
     // Erstelle Array mit allen zu erstellenden Einträgen
@@ -218,9 +239,7 @@ export class BulkFillService {
       },
     });
 
-    const holidayDates = new Set(
-      holidays.map((h) => format(h.date, "yyyy-MM-dd")),
-    );
+    const holidayDates = await holidayKeysFor(startDate, endDate, holidays);
 
     // Hole alle existierenden Einträge im Zeitraum
     const existingEntries = skipExisting
@@ -239,7 +258,7 @@ export class BulkFillService {
       : [];
 
     const existingDates = new Set(
-      existingEntries.map((e) => format(e.date, "yyyy-MM-dd")),
+      existingEntries.map((e) => dateKeyFromDbDate(e.date)),
     );
 
     // Zähle die Tage
