@@ -19,6 +19,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "seed:demo": "node scripts/seed-demo.mjs",
+    "build:extension": "node scripts/build-extension.mjs",
     "prepare": "husky"
   },
   "dependencies": {
