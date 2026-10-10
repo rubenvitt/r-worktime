@@ -10,7 +10,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatClock, type HistogramBucket } from "@/lib/reports/patterns";
+import {
+  formatClock,
+  type HistogramBucket,
+  histogramTicks,
+} from "@/lib/reports/patterns";
 
 interface ChartRow extends HistogramBucket {
   label: string;
@@ -59,6 +63,11 @@ export function DistributionChart({
     ...bucket,
     label: formatClock(bucket.minute).replace(" (+1)", "⁺¹"),
   }));
+  // Nur volle Stunden beschriften; der letzte Bucket bekommt kein Extra-Label
+  const tickMinutes = new Set(histogramTicks(buckets));
+  const ticks = rows
+    .filter((row) => tickMinutes.has(row.minute))
+    .map((row) => row.label);
   const medianBucket =
     medianMinute === null
       ? null
@@ -82,8 +91,8 @@ export function DistributionChart({
             tickLine={false}
             axisLine={{ stroke: "var(--chart-grid)" }}
             tick={{ fill: "var(--chart-axis)", fontSize: 11 }}
-            interval="preserveStartEnd"
-            minTickGap={16}
+            ticks={ticks}
+            interval={0}
           />
           <YAxis
             tickLine={false}

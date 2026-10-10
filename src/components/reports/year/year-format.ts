@@ -45,15 +45,6 @@ export const PERIOD_STATUS_LABEL: Record<PeriodStatus, string> = {
   future: "ausstehend",
 };
 
-/** Quote abrechenbar / (abrechenbar + nicht abrechenbar); ohne Status bleibt außen vor. */
-export function billableShare(
-  billableHours: number,
-  nonBillableHours: number,
-): number | null {
-  const classified = billableHours + nonBillableHours;
-  return classified > 0 ? billableHours / classified : null;
-}
-
 const TICK_STEPS = [60, 120, 180, 300, 600, 900, 1200, 1800, 3000, 6000];
 
 /** Runde Achsenwerte in ganzen Stunden, die 0 enthalten (Minuten). */

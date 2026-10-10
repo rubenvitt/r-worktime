@@ -67,6 +67,22 @@ describe("describeAbsenceDay", () => {
     ).toBe("Mo 03.08. · Urlaub 8:00 h · geplant · zählt 1 Tag");
   });
 
+  it("nennt offizielle Feiertage ohne Import mit Namen", () => {
+    expect(
+      describeAbsenceDay(
+        day({
+          dateKey: "2026-12-25",
+          days: { vacation: 0, sick: 0, holiday: 1, unpaid: 0 },
+          primary: "holiday",
+          holidayName: "1. Weihnachtstag",
+          holidayImported: false,
+        }),
+      ),
+    ).toBe(
+      "Fr 25.12. · Feiertag (1. Weihnachtstag), nicht importiert · zählt 1 Tag",
+    );
+  });
+
   it("nennt beide Kategorien bei geteilten Tagen", () => {
     expect(
       describeAbsenceDay(

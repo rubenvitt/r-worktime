@@ -111,6 +111,12 @@ function MonthRow({
             {formatHoursDelta(month.toDate.deltaHours)})
           </span>
         ) : null}
+        {isCurrent && month.todayRemainingHours > 0 ? (
+          <span className="num block text-xs text-muted-foreground">
+            Erwartet enthält {formatHours(month.todayRemainingHours)} Rest von
+            heute
+          </span>
+        ) : null}
       </span>
       <span className="text-right md:hidden">
         <Delta minutes={hoursToMinutes(month.deltaHours)} />
@@ -233,7 +239,10 @@ export function ForecastSection({ data }: { data: ForecastResponse }) {
     (sum, m) => sum + m.bulkFillDays,
     0,
   );
-  const classified = baseline.billableHours + baseline.nonBillableHours;
+  const baseWork =
+    baseline.billableHours +
+    baseline.nonBillableHours +
+    baseline.unknownBillingHours;
 
   const points: BalancePoint[] = [
     {
@@ -432,11 +441,13 @@ export function ForecastSection({ data }: { data: ForecastResponse }) {
                     {formatPercent(forecast.billableQuote)}
                   </span>
                   : {formatHours(baseline.billableHours)} abrechenbar von{" "}
-                  {formatHours(classified)} Arbeit mit Status
+                  {formatHours(baseWork)} Arbeit in der Basis
                   {baseline.unknownBillingHours > 0
-                    ? `; ${formatHours(baseline.unknownBillingHours)} ohne Status bleiben außen vor`
+                    ? `, davon ${formatHours(baseline.unknownBillingHours)} ohne Status`
                     : ""}
-                  .
+                  . Gleiche Definition wie im Abrechnungsbericht (abrechenbar
+                  von gesamt); Auffüllungen zählen hier nicht mit, Stunden sind
+                  auf Viertelstunden gerundet.
                 </>
               ) : (
                 <>
@@ -446,12 +457,14 @@ export function ForecastSection({ data }: { data: ForecastResponse }) {
               )}
             </Notice>
             <Notice>
-              Massen-Auffüllungen zählen nicht als Erfahrungswert
+              Auffüllungen zählen nicht als Erfahrungswert
               {bulkFillDays > 0
                 ? `; ${formatDayCount(bulkFillDays)} nur aufgefüllt, aus der Basis genommen`
                 : ""}
-              . Der aktuelle Saldo enthält den heutigen Tag, die Prognose
-              beginnt morgen.
+              . Der aktuelle Saldo enthält das Soll von heute, aber nur die
+              bisher erfasste Arbeit. Die Prognose ergänzt deshalb den Rest von
+              heute (Ø je Tag minus bisher erfasst) und rechnet ab morgen
+              weiter.
             </Notice>
             <Notice>
               Feiertage (Niedersachsen) kommen aus dem Feiertags-Dienst und den

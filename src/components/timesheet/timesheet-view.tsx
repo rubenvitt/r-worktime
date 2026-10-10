@@ -78,7 +78,11 @@ import type {
 import { cn } from "@/lib/utils";
 import { GapRow } from "./gap-row";
 import { formatDayLabel, TimesheetDayCard } from "./timesheet-day-card";
-import { useLegacyTravelImport, useTravelDecision } from "./use-travel-days";
+import {
+  travelDecisionFor,
+  useLegacyTravelImport,
+  useTravelDecision,
+} from "./use-travel-days";
 
 const EXTENSION_DOCS_URL =
   "https://github.com/rubenvitt/r-worktime/tree/main/extension#readme";
@@ -204,7 +208,8 @@ export function TimesheetView() {
     [month, payload],
   );
 
-  // Umschalten speichert immer eine Festlegung; „Vorschlag“ entfernt sie wieder
+  // Umschalten speichert eine Festlegung, solange der Wert vom Vorschlag
+  // abweicht; zurück auf den Vorschlag entfernt sie (auch über „Vorschlag“)
   const setTravelFee = (date: string, isTravel: boolean | null) =>
     travelDecision.mutate({ date, isTravel });
 
@@ -643,7 +648,10 @@ export function TimesheetView() {
                         day={row.day}
                         travelFee={travelFeeFor(row.day)}
                         onTravelFeeChange={(value) =>
-                          setTravelFee(row.day.date, value)
+                          setTravelFee(
+                            row.day.date,
+                            travelDecisionFor(row.day.travelFee, value),
+                          )
                         }
                         onTravelFeeReset={() =>
                           setTravelFee(row.day.date, null)

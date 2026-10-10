@@ -15,12 +15,12 @@ import {
   formatPercent,
   hoursToMinutes,
 } from "@/lib/format";
+import { billableShare } from "@/lib/reports/billing-status";
 import type { RangeSummary, YearMonth, YearQuarter } from "@/lib/reports/year";
 import { cn } from "@/lib/utils";
 import type { YearReportResponse } from "./api-types";
 import { BalanceChart, type BalancePoint } from "./balance-chart";
 import {
-  billableShare,
   formatDayMonth,
   monthLabel,
   monthShort,
@@ -38,7 +38,7 @@ function tone(hours: number | null) {
 }
 
 function BillableCell({ summary }: { summary: RangeSummary }) {
-  const share = billableShare(summary.billableHours, summary.nonBillableHours);
+  const share = billableShare(summary.billableHours, summary.workHours);
   return (
     <span className="num">
       {formatHours(summary.billableHours)}
@@ -285,7 +285,7 @@ export function YearSection({ data }: { data: YearReportResponse }) {
   }
 
   const totals = report.totals;
-  const share = billableShare(totals.billableHours, totals.nonBillableHours);
+  const share = billableShare(totals.billableHours, totals.workHours);
   const lastCounted = counted[counted.length - 1];
   const balanceMismatch =
     isCurrentYear &&
@@ -352,8 +352,8 @@ export function YearSection({ data }: { data: YearReportResponse }) {
           value={formatHours(totals.billableHours)}
           hint={
             share !== null
-              ? `${formatPercent(share)} der Arbeit mit Status`
-              : "kein Eintrag mit Abrechnungsstatus"
+              ? `${formatPercent(share)} der Arbeit`
+              : "keine Arbeit erfasst"
           }
         />
       </StatStrip>
@@ -411,8 +411,10 @@ export function YearSection({ data }: { data: YearReportResponse }) {
           {adjustment
             ? ` Gezählt wird ab dem Tag nach dem Anfangssaldo (${formatDateLong(adjustment.date)}).`
             : ` Gezählt wird ab dem ersten Eintrag (${formatDateLong(report.trackingStart)}).`}{" "}
-          Abrechenbar nutzt den Timing-Abrechnungsstatus; die Quote ignoriert
-          Einträge ohne Status.
+          Abrechenbar nutzt den Timing-Abrechnungsstatus; die Quote ist
+          abrechenbar von gesamt wie im Abrechnungsbericht, Einträge ohne Status
+          zählen mit. Alle Stunden sind je Eintrag auf Viertelstunden gerundet
+          wie im Saldo; der Abrechnungsbericht rechnet minutengenau.
         </Notice>
         {holidays.notImported.length > 0 ? (
           <Notice tone="warning">

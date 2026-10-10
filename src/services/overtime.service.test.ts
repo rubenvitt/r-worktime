@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     userSettings: { findUnique: vi.fn() },
-    timeEntry: { findMany: vi.fn() },
+    timeEntry: { findMany: vi.fn(), findFirst: vi.fn() },
   },
 }));
 
@@ -127,5 +127,67 @@ describe("calculateMonthlyStatistics (Abrechnungsstatus)", () => {
     expect(stats.billableHours).toBe(5);
     expect(stats.nonBillableHours).toBe(2);
     expect(stats.unknownHours).toBe(9.5);
+  });
+});
+
+describe("calculateBalance (Anfangssaldo)", () => {
+  // Datenbank-Filter nachbilden: nur Einträge im angefragten Zeitraum
+  function serveEntries(rows: ReturnType<typeof entry>[]) {
+    prismaMock.timeEntry.findMany.mockImplementation(
+      async ({ where }: { where: { date: { gte: Date; lte: Date } } }) =>
+        rows.filter(
+          (row) => row.date >= where.date.gte && row.date <= where.date.lte,
+        ),
+    );
+  }
+
+  beforeEach(() => {
+    overtimeService.invalidateCache("u1");
+    prismaMock.userSettings.findUnique.mockResolvedValue({
+      weeklyWorkHours: new Prisma.Decimal(40),
+      workDays: [1, 2, 3, 4, 5],
+    });
+    prismaMock.timeEntry.findMany.mockReset();
+    prismaMock.timeEntry.findFirst.mockReset();
+    // Anfangssaldo +12,5 h am Fr 31.07.2026
+    prismaMock.timeEntry.findFirst.mockResolvedValue({
+      ...entry("2026-07-31", 12.5, "OVERTIME"),
+      source: "ADJUSTMENT",
+    });
+  });
+
+  it("zählt Arbeit am Tag des Anfangssaldos nicht noch einmal", async () => {
+    serveEntries([
+      // per Timing-Sync importiert, aber schon im Anfangssaldo enthalten
+      entry("2026-07-31", 8),
+      entry("2026-08-03", 8),
+    ]);
+
+    const balance = await overtimeService.calculateBalance({
+      userId: "u1",
+      endDate: new Date("2026-08-03T00:00:00.000Z"),
+    });
+
+    // Soll ab Sa 01.08.: nur Mo 03.08. mit 8 h → 12,5 + 8 − 8
+    expect(balance.balance).toBe(12.5);
+    const where = prismaMock.timeEntry.findMany.mock.calls[0][0].where;
+    expect(where.date.gte.toISOString()).toBe("2026-08-01T00:00:00.000Z");
+  });
+
+  it("beginnt auch nach der Zeitumstellung am Folgetag um Mitternacht", async () => {
+    // Anfangssaldo am Sa 24.10.2026, in der Nacht danach endet die Sommerzeit
+    prismaMock.timeEntry.findFirst.mockResolvedValue({
+      ...entry("2026-10-24", 0, "OVERTIME"),
+      source: "ADJUSTMENT",
+    });
+    serveEntries([entry("2026-10-25", 3)]);
+
+    const balance = await overtimeService.calculateBalance({
+      userId: "u1",
+      endDate: new Date("2026-10-25T00:00:00.000Z"),
+    });
+
+    // So 25.10. ohne Soll, 3 h Arbeit zählen
+    expect(balance.balance).toBe(3);
   });
 });

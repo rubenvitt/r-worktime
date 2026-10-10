@@ -7,6 +7,7 @@ import type { TimesheetResponse } from "@/lib/timesheet/types";
 import {
   applyTravelDecision,
   resetLegacyTravelImport,
+  travelDecisionFor,
   useLegacyTravelImport,
 } from "./use-travel-days";
 
@@ -162,5 +163,17 @@ describe("applyTravelDecision", () => {
     });
     expect(reset.days[1].travelOverride).toBeNull();
     expect(reset.payload[1].travelFee).toBe(false);
+  });
+});
+
+describe("travelDecisionFor", () => {
+  it("entfernt die Festlegung, wenn der Wert dem Vorschlag entspricht", () => {
+    expect(travelDecisionFor(true, true)).toBeNull();
+    expect(travelDecisionFor(false, false)).toBeNull();
+  });
+
+  it("speichert eine Festlegung nur bei Abweichung vom Vorschlag", () => {
+    expect(travelDecisionFor(true, false)).toBe(false);
+    expect(travelDecisionFor(false, true)).toBe(true);
   });
 });

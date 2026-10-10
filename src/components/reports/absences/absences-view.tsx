@@ -155,7 +155,11 @@ function AbsencesContent({ report }: { report: AbsenceReport }) {
           <Stat
             label="Feiertage"
             value={formatDays(totals.days.holiday)}
-            hint="an Arbeitstagen"
+            hint={
+              report.notImportedHolidays.length > 0
+                ? `an Arbeitstagen, ${report.notImportedHolidays.length} nicht importiert`
+                : "an Arbeitstagen"
+            }
           />
           {showUnpaid ? (
             <Stat
@@ -217,11 +221,32 @@ function CountingRules({ report }: { report: AbsenceReport }) {
         umgerechnet über das Tagessoll von{" "}
         {formatHoursLabel(report.dailyTargetHours)} und auf halbe Tage gerundet;
         jede erfasste Abwesenheit zählt mindestens einen halben Tag. Feiertage
-        verbrauchen keinen Urlaub, Krankheit geht vor Urlaub. Unbezahlter Urlaub
-        kommt aus Tagen, die unter Probleme mit diesem Grund als geprüft
-        markiert sind und keine Arbeitseinträge haben; er verringert den
-        Anspruch nicht.
+        (Niedersachsen, aus dem Feiertags-Dienst und dem Import) verbrauchen
+        keinen Urlaub, Krankheit geht vor Urlaub. Unbezahlter Urlaub kommt aus
+        Tagen, die unter Probleme mit diesem Grund als geprüft markiert sind und
+        keine Arbeitseinträge haben; er verringert den Anspruch nicht.
       </p>
+      {report.notImportedHolidays.length > 0 ? (
+        <p className="text-warning">
+          {report.notImportedHolidays.length === 1
+            ? "1 Feiertag ist nicht importiert"
+            : `${report.notImportedHolidays.length} Feiertage sind nicht importiert`}
+          . Hier zählen sie mit, der Saldo nimmt sie aber erst nach dem Import
+          aus dem Soll.{" "}
+          <Link
+            href="/settings/overtime"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Feiertage importieren
+          </Link>
+        </p>
+      ) : null}
+      {report.holidayServiceUnavailable ? (
+        <p className="text-warning">
+          Der Feiertags-Dienst war nicht erreichbar; es sind nur importierte
+          Feiertage berücksichtigt.
+        </p>
+      ) : null}
       {report.nonWorkDayAbsences > 0 ? (
         <p>
           {report.nonWorkDayAbsences === 1

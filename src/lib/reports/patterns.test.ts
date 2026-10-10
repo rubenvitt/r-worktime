@@ -6,6 +6,7 @@ import {
   classifyPatternEntry,
   describeFinding,
   formatClock,
+  histogramTicks,
   type Interval,
   MIN_GAP_MINUTES,
   mergeIntervals,
@@ -211,7 +212,8 @@ describe("buildPatternDays", () => {
     const days = buildPatternDays([
       entry("2026-10-05T09:00:00+02:00", "2026-10-05T10:00:00+02:00"),
       entry("2026-10-05T09:30:00+02:00", "2026-10-05T10:30:00+02:00"),
-      entry("2026-10-05T14:00:00+02:00", "2026-10-05T15:00:00+02:00"),
+      entry("2026-10-05T22:00:00+02:00", "2026-10-05T23:30:00+02:00"),
+      // schließt nach 1 h an → Nachtarbeit des Vortags
       entry("2026-10-06T00:30:00+02:00", "2026-10-06T01:00:00+02:00"),
       entry("2026-10-06T09:00:00+02:00", "2026-10-06T10:00:00+02:00"),
     ]);
@@ -245,6 +247,41 @@ describe("buildPatternDays", () => {
       breakMinutes: 90,
     });
     expect(days[1].startMinute).toBe(9 * 60);
+  });
+
+  it("beginnt bei Frühstart nach langer Lücke einen neuen Tag", () => {
+    // Mo normal, Di Frühflug ab 03:30 – 10:30 h Ruhezeit, kein Nachtdienst
+    const report = analyzePatterns(
+      [
+        entry("2026-10-05T08:00:00+02:00", "2026-10-05T12:00:00+02:00"),
+        entry("2026-10-05T12:30:00+02:00", "2026-10-05T17:00:00+02:00"),
+        entry("2026-10-06T03:30:00+02:00", "2026-10-06T07:30:00+02:00"),
+        entry("2026-10-06T08:00:00+02:00", "2026-10-06T12:00:00+02:00"),
+      ],
+      { from: "2026-10-01", to: "2026-10-31", holidays: {} },
+    );
+    expect(report.days.map((d) => d.date)).toEqual([
+      "2026-10-05",
+      "2026-10-06",
+    ]);
+    expect(report.days[0]).toMatchObject({
+      netMinutes: 510,
+      endMinute: 17 * 60,
+      entryCount: 2,
+    });
+    expect(report.days[1]).toMatchObject({
+      startMinute: 3.5 * 60,
+      netMinutes: 480,
+      entryCount: 2,
+    });
+    expect(report.findings).toEqual([
+      expect.objectContaining({
+        date: "2026-10-06",
+        rule: "rest",
+        restMinutes: 10.5 * 60,
+        previousDate: "2026-10-05",
+      }),
+    ]);
   });
 
   it("legt einen Block, der um 04:00 beginnt, auf den neuen Tag", () => {
@@ -910,5 +947,33 @@ describe("formatClock", () => {
     expect(formatClock(25.5 * 60)).toBe("01:30 (+1)");
     expect(formatClock(8 * 60 + 29.6)).toBe("08:30");
     expect(formatClock(null)).toBe("—");
+  });
+});
+
+describe("histogramTicks", () => {
+  const buckets = (from: number, to: number) => {
+    const list = [];
+    for (let minute = from; minute <= to; minute += 30) {
+      list.push({ minute, count: 1 });
+    }
+    return list;
+  };
+
+  it("beschriftet nur volle Stunden, auch wenn der letzte Bucket halb ist", () => {
+    // 12:00 bis 19:30 → 12:00 … 19:00, kein 19:30
+    expect(histogramTicks(buckets(720, 1170))).toEqual([
+      720, 780, 840, 900, 960, 1020, 1080, 1140,
+    ]);
+  });
+
+  it("dünnt auf ganze Mehrfache von Stunden aus, wenn es zu viele werden", () => {
+    // 06:00 bis 22:00 → alle 3 Stunden, ausgerichtet auf volle Stunden
+    const ticks = histogramTicks(buckets(360, 1320), 7);
+    expect(ticks).toEqual([360, 540, 720, 900, 1080, 1260]);
+  });
+
+  it("beginnt bei halbem ersten Bucket mit der nächsten vollen Stunde", () => {
+    expect(histogramTicks(buckets(450, 600))).toEqual([480, 540, 600]);
+    expect(histogramTicks([])).toEqual([]);
   });
 });

@@ -26,6 +26,7 @@ import {
   BILLING_STATUS_ORDER,
   type BillingClass,
   type BillingStatus,
+  billableShare,
   classifyBillingStatus,
   normalizeBillingStatus,
 } from "./billing-status";
@@ -286,7 +287,7 @@ export function buildBillingReport(
       unknownMinutes: classMinutes.unknown,
       bulkFillMinutes,
       entryCount,
-      billableShare: ratio(classMinutes.billable, totalMinutes),
+      billableShare: billableShare(classMinutes.billable, totalMinutes),
       classifiedShare: ratio(
         classMinutes.billable,
         classMinutes.billable + classMinutes.nonBillable,
@@ -303,7 +304,7 @@ export function buildBillingReport(
         nonBillableMinutes: m.nonBillable,
         unknownMinutes: m.unknown,
         totalMinutes: total,
-        billableShare: ratio(m.billable, total),
+        billableShare: billableShare(m.billable, total),
       };
     }),
     showUnknownHint:

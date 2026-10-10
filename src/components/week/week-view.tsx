@@ -3,7 +3,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { Download, MoreHorizontal, RefreshCw } from "lucide-react";
+import {
+  Download,
+  MoreHorizontal,
+  RefreshCw,
+  TriangleAlert,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -28,7 +33,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useWeekData } from "@/hooks/use-week-data";
 import { berlinTodayKey, shiftDateKey } from "@/lib/dates";
-import { formatHoursDelta, hoursToMinutes } from "@/lib/format";
+import {
+  formatDateShort,
+  formatHoursDelta,
+  hoursToMinutes,
+} from "@/lib/format";
 import type {
   StatisticsApiResponse,
   WeeklyStatistics,
@@ -202,6 +211,10 @@ export function WeekView({ year, week }: WeekViewProps) {
   const actualMinutes = hoursToMinutes(summary.totalWorkHours);
   const targetMinutes = hoursToMinutes(summary.targetHours);
   const hasEntries = days.some((d) => d.entries.length > 0);
+  // Nicht importierte Feiertage an Soll-Tagen: zählen im Saldo noch als Soll
+  const missingHolidays = days.filter(
+    (d) => d.holiday && !d.holiday.imported && d.targetHours > 0,
+  );
 
   return (
     <>
@@ -234,6 +247,29 @@ export function WeekView({ year, week }: WeekViewProps) {
             hint={`${workdays} ${workdays === 1 ? "Arbeitstag" : "Arbeitstage"}`}
           />
         </StatStrip>
+
+        {missingHolidays.length > 0 ? (
+          <p className="flex gap-2 text-[13px] text-muted-foreground">
+            <TriangleAlert
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-warning"
+            />
+            <span>
+              {missingHolidays
+                .map(
+                  (d) =>
+                    `${d.holiday?.name} (${formatDateShort(dayKeyOf(d.date))})`,
+                )
+                .join(", ")}{" "}
+              {missingHolidays.length === 1 ? "ist" : "sind"} nicht importiert
+              und {missingHolidays.length === 1 ? "zählt" : "zählen"} deshalb im
+              Soll wie im Saldo.{" "}
+              <Link href="/settings/overtime" className="underline">
+                Feiertage importieren
+              </Link>
+            </span>
+          </p>
+        ) : null}
 
         <Tabs value={tab} onValueChange={setTab} className="gap-3">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">

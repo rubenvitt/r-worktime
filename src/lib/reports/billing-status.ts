@@ -85,3 +85,14 @@ export function classifyBillingStatus(
 ): BillingClass {
   return BILLING_STATUS_CLASS[normalizeBillingStatus(status)];
 }
+
+/**
+ * Abrechenbar-Quote: abrechenbar / gesamt (Einträge ohne Status zählen im
+ * Nenner mit). Eine Definition für alle Berichte; null ohne Stunden.
+ */
+export function billableShare(
+  billableHours: number,
+  totalHours: number,
+): number | null {
+  return totalHours > 0 ? billableHours / totalHours : null;
+}

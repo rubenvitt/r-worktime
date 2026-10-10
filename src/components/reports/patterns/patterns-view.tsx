@@ -20,6 +20,7 @@ import { formatDateShort, plural } from "@/lib/format";
 import {
   LAST90_OPTION,
   MIN_GAP_MINUTES,
+  NIGHT_GAP_MINUTES,
   type PatternPeriod,
   type PatternsResponse,
   parsePatternPeriod,
@@ -150,8 +151,9 @@ function ScopeNote({ data }: { data: PatternsResponse }) {
   return (
     <p className="text-[13px] text-muted-foreground">
       Nur echte Arbeitseinträge; Urlaub, Krankheit und Feiertage zählen nicht.
-      Arbeit vor 4 Uhr gehört zum Vortag, Lücken unter {MIN_GAP_MINUTES} Minuten
-      sind keine Pause.
+      Arbeit vor 4 Uhr gehört zum Vortag, wenn sie nach weniger als{" "}
+      {NIGHT_GAP_MINUTES / 60} Stunden an dessen Arbeit anschließt; Lücken unter{" "}
+      {MIN_GAP_MINUTES} Minuten sind keine Pause.
       {excluded.length > 0
         ? ` Nicht berücksichtigt: ${excluded.join(", ")}.`
         : ""}

@@ -31,8 +31,17 @@ import {
 /** Lücken darunter sind keine Pause (z. B. Wechsel zwischen Timing-Einträgen). */
 export const MIN_GAP_MINUTES = 5;
 
-/** Arbeit, die vor dieser Uhrzeit beginnt, zählt zum Vortag (Nachtarbeit). */
+/**
+ * Arbeit, die vor dieser Uhrzeit beginnt, kann zum Vortag zählen (Nachtarbeit) –
+ * aber nur, wenn sie an dessen Arbeit anschließt (siehe NIGHT_GAP_MINUTES).
+ */
 export const DAY_BOUNDARY_MINUTE = 4 * 60;
+
+/**
+ * Größte Lücke, nach der ein Block vor 04:00 noch zum Vortag gehört. Nach
+ * längerer Lücke (z. B. Frühstart am Reisetag) beginnt ein neuer Arbeitstag.
+ */
+export const NIGHT_GAP_MINUTES = 3 * 60;
 
 /** Schrittweite der Beginn-/Ende-Verteilung. */
 export const HISTOGRAM_BUCKET_MINUTES = 30;
@@ -110,7 +119,7 @@ export interface DayBreak extends DaySpan {
 }
 
 export interface PatternDay {
-  /** Arbeitstag "YYYY-MM-DD" (Berlin, Tagesgrenze 04:00) */
+  /** Arbeitstag "YYYY-MM-DD" (Berlin; Nachtarbeit bis 04:00 zählt zum Vortag) */
   date: string;
   /** 0 = Sonntag … 6 = Samstag */
   weekday: number;
@@ -364,12 +373,25 @@ function minuteInDay(ms: number, dayKey: string): number {
   return wall.minute + 1440 * daysBetween(dayKey, wall.key);
 }
 
-/** Arbeitstag eines Blockbeginns: vor 04:00 zählt zum Vortag. */
-function workDayKey(ms: number): string {
-  const wall = berlinWall(ms);
-  return wall.minute < DAY_BOUNDARY_MINUTE
-    ? shiftDateKey(wall.key, -1)
-    : wall.key;
+/**
+ * Arbeitstag je Block (sortiert, disjunkt): Ein Block vor 04:00 gehört zum Tag
+ * des vorherigen Blocks, wenn er nach weniger als NIGHT_GAP_MINUTES anschließt
+ * und dieser Tag höchstens der Vortag ist. Sonst zählt der Kalendertag.
+ */
+function workDayKeys(blocks: Interval[]): string[] {
+  const keys: string[] = [];
+  blocks.forEach((block, index) => {
+    const wall = berlinWall(block.start);
+    const previous = blocks[index - 1];
+    const previousKey = keys[index - 1];
+    const continues =
+      wall.minute < DAY_BOUNDARY_MINUTE &&
+      previous !== undefined &&
+      block.start - previous.end < NIGHT_GAP_MINUTES * MINUTE_MS &&
+      previousKey >= shiftDateKey(wall.key, -1);
+    keys.push(continues ? previousKey : wall.key);
+  });
+  return keys;
 }
 
 const toMinutes = (msValue: number) => Math.round(msValue / MINUTE_MS);
@@ -405,20 +427,23 @@ function buildDayWork(entries: PatternSourceEntry[]): DayWork[] {
     })),
   );
 
+  const keys = workDayKeys(merged);
+  const keyOfBlock = new Map<Interval, string>();
   const blocksByDay = new Map<string, Interval[]>();
-  for (const block of merged) {
-    const key = workDayKey(block.start);
+  merged.forEach((block, index) => {
+    const key = keys[index];
+    keyOfBlock.set(block, key);
     const list = blocksByDay.get(key);
     if (list) list.push(block);
     else blocksByDay.set(key, [block]);
-  }
+  });
 
   const entryCountByDay = new Map<string, number>();
   for (const e of work) {
     // Eintrag gehört zum Tag des Blocks, in dem sein Beginn liegt
     const block = blockContaining(merged, e.startTime.getTime());
-    if (!block) continue;
-    const key = workDayKey(block.start);
+    const key = block ? keyOfBlock.get(block) : undefined;
+    if (!key) continue;
     entryCountByDay.set(key, (entryCountByDay.get(key) ?? 0) + 1);
   }
 
@@ -697,6 +722,28 @@ function histogram(values: number[]): HistogramBucket[] {
     buckets.push({ minute, count: counts.get(minute) ?? 0 });
   }
   return buckets;
+}
+
+/**
+ * Achsenbeschriftung fürs Histogramm: nur volle Stunden, bei vielen Stunden
+ * jede zweite, dritte … (Schritt als Vielfaches der Stunde, höchstens
+ * `maxTicks` Beschriftungen). Der letzte Bucket wird nicht extra beschriftet.
+ */
+export function histogramTicks(
+  buckets: readonly HistogramBucket[],
+  maxTicks = 8,
+): number[] {
+  if (buckets.length === 0) return [];
+  const minutes = buckets.map((b) => b.minute);
+  const first = Math.ceil(Math.min(...minutes) / 60) * 60;
+  const last = Math.max(...minutes);
+  const hours = Math.floor((last - first) / 60) + 1;
+  if (hours <= 0) return [];
+  const step = Math.max(1, Math.ceil(hours / maxTicks)) * 60;
+  const start = Math.ceil(first / step) * step;
+  const ticks: number[] = [];
+  for (let minute = start; minute <= last; minute += step) ticks.push(minute);
+  return ticks;
 }
 
 // ---------------------------------------------------------------------------

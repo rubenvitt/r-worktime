@@ -173,6 +173,20 @@ export function WeekDayList({
               {view.absenceTypes.map((type) => (
                 <EntryTypeBadge key={type} type={type} />
               ))}
+              {day.holiday ? (
+                <StatusBadge
+                  tone={day.holiday.imported ? "neutral" : "warning"}
+                  title={
+                    day.holiday.imported
+                      ? "Feiertag, mindert das Soll"
+                      : "Feiertag nicht importiert – zählt im Saldo noch als Soll"
+                  }
+                >
+                  {day.holiday.imported
+                    ? day.holiday.name
+                    : `${day.holiday.name} · nicht importiert`}
+                </StatusBadge>
+              ) : null}
             </>
           );
 

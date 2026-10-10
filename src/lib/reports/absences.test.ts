@@ -379,4 +379,67 @@ describe("buildAbsenceReport", () => {
     );
     expect(report.account.remaining).toBe(26.5);
   });
+
+  describe("offizielle Feiertage", () => {
+    const holidays = {
+      "2026-01-01": "Neujahr",
+      "2026-04-03": "Karfreitag",
+      "2026-10-03": "Tag der Deutschen Einheit", // Samstag
+      "2026-12-25": "1. Weihnachtstag",
+    };
+
+    it("zählt offizielle Feiertage an Arbeitstagen auch ohne Import", () => {
+      const report = buildAbsenceReport(input({ holidays }));
+      expect(report.totals.days.holiday).toBe(3);
+      expect(report.months[0].days.holiday).toBe(1);
+      const newYear = report.days.find((d) => d.dateKey === "2026-01-01");
+      expect(newYear).toMatchObject({
+        primary: "holiday",
+        holidayName: "Neujahr",
+        holidayImported: false,
+        days: { holiday: 1, vacation: 0, sick: 0, unpaid: 0 },
+      });
+      // Samstag: kein Arbeitstag, erscheint nicht und zählt nicht
+      expect(report.days.some((d) => d.dateKey === "2026-10-03")).toBe(false);
+      expect(report.nonWorkDayAbsences).toBe(0);
+      expect(report.notImportedHolidays).toEqual([
+        "2026-01-01",
+        "2026-04-03",
+        "2026-12-25",
+      ]);
+    });
+
+    it("zählt importierte Feiertage nicht doppelt", () => {
+      const report = buildAbsenceReport(
+        input({
+          holidays,
+          entries: [{ dateKey: "2026-01-01", type: "HOLIDAY", hours: 8 }],
+        }),
+      );
+      expect(report.totals.days.holiday).toBe(3);
+      const newYear = report.days.find((d) => d.dateKey === "2026-01-01");
+      expect(newYear).toMatchObject({
+        holidayName: "Neujahr",
+        holidayImported: true,
+      });
+      expect(report.notImportedHolidays).toEqual(["2026-04-03", "2026-12-25"]);
+    });
+
+    it("verbraucht an offiziellen Feiertagen keinen Urlaub", () => {
+      const report = buildAbsenceReport(
+        input({
+          holidays,
+          entries: [{ dateKey: "2026-12-25", type: "VACATION", hours: 8 }],
+        }),
+      );
+      const christmas = report.days.find((d) => d.dateKey === "2026-12-25");
+      expect(christmas?.days).toEqual({
+        vacation: 0,
+        sick: 0,
+        holiday: 1,
+        unpaid: 0,
+      });
+      expect(report.account.planned).toBe(0);
+    });
+  });
 });
