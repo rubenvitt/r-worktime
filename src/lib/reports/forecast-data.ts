@@ -105,15 +105,17 @@ export async function loadReportEntries(
 
 const holidayService = new HolidayService();
 const HOLIDAY_CACHE_TTL = 24 * 60 * 60 * 1000;
+/** Fehlschläge kurz merken: sonst wartet jede Wochen-/Berichtsseite den Timeout ab */
+const HOLIDAY_FAILURE_TTL = 5 * 60 * 1000;
 const HOLIDAY_FETCH_TIMEOUT = 5_000;
 const holidayCache = new Map<
   number,
-  { fetchedAt: number; holidays: Promise<Map<string, string>> }
+  { fetchedAt: number; ttl: number; holidays: Promise<Map<string, string>> }
 >();
 
 async function officialHolidays(year: number): Promise<Map<string, string>> {
   const cached = holidayCache.get(year);
-  if (cached && Date.now() - cached.fetchedAt < HOLIDAY_CACHE_TTL) {
+  if (cached && Date.now() - cached.fetchedAt < cached.ttl) {
     return cached.holidays;
   }
   // Ohne Timeout bliebe ein hängender Abruf 24 h im Cache und blockierte die Routen
@@ -126,12 +128,20 @@ async function officialHolidays(year: number): Promise<Map<string, string>> {
       ),
     ),
   ]).then((list) => new Map(list.map((h) => [h.date.slice(0, 10), h.fname])));
-  holidayCache.set(year, { fetchedAt: Date.now(), holidays });
+  holidayCache.set(year, {
+    fetchedAt: Date.now(),
+    ttl: HOLIDAY_CACHE_TTL,
+    holidays,
+  });
   try {
     return await holidays;
   } catch (error) {
-    // Fehlschläge nicht cachen, beim nächsten Aufruf neu versuchen
-    holidayCache.delete(year);
+    // Fehlschlag nur kurz cachen, danach erneut versuchen
+    holidayCache.set(year, {
+      fetchedAt: Date.now(),
+      ttl: HOLIDAY_FAILURE_TTL,
+      holidays,
+    });
     throw error;
   }
 }
