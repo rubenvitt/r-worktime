@@ -3,7 +3,7 @@
 import { type CSSProperties, useMemo, useState } from "react";
 import { monthRange, shiftDateKey, weekdayOfKey } from "@/lib/dates";
 import { formatMonth } from "@/lib/format";
-import type { AbsenceDay } from "@/lib/reports/absences";
+import type { AbsenceCategory, AbsenceDay } from "@/lib/reports/absences";
 import { cn } from "@/lib/utils";
 import {
   CATEGORY_COLOR,
@@ -41,7 +41,10 @@ function cellStyle(day: AbsenceDay): CSSProperties {
   const color = CATEGORY_COLOR[day.primary];
   const counted = day.days[day.primary];
   const half = day.isWorkDay && counted > 0 && counted < 1;
-  const faded = !day.isWorkDay || (day.isFuture && day.primary === "vacation");
+  // Geplant (nach heute) blass, außer Feiertag und Krankheit
+  const faded =
+    !day.isWorkDay ||
+    (day.isFuture && day.primary !== "holiday" && day.primary !== "sick");
   return {
     background: half
       ? `linear-gradient(135deg, ${color} 50%, var(--muted) 50%)`
@@ -70,6 +73,8 @@ export function AbsencesCalendar({
   const workDaySet = useMemo(() => new Set(workDays), [workDays]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const selected = selectedKey ? byKey.get(selectedKey) : undefined;
+  const hasPrimary = (category: AbsenceCategory) =>
+    days.some((day) => day.primary === category);
 
   return (
     <div className="space-y-4">
@@ -181,6 +186,18 @@ export function AbsencesCalendar({
           opacity={PLANNED_OPACITY}
           label="Urlaub geplant"
         />
+        {hasPrimary("specialLeave") || hasPrimary("educationalLeave") ? (
+          <LegendItem
+            color={CATEGORY_COLOR.specialLeave}
+            label="Sonder-/Bildungsurlaub"
+          />
+        ) : null}
+        {hasPrimary("overtimeReduction") ? (
+          <LegendItem
+            color={CATEGORY_COLOR.overtimeReduction}
+            label="Überstundenabbau"
+          />
+        ) : null}
         <LegendItem color={CATEGORY_COLOR.sick} label="Krankheit" />
         <LegendItem color={CATEGORY_COLOR.holiday} label="Feiertag" />
         <LegendItem color={CATEGORY_COLOR.unpaid} label="Unbezahlt" />

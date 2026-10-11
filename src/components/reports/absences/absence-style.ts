@@ -10,10 +10,17 @@ import {
 
 /**
  * Farbe je Kategorie als CSS-Variable. Rot bleibt Defiziten vorbehalten,
- * deshalb ist Krankheit gelb.
+ * deshalb ist Krankheit gelb. Sonder- und Bildungsurlaub teilen sich eine
+ * Farbe zwischen Urlaub (blau) und Feiertag (grün); Überstundenabbau kostet
+ * Saldo und liegt zwischen Urlaub und Rot.
  */
 export const CATEGORY_COLOR: Record<AbsenceCategory, string> = {
   vacation: "var(--chart-actual)",
+  specialLeave: "color-mix(in oklch, var(--chart-actual) 50%, var(--positive))",
+  educationalLeave:
+    "color-mix(in oklch, var(--chart-actual) 50%, var(--positive))",
+  overtimeReduction:
+    "color-mix(in oklch, var(--chart-actual) 55%, var(--negative))",
   sick: "var(--warning)",
   holiday: "var(--positive)",
   unpaid: "var(--chart-axis)",
@@ -65,7 +72,8 @@ export const SETTINGS_VACATION_HREF = "/settings/overtime#urlaub";
 export function describeAbsenceDay(day: AbsenceDay): string {
   const parts = [formatDateShort(day.dateKey)];
   for (const category of ABSENCE_CATEGORIES) {
-    if (category === "unpaid") {
+    if (category === "unpaid" && day.hours.unpaid <= 0) {
+      // Ohne Eintrag stammt „unbezahlt“ aus einem geprüften Tag
       if (day.days.unpaid > 0) parts.push("Unbezahlter Urlaub (geprüfter Tag)");
       continue;
     }
@@ -80,7 +88,11 @@ export function describeAbsenceDay(day: AbsenceDay): string {
       parts.push(label);
     }
   }
-  if (day.isFuture && day.days.vacation > 0) parts.push("geplant");
+  const plannedDays = ABSENCE_CATEGORIES.some(
+    (category) =>
+      category !== "holiday" && category !== "sick" && day.days[category] > 0,
+  );
+  if (day.isFuture && plannedDays) parts.push("geplant");
   if (!day.isWorkDay) {
     parts.push("kein Arbeitstag, nicht gezählt");
   } else {

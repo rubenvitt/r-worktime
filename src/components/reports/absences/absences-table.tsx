@@ -1,11 +1,20 @@
 import type * as React from "react";
 import { formatMonth } from "@/lib/format";
-import type { AbsenceMonth, CategoryValues } from "@/lib/reports/absences";
+import {
+  ABSENCE_CATEGORIES,
+  type AbsenceMonth,
+  type CategoryValues,
+} from "@/lib/reports/absences";
 import { cn } from "@/lib/utils";
 import { formatDayCount } from "./absence-style";
 
 function sum(values: CategoryValues): number {
-  return values.vacation + values.sick + values.holiday + values.unpaid;
+  return ABSENCE_CATEGORIES.reduce((total, c) => total + values[c], 0);
+}
+
+/** Sonder- und Bildungsurlaub teilen sich Spalte und Farbe. */
+function special(values: CategoryValues): number {
+  return values.specialLeave + values.educationalLeave;
 }
 
 function Cell({
@@ -35,10 +44,16 @@ export function AbsencesTable({
   months,
   totals,
   showUnpaid,
+  showSpecial = false,
+  showOvertimeReduction = false,
 }: {
   months: AbsenceMonth[];
   totals: CategoryValues;
   showUnpaid: boolean;
+  /** Spalte Sonder-/Bildungsurlaub */
+  showSpecial?: boolean;
+  /** Spalte Überstundenabbau */
+  showOvertimeReduction?: boolean;
 }) {
   const totalPlanned = months.reduce(
     (acc, m) => acc + m.plannedVacationDays,
@@ -56,6 +71,16 @@ export function AbsencesTable({
             <th scope="col" className="px-3 py-2 text-right font-medium">
               Urlaub
             </th>
+            {showSpecial ? (
+              <th scope="col" className="px-3 py-2 text-right font-medium">
+                Sonder-/Bildungsurlaub
+              </th>
+            ) : null}
+            {showOvertimeReduction ? (
+              <th scope="col" className="px-3 py-2 text-right font-medium">
+                Überstundenabbau
+              </th>
+            ) : null}
             <th scope="col" className="px-3 py-2 text-right font-medium">
               Krankheit
             </th>
@@ -98,6 +123,10 @@ export function AbsencesTable({
                     </>
                   )}
                 </Cell>
+                {showSpecial ? <Cell value={special(month.days)} /> : null}
+                {showOvertimeReduction ? (
+                  <Cell value={month.days.overtimeReduction} />
+                ) : null}
                 <Cell value={month.days.sick} />
                 <Cell value={month.days.holiday} />
                 {showUnpaid ? <Cell value={month.days.unpaid} /> : null}
@@ -123,6 +152,10 @@ export function AbsencesTable({
                 </>
               )}
             </Cell>
+            {showSpecial ? <Cell value={special(totals)} /> : null}
+            {showOvertimeReduction ? (
+              <Cell value={totals.overtimeReduction} />
+            ) : null}
             <Cell value={totals.sick} />
             <Cell value={totals.holiday} />
             {showUnpaid ? <Cell value={totals.unpaid} /> : null}
