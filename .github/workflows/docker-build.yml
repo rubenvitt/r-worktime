@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: CI
 
 on:
   push:
@@ -12,7 +12,28 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # prisma.config.ts braucht schon zum Generieren eine URL; verbunden wird nie.
+      DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+    steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 11
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm db:generate
+    - run: pnpm lint
+    - run: pnpm type-check
+    - run: pnpm test:run
+
   build:
+    needs: check
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -38,6 +59,7 @@ jobs:
       uses: docker/metadata-action@v5
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        # Das volle SHA ohne Präfix ist das Tag, das der deploy-agent des Servers ausrollt.
         tags: |
           type=ref,event=branch
           type=ref,event=pr
@@ -45,6 +67,7 @@ jobs:
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
           type=sha
+          type=sha,format=long,prefix=
 
     - name: Build and push Docker image
       id: build-and-push
@@ -57,3 +80,26 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+  # Der Server holt das Deployment selbst ab (Pull, kein Runner mit Zugang zum Host):
+  # ~/server/deploy-agent setzt payload.tag als Image-Tag und meldet success/failure zurück.
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+    steps:
+    - name: Deployment anlegen
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        id=$(gh api "repos/${{ github.repository }}/deployments" --jq .id --input - <<JSON
+        {"ref": "${{ github.sha }}", "environment": "production", "auto_merge": false,
+         "required_contexts": [], "payload": {"tag": "${{ github.sha }}"},
+         "description": "Image ghcr.io/${{ github.repository }}:${{ github.sha }}"}
+        JSON
+        )
+        gh api "repos/${{ github.repository }}/deployments/$id/statuses" -f state=queued \
+          -f description="wartet auf den deploy-agent des Servers" > /dev/null
+        echo "Deployment $id angelegt"

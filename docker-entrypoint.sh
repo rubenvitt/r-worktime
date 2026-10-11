@@ -3,8 +3,8 @@ set -e
 
 echo "Starting database migrations..."
 
-# Run Prisma migrations
-prisma migrate deploy
+# Run Prisma migrations (projekteigenes CLI, nicht global — siehe Dockerfile)
+./node_modules/.bin/prisma migrate deploy
 
 echo "Migrations completed successfully"
 
