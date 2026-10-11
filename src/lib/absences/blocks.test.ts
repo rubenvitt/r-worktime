@@ -47,6 +47,19 @@ describe("countAbsenceDays", () => {
     expect(countAbsenceDays("2026-12-23", "2027-01-01", false, ctx)).toBe(6);
   });
 
+  it("lässt unterdrückte Tage weg, auch bei halben Tagen", () => {
+    // Mo 12. bis Fr 16.10., 14. von Hand gelöscht
+    expect(
+      countAbsenceDays("2026-10-12", "2026-10-16", false, ctx, ["2026-10-14"]),
+    ).toBe(4);
+    expect(
+      countAbsenceDays("2026-10-12", "2026-10-13", true, ctx, ["2026-10-13"]),
+    ).toBe(0.5);
+    expect(
+      countAbsenceDays("2026-10-12", "2026-10-12", true, ctx, ["2026-10-12"]),
+    ).toBe(0);
+  });
+
   it("zählt einen halben Tag als 0,5", () => {
     expect(countAbsenceDays("2026-10-12", "2026-10-12", true, ctx)).toBe(0.5);
   });
@@ -147,6 +160,15 @@ describe("buildAbsenceBlocks", () => {
         deletable: false,
       },
     ]);
+  });
+
+  it("zählt unterdrückte Tage einer Abwesenheit nicht mit", () => {
+    const [block] = buildAbsenceBlocks({
+      ...ctx,
+      absences: [absence({ suppressedDates: ["2026-10-13", "2026-10-15"] })],
+      looseEntries: [],
+    });
+    expect(block.days).toBe(3);
   });
 
   it("fasst lose Urlaubstage über Wochenende und Feiertag zu einem Block", () => {

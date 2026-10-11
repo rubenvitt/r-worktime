@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
           endDate: true,
           halfDay: true,
           status: true,
+          suppressedDates: true,
         },
         orderBy: { startDate: "asc" },
       }),
@@ -93,6 +94,7 @@ export async function GET(request: NextRequest) {
       endDate: dateKeyFromDbDate(absence.endDate),
       halfDay: absence.halfDay,
       status: absence.status,
+      suppressedDates: absence.suppressedDates,
     }));
 
     // Feiertage für alle Jahre, die die Abwesenheiten berühren
