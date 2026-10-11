@@ -109,6 +109,8 @@ Eine Migration.
   - Gibt es an dem Tag schon einen Eintrag desselben Eintragstyps ohne `absenceId` (Timing-Sync oder manuell) → verknüpfen (`absenceId` setzen), nicht nach Timing schreiben.
   - Sonst, bei Arten mit Timing-Eintrag und `writeToTiming`: Timing nach einem vorhandenen Eintrag im eingestellten Projekt an dem Tag fragen; gefunden → dessen ID übernehmen, sonst in Timing anlegen. Danach lokalen Eintrag speichern: `source TIMEWARP`, `externalId` = Timing-ID, `absenceId`.
   - Sonst: nur lokalen Eintrag (`source TIMEWARP`, ohne `externalId`).
+  - Eigener Eintrag ohne `externalId` (Timing war beim Anlegen noch nicht eingerichtet), Timing jetzt eingerichtet: in Timing nachtragen (erst suchen, dann übernehmen, verknüpfen oder anlegen). Belegt Timing den Tag schon anders, bleibt der lokale Eintrag ohne Aktion.
+  - Als eigener Timing-Eintrag gilt nur einer mit genau der Notiz „Aus Timewarp“. Fremde Einträge werden nur verknüpft, wenn sie in den Projekt-Wurzeln des Timing-Syncs liegen; sonst würde der Timing-Sync sie als gelöscht behandeln.
 - Für jeden verknüpften Eintrag, der kein Soll-Tag mehr ist:
   - `source TIMEWARP` → in Timing löschen (falls `externalId`), dann lokal löschen. Antwortet Timing beim Löschen mit 404, gilt der Eintrag als gelöscht.
   - andere Herkunft → nur `absenceId` entfernen.
@@ -121,7 +123,7 @@ Eine Migration.
 
 **5. Protokoll und Status:** `AbsenceSyncLog` mit allen Aktionen (`created`, `linked`, `timingCreated`, `timingAdopted`, `deleted`, `unlinked`, `skippedUnknownType`, `failed`), `lastSync*` an der Integration.
 
-**Zusammenspiel mit dem Timing-Sync** (`src/lib/timing/plan-sync.ts`): Ein eingehender Timing-Eintrag, dessen `externalId` an einem Eintrag mit `source TIMEWARP` hängt, gilt als verknüpft: kein Update, kein Konflikt, kein Löschen. Ein `TIMEWARP`-Eintrag im Fenster, den Timing nicht mehr liefert, wird vom Timing-Sync nicht gelöscht (das entscheidet der Abgleich).
+**Zusammenspiel mit dem Timing-Sync** (`src/lib/timing/plan-sync.ts`): Ein eingehender Timing-Eintrag, dessen `externalId` an einem Eintrag mit `source TIMEWARP` hängt, gilt als verknüpft: kein Update, kein Konflikt, kein Löschen. Ein `TIMEWARP`-Eintrag im Fenster, den Timing nicht mehr liefert, wird vom Timing-Sync nicht gelöscht (das entscheidet der Abgleich). Einen verknüpften Tag unterdrückt der Timing-Sync nur, wenn Timing den Eintrag wirklich nicht mehr kennt – nicht, wenn ihn nur der Wurzel-Filter verwirft. Die Einstellungen warnen, wenn das Urlaubsprojekt außerhalb der Wurzeln liegt.
 
 **Fehlerfälle:**
 - Timing nicht erreichbar oder Fehler beim Anlegen: Tag bleibt ohne Eintrag, Aktion `failed`, nächster Lauf versucht es erneut (mit vorheriger Suche in Timing, daher keine Duplikate).

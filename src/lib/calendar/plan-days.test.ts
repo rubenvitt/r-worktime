@@ -3,6 +3,7 @@ import {
   type DayPlanAbsence,
   type DayPlanEntry,
   type DayPlanInput,
+  isOwnTimingNote,
   planDays,
   timewarpDayTimes,
 } from "./plan-days";
@@ -557,5 +558,53 @@ describe("timewarpDayTimes", () => {
       startTime: new Date("2026-07-01T06:00:00.000Z"),
       endTime: new Date("2026-07-01T14:00:00.000Z"),
     });
+  });
+});
+
+describe("isOwnTimingNote", () => {
+  it("erkennt nur genau die Notiz „Aus Timewarp“ als eigene", () => {
+    expect(isOwnTimingNote("Aus Timewarp")).toBe(true);
+    expect(isOwnTimingNote("  Aus Timewarp\n")).toBe(true);
+    expect(isOwnTimingNote("Aus Timewarp übernommen – Osterurlaub")).toBe(
+      false,
+    );
+    expect(isOwnTimingNote("Urlaub (Aus Timewarp)")).toBe(false);
+    expect(isOwnTimingNote(null)).toBe(false);
+    expect(isOwnTimingNote(undefined)).toBe(false);
+  });
+});
+
+describe("planDays – Timing nachtragen", () => {
+  const localOnly = () =>
+    ["2026-12-21", "2026-12-22", "2026-12-23"].map((date) =>
+      entry({ date, externalId: null }),
+    );
+
+  it("plant eigene Einträge ohne Timing-ID zum Nachtragen ein, ohne lokal neu anzulegen", () => {
+    const entries = localOnly();
+    const plan = planDays(input({ entries }));
+    expect(plan.create.map((c) => c.upgrades)).toEqual(
+      entries.map((e) => e.id),
+    );
+    expect(plan.create.every((c) => c.toTiming)).toBe(true);
+    expect(plan.remove).toEqual([]);
+  });
+
+  it("ohne Timing oder bei Arten ohne Timing-Eintrag nichts", () => {
+    expect(
+      planDays(input({ entries: localOnly(), timingEnabled: false })).create,
+    ).toEqual([]);
+    const reduction = localOnly().map((e) => ({
+      ...e,
+      type: "OVERTIME_REDUCTION",
+    }));
+    expect(
+      planDays(
+        input({
+          absences: [absence({ kind: "OVERTIME_REDUCTION" })],
+          entries: reduction,
+        }),
+      ).create,
+    ).toEqual([]);
   });
 });

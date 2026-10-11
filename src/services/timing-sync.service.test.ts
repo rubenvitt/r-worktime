@@ -315,6 +315,51 @@ describe("syncTimingForUser", () => {
     });
   });
 
+  it("unterdrückt keinen Tag, dessen Eintrag nur außerhalb der Projekt-Wurzeln liegt", async () => {
+    // Verknüpfter Urlaub im Projekt außerhalb der Wurzeln ["Work"]: Timing
+    // liefert ihn noch, der Wurzel-Filter verwirft ihn nur – kein Löschen
+    // in Timing, also auch kein unterdrückter Tag
+    prismaMock.timingIntegration.findUnique.mockResolvedValue(
+      integration({ projectRoots: ["Work"] }),
+    );
+    txMock.timeEntry.findMany.mockResolvedValue([
+      {
+        id: "db-vacation",
+        externalId: "/time-entries/vac",
+        source: "TIMING_SYNC",
+        date: new Date("2026-03-10T00:00:00.000Z"),
+        startTime: new Date("2026-03-10T07:00:00.000Z"),
+        endTime: new Date("2026-03-10T15:00:00.000Z"),
+        duration: new Prisma.Decimal(8),
+        type: "VACATION",
+        description: "Urlaub",
+        title: "Urlaub",
+        notes: null,
+        projectPath: "Privat ▸ Urlaub",
+        billingStatus: null,
+        absenceId: "abs-1",
+      },
+    ]);
+    txMock.absence.findMany.mockResolvedValue([
+      { id: "abs-1", suppressedDates: [] },
+    ]);
+
+    await syncTimingForUser("user-1", {
+      trigger: "manual",
+      fetchImpl: fetchReturning([
+        apiEntry(
+          "vac",
+          ["Privat", "Urlaub"],
+          "2026-03-10T08:00:00+01:00",
+          "2026-03-10T16:00:00+01:00",
+        ),
+      ]),
+      now: NOW,
+    });
+
+    expect(txMock.absence.update).not.toHaveBeenCalled();
+  });
+
   it("meldet fehlende Konfiguration", async () => {
     prismaMock.timingIntegration.findUnique.mockResolvedValue(
       integration({ apiTokenEnc: null }),
