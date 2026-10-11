@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildYearReport,
   dateKeysBetween,
+  dayTargetHours,
+  isAbsence,
+  isLeave,
   type ReportEntry,
   roundToQuarterHour,
   summarizeRange,
@@ -29,7 +32,7 @@ function work(
 
 function absence(
   date: string,
-  type: "VACATION" | "SICK",
+  type: "VACATION" | "SICK" | "OVERTIME_REDUCTION" | "UNPAID_LEAVE",
   hours = 8,
 ): ReportEntry {
   return { date, hours, type, source: "MANUAL", billingStatus: null };
@@ -225,6 +228,130 @@ describe("summarizeRange (Urlaub/Krank je Tag)", () => {
     const summary = oneDay([absence("2026-03-02", "SICK", 3)]);
     expect(summary.actualHours).toBe(3);
     expect(summary.absenceDays).toBe(0.5);
+  });
+});
+
+describe("summarizeRange (Überstundenabbau und unbezahlte Abwesenheit)", () => {
+  const oneDay = (entries: ReportEntry[], holidayKeys = NO_HOLIDAYS) =>
+    summarizeRange(entries, {
+      from: "2026-03-02",
+      to: "2026-03-02",
+      schedule: MON_FRI,
+      holidayKeys,
+    });
+
+  it("Überstundenabbau: Soll bleibt, keine Gutschrift, keine Arbeit", () => {
+    const summary = oneDay([absence("2026-03-02", "OVERTIME_REDUCTION")]);
+    expect(summary.targetHours).toBe(8);
+    expect(summary.actualHours).toBe(0);
+    expect(summary.workHours).toBe(0);
+    expect(summary.absenceDays).toBe(0);
+    expect(summary.overtimeReductionDays).toBe(1);
+  });
+
+  it("halber Überstundenabbau mit halbem Tag Arbeit: Saldo −4 h", () => {
+    const summary = oneDay([
+      absence("2026-03-02", "OVERTIME_REDUCTION", 4),
+      work("2026-03-02", 4),
+    ]);
+    expect(summary.actualHours - summary.targetHours).toBe(-4);
+    expect(summary.overtimeReductionDays).toBe(0.5);
+  });
+
+  it("unbezahlte Abwesenheit setzt das Tagessoll auf 0, ohne Gutschrift", () => {
+    const summary = oneDay([absence("2026-03-02", "UNPAID_LEAVE")]);
+    expect(summary.targetHours).toBe(0);
+    expect(summary.actualHours).toBe(0);
+    expect(summary.absenceDays).toBe(0);
+    expect(summary.unpaidDays).toBe(1);
+    // Der Arbeitstag zählt weiter mit (wie bei Urlaub)
+    expect(summary.workDays).toBe(1);
+  });
+
+  it("halber unbezahlter Tag halbiert das Soll", () => {
+    const summary = oneDay([
+      absence("2026-03-02", "UNPAID_LEAVE", 4),
+      work("2026-03-02", 4),
+    ]);
+    expect(summary.targetHours).toBe(4);
+    expect(summary.actualHours).toBe(4);
+    expect(summary.unpaidDays).toBe(0.5);
+  });
+
+  it("Urlaub am Tag mit unbezahlter Abwesenheit: Gutschrift höchstens bis zum verbleibenden Soll", () => {
+    const half = oneDay([
+      absence("2026-03-02", "UNPAID_LEAVE", 4),
+      absence("2026-03-02", "VACATION", 8),
+    ]);
+    expect(half.targetHours).toBe(4);
+    expect(half.actualHours).toBe(4);
+
+    const full = oneDay([
+      absence("2026-03-02", "UNPAID_LEAVE", 8),
+      absence("2026-03-02", "VACATION", 8),
+    ]);
+    expect(full.targetHours).toBe(0);
+    expect(full.actualHours).toBe(0);
+    expect(full.absenceDays).toBe(0);
+  });
+
+  it("Arbeit an einem unbezahlten Tag zählt als Plus", () => {
+    const summary = oneDay([
+      absence("2026-03-02", "UNPAID_LEAVE"),
+      work("2026-03-02", 2),
+    ]);
+    expect(summary.actualHours - summary.targetHours).toBe(2);
+  });
+
+  it("an Feiertagen und freien Tagen ändert sich nichts", () => {
+    const holiday = oneDay(
+      [absence("2026-03-02", "UNPAID_LEAVE")],
+      new Set(["2026-03-02"]),
+    );
+    expect(holiday.targetHours).toBe(0);
+    expect(holiday.unpaidDays).toBe(0);
+
+    const saturday = summarizeRange(
+      [absence("2026-03-07", "OVERTIME_REDUCTION")],
+      {
+        from: "2026-03-07",
+        to: "2026-03-07",
+        schedule: MON_FRI,
+        holidayKeys: NO_HOLIDAYS,
+      },
+    );
+    expect(saturday.targetHours).toBe(0);
+    expect(saturday.actualHours).toBe(0);
+    expect(saturday.overtimeReductionDays).toBe(0);
+  });
+
+  it("ignoriert 0-h-Einträge", () => {
+    const summary = oneDay([absence("2026-03-02", "UNPAID_LEAVE", 0)]);
+    expect(summary.targetHours).toBe(8);
+    expect(summary.unpaidDays).toBe(0);
+  });
+});
+
+describe("dayTargetHours", () => {
+  it("mindert das Soll um unbezahlte Stunden, höchstens bis 0", () => {
+    expect(dayTargetHours("2026-03-02", MON_FRI, NO_HOLIDAYS)).toBe(8);
+    expect(dayTargetHours("2026-03-02", MON_FRI, NO_HOLIDAYS, 4)).toBe(4);
+    expect(dayTargetHours("2026-03-02", MON_FRI, NO_HOLIDAYS, 10)).toBe(0);
+    expect(dayTargetHours("2026-03-07", MON_FRI, NO_HOLIDAYS, 4)).toBe(0);
+  });
+});
+
+describe("isAbsence / isLeave", () => {
+  it("Gutschrift nur für Urlaub und Krankheit, frei sind alle vier Arten", () => {
+    for (const type of ["VACATION", "SICK"] as const) {
+      expect(isAbsence(absence("2026-03-02", type))).toBe(true);
+      expect(isLeave(absence("2026-03-02", type))).toBe(true);
+    }
+    for (const type of ["OVERTIME_REDUCTION", "UNPAID_LEAVE"] as const) {
+      expect(isAbsence(absence("2026-03-02", type))).toBe(false);
+      expect(isLeave(absence("2026-03-02", type))).toBe(true);
+    }
+    expect(isLeave(work("2026-03-02", 8))).toBe(false);
   });
 });
 

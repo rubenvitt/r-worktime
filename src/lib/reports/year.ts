@@ -11,10 +11,17 @@
 //   bis zum Soll des Tags gutgeschrieben – an Feiertagen und freien Tagen
 //   also nichts. Ein Eintrag mit 0 h schreibt nichts gut (wie im
 //   Abwesenheiten-Bericht, der ihn mit 0 Tagen zählt).
+// - Unbezahlte Abwesenheit (UNPAID_LEAVE: unbezahlter Urlaub, Elternzeit,
+//   Mutterschutz, Sabbatical) mindert das Soll des Tags um ihre Stunden,
+//   höchstens bis 0 – ein ganzer Tag setzt das Soll auf 0, ein halber
+//   halbiert es. Sie schreibt nichts gut; Urlaub/Krank am selben Tag wird nur
+//   bis zum verbleibenden Soll gutgeschrieben.
+// - Überstundenabbau (OVERTIME_REDUCTION) lässt das Soll stehen und schreibt
+//   nichts gut: Der Tag kostet Saldo.
 // - Gezählt wird erst ab dem Erfassungsbeginn (Tag nach dem Anfangssaldo).
 
 import { monthRange, shiftDateKey, weekdayOfKey } from "@/lib/dates";
-import { absenceDayShare } from "@/lib/reports/absences";
+import { absenceDayShare, hoursToAbsenceDays } from "@/lib/reports/absences";
 import { classifyBillingStatus } from "@/lib/reports/billing-status";
 
 export type ReportEntryType =
@@ -22,7 +29,9 @@ export type ReportEntryType =
   | "OVERTIME"
   | "VACATION"
   | "SICK"
-  | "HOLIDAY";
+  | "HOLIDAY"
+  | "OVERTIME_REDUCTION"
+  | "UNPAID_LEAVE";
 
 /** Zeiteintrag in der Form, die die Berichte brauchen. */
 export interface ReportEntry {
@@ -73,8 +82,24 @@ export function isRealWork(entry: ReportEntry): boolean {
   return isWorkEntry(entry) && !SYNTHETIC_SOURCES.has(entry.source);
 }
 
+/** Urlaub/Krank: Gutschrift bis zum Tagessoll. */
 export function isAbsence(entry: ReportEntry): boolean {
   return entry.type === "VACATION" || entry.type === "SICK";
+}
+
+/** Unbezahlte Abwesenheit: mindert das Soll, keine Gutschrift. */
+export function isUnpaidLeave(entry: ReportEntry): boolean {
+  return entry.type === "UNPAID_LEAVE";
+}
+
+/** Überstundenabbau: Soll bleibt, keine Gutschrift. */
+export function isOvertimeReduction(entry: ReportEntry): boolean {
+  return entry.type === "OVERTIME_REDUCTION";
+}
+
+/** Jede Art freier Tag (an dem keine Arbeit erwartet wird), ohne Feiertage. */
+export function isLeave(entry: ReportEntry): boolean {
+  return isAbsence(entry) || isUnpaidLeave(entry) || isOvertimeReduction(entry);
 }
 
 export interface RangeSummary {
@@ -92,6 +117,10 @@ export interface RangeSummary {
   holidayDays: number;
   /** Urlaubs-/Krankheitstage an Soll-Tagen, halbe Tage anteilig (wie im Abwesenheiten-Bericht) */
   absenceDays: number;
+  /** Unbezahlte Tage an Arbeitstagen ohne Feiertag, halbe Tage anteilig */
+  unpaidDays: number;
+  /** Tage Überstundenabbau an Arbeitstagen ohne Feiertag, halbe Tage anteilig */
+  overtimeReductionDays: number;
 }
 
 export function emptySummary(): RangeSummary {
@@ -105,6 +134,8 @@ export function emptySummary(): RangeSummary {
     workDays: 0,
     holidayDays: 0,
     absenceDays: 0,
+    unpaidDays: 0,
+    overtimeReductionDays: 0,
   };
 }
 
@@ -119,6 +150,8 @@ export function addSummaries(a: RangeSummary, b: RangeSummary): RangeSummary {
     workDays: a.workDays + b.workDays,
     holidayDays: a.holidayDays + b.holidayDays,
     absenceDays: a.absenceDays + b.absenceDays,
+    unpaidDays: a.unpaidDays + b.unpaidDays,
+    overtimeReductionDays: a.overtimeReductionDays + b.overtimeReductionDays,
   };
 }
 
@@ -129,14 +162,20 @@ export interface RangeOptions {
   holidayKeys: ReadonlySet<string>;
 }
 
-/** Soll eines Kalendertags: Tagessoll an Arbeitstagen ohne Feiertag, sonst 0. */
+/**
+ * Soll eines Kalendertags: Tagessoll an Arbeitstagen ohne Feiertag, sonst 0;
+ * unbezahlte Stunden des Tags mindern es (höchstens bis 0).
+ */
 export function dayTargetHours(
   key: string,
   schedule: WorkSchedule,
   holidayKeys: ReadonlySet<string>,
+  unpaidHours = 0,
 ): number {
   if (!schedule.workDays.includes(weekdayOfKey(key))) return 0;
-  return holidayKeys.has(key) ? 0 : schedule.dailyHours;
+  if (holidayKeys.has(key)) return 0;
+  const reduction = unpaidHours > 0 ? unpaidHours : 0;
+  return Math.max(0, schedule.dailyHours - reduction);
 }
 
 /** Gutschrift für Urlaub/Krank eines Tags: Summe der Stunden, höchstens das Soll. */
@@ -148,6 +187,28 @@ export function absenceCreditHours(
   return Math.min(absenceHours, targetHours);
 }
 
+/** Stunden je Abwesenheitsart eines Tags (nur Einträge mit mehr als 0 h). */
+export interface LeaveHours {
+  sick: number;
+  vacation: number;
+  unpaid: number;
+  overtimeReduction: number;
+}
+
+export function emptyLeaveHours(): LeaveHours {
+  return { sick: 0, vacation: 0, unpaid: 0, overtimeReduction: 0 };
+}
+
+/** Stunden eines Abwesenheitseintrags auf seine Art buchen (andere Typen: nichts). */
+export function addLeaveHours(hours: LeaveHours, entry: ReportEntry): void {
+  if (!(entry.hours > 0)) return;
+  if (entry.type === "SICK") hours.sick += entry.hours;
+  else if (entry.type === "VACATION") hours.vacation += entry.hours;
+  else if (entry.type === "UNPAID_LEAVE") hours.unpaid += entry.hours;
+  else if (entry.type === "OVERTIME_REDUCTION")
+    hours.overtimeReduction += entry.hours;
+}
+
 /** Soll, Ist und Abrechnung für einen Zeitraum (inklusive Grenzen). */
 export function summarizeRange(
   entries: readonly ReportEntry[],
@@ -156,17 +217,16 @@ export function summarizeRange(
   const summary = emptySummary();
   if (from > to) return summary;
 
-  // Urlaub/Krank je Tag und Typ, ungerundet: Abwesenheiten tragen das
-  // Tagessoll (z. B. 7,8 h), Viertelstunden-Rundung ließe sonst je Tag ein Minus
-  const absenceHours = new Map<string, { sick: number; vacation: number }>();
+  // Abwesenheiten je Tag und Typ, ungerundet: sie tragen das Tagessoll
+  // (z. B. 7,8 h), Viertelstunden-Rundung ließe sonst je Tag ein Minus
+  const leaveHours = new Map<string, LeaveHours>();
   for (const entry of entries) {
     if (entry.date < from || entry.date > to) continue;
-    if (isAbsence(entry)) {
+    if (isLeave(entry)) {
       if (!(entry.hours > 0)) continue;
-      const hours = absenceHours.get(entry.date) ?? { sick: 0, vacation: 0 };
-      if (entry.type === "SICK") hours.sick += entry.hours;
-      else hours.vacation += entry.hours;
-      absenceHours.set(entry.date, hours);
+      const hours = leaveHours.get(entry.date) ?? emptyLeaveHours();
+      addLeaveHours(hours, entry);
+      leaveHours.set(entry.date, hours);
       continue;
     }
     if (!isWorkEntry(entry)) continue;
@@ -185,18 +245,21 @@ export function summarizeRange(
       summary.holidayDays++;
       continue;
     }
-    summary.targetHours += schedule.dailyHours;
-    const absence = absenceHours.get(key);
-    if (!absence) continue;
-    const credit = absenceCreditHours(
-      absence.sick + absence.vacation,
+    const leave = leaveHours.get(key);
+    const target = dayTargetHours(key, schedule, holidayKeys, leave?.unpaid);
+    summary.targetHours += target;
+    if (!leave) continue;
+    summary.unpaidDays += hoursToAbsenceDays(leave.unpaid, schedule.dailyHours);
+    summary.overtimeReductionDays += hoursToAbsenceDays(
+      leave.overtimeReduction,
       schedule.dailyHours,
     );
+    const credit = absenceCreditHours(leave.sick + leave.vacation, target);
     if (credit <= 0) continue;
     summary.actualHours += credit;
     summary.absenceDays += absenceDayShare(
-      absence.sick,
-      absence.vacation,
+      leave.sick,
+      leave.vacation,
       schedule.dailyHours,
     );
   }

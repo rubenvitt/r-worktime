@@ -341,13 +341,19 @@ export class OvertimeService {
         schedule,
         holidayKeys: holidays.keys,
       });
-      const dayTarget = dayTargetHours(dateKey, schedule, holidays.keys);
-
-      // Gutschrift wie im Abwesenheiten-Bericht verteilt: Krankheit vor Urlaub
+      // Gutschrift wie im Abwesenheiten-Bericht verteilt: Krankheit vor
+      // Urlaub; unbezahlte Stunden mindern das Soll wie in summarizeRange
       const sumOf = (type: ReportEntryType) =>
         dayEntries
           .filter((e) => e.type === type && e.hours > 0)
           .reduce((sum, e) => sum + e.hours, 0);
+      const unpaid = sumOf("UNPAID_LEAVE");
+      const dayTarget = dayTargetHours(
+        dateKey,
+        schedule,
+        holidays.keys,
+        unpaid,
+      );
       const sick = absenceCreditHours(sumOf("SICK"), dayTarget);
       const vacation = absenceCreditHours(sumOf("VACATION"), dayTarget - sick);
       const isHoliday = holidays.keys.has(dateKey);
@@ -362,6 +368,9 @@ export class OvertimeService {
       if (isHoliday) primaryType = EntryType.HOLIDAY;
       else if (sick > 0) primaryType = EntryType.SICK;
       else if (vacation > 0) primaryType = EntryType.VACATION;
+      else if (day.unpaidDays > 0) primaryType = EntryType.UNPAID_LEAVE;
+      else if (day.overtimeReductionDays > 0)
+        primaryType = EntryType.OVERTIME_REDUCTION;
 
       totalHours += day.actualHours;
       targetHours += day.targetHours;

@@ -116,11 +116,20 @@ export class ProblemDetectionService {
         0,
       );
 
+      // Überstundenabbau und unbezahlte Abwesenheit sind keine fehlenden Tage,
+      // auch mit 0 h; ihre Stunden zählen wie Arbeit zur Abdeckung des Tags
+      const hasLeave = dayEntries.some(
+        (entry) =>
+          entry.type === "OVERTIME_REDUCTION" || entry.type === "UNPAID_LEAVE",
+      );
+
       let problemType: ProblemDay["type"] | null = null;
 
       if (dayEntries.length === 0) {
         problemType = "missing";
         stats.missingDays++;
+      } else if (hasLeave && totalHours === 0) {
+        problemType = null;
       } else if (totalHours === 0 && !holiday) {
         // Ein 0-h-Feiertagseintrag ist kein Problem
         problemType = "zero_hours";
