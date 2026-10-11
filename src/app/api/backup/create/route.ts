@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
           status: absence.status,
           sequence: absence.sequence,
           lastSeenAt: absence.lastSeenAt?.toISOString() ?? null,
+          suppressedDates: absence.suppressedDates,
         })),
       },
     };

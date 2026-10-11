@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import {
   ImportService,
   mapTimingEntry,
+  REPLACEABLE_IMPORT_SOURCES,
   skipProtectedEntries,
   timingEntryDateKey,
 } from "./import.service";
@@ -148,5 +149,56 @@ describe("ImportService.processTimingExport", () => {
       skippedEntries: 1,
       errors: [],
     });
+  });
+});
+
+describe("Datei-Import und Timewarp-Einträge", () => {
+  it("ersetzt je Tag nur Datei-Import und Timing-Sync, nie TIMEWARP-Einträge", () => {
+    expect(REPLACEABLE_IMPORT_SOURCES).toEqual(["FILE_IMPORT", "TIMING_SYNC"]);
+    expect(REPLACEABLE_IMPORT_SOURCES).not.toContain("TIMEWARP");
+  });
+
+  it("legt einen Urlaub, dessen Timing-ID an einem TIMEWARP-Eintrag hängt, nicht doppelt an", async () => {
+    const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
+    const createMany = vi.fn().mockResolvedValue({ count: 0 });
+    const tx = {
+      importLog: {
+        create: vi.fn().mockResolvedValue({ id: "log-1" }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      timeEntry: {
+        deleteMany,
+        // Der TIMEWARP-Eintrag trägt die ID weiter (nicht ersetzbar)
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ externalId: "/time-entries/urlaub" }]),
+        createMany,
+      },
+    };
+    Object.assign(prisma, {
+      user: { findUnique: vi.fn().mockResolvedValue({ id: "user-1" }) },
+      importLog: { findUnique: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
+    });
+
+    const result = await new ImportService().processTimingExport(
+      "user@example.test",
+      [
+        {
+          ...baseEntry,
+          id: "/time-entries/urlaub",
+          project: "Work ▸ INNOQ ▸ Urlaub",
+          activityTitle: "Urlaub",
+        },
+      ],
+      { fileName: "export.json", fileHash: "hash-2" },
+    );
+
+    // Gelöscht wird nur nach ersetzbaren Quellen
+    for (const [args] of deleteMany.mock.calls) {
+      expect(args.where.source).toEqual({ in: REPLACEABLE_IMPORT_SOURCES });
+    }
+    expect(createMany).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ createdEntries: 0, skippedEntries: 1 });
   });
 });

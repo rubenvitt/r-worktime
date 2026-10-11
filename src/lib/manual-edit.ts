@@ -27,6 +27,7 @@ export interface ManualEditOverrides {
   source?: EntrySource;
   title?: null;
   notes?: null;
+  absenceId?: null;
 }
 
 const minuteOf = (date: Date) => Math.floor(date.getTime() / 60_000);
@@ -76,6 +77,10 @@ export function hasEntryChanged(
  *   ein Datei-Import überspringt sie – kein Überschreiben, kein Duplikat.
  * - Alt-Importe ohne ID bleiben FILE_IMPORT: Ohne ID lassen sie sich nicht
  *   zuordnen, als MANUAL würden sie neben dem nächsten Sync doppelt zählen.
+ * - Geänderte Timewarp-Einträge werden MANUAL und verlieren die Verknüpfung
+ *   zur Abwesenheit (externalId bleibt, siehe oben): Der Abgleich löscht oder
+ *   ersetzt sie dann nicht mehr. Die Route vermerkt den ursprünglichen Tag
+ *   zusätzlich als unterdrückt, damit der Abgleich ihn nicht neu anlegt.
  * - Neue description → title/notes leeren, sonst zeigt der Stundenzettel
  *   (title vor description) weiter den alten Titel.
  */
@@ -91,6 +96,10 @@ export function manualEditOverrides(
     existing.source === EntrySource.FILE_IMPORT;
   if (syncOwned && existing.externalId) {
     overrides.source = EntrySource.MANUAL;
+  }
+  if (existing.source === EntrySource.TIMEWARP) {
+    overrides.source = EntrySource.MANUAL;
+    overrides.absenceId = null;
   }
   if ((existing.description ?? null) !== (next.description ?? null)) {
     overrides.title = null;

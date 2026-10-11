@@ -171,6 +171,8 @@ export interface RestoredAbsence {
   sequence: number | null;
   /** ISO-Zeitstempel */
   lastSeenAt: string | null;
+  /** Von Hand gelöschte/bearbeitete Tage; ältere Backups → [] */
+  suppressedDates: string[];
 }
 
 function optionalString(value: unknown): string | null {
@@ -224,6 +226,15 @@ export function absencesFromBackup(
         ? (row.sequence as number)
         : null,
       lastSeenAt: optionalString(row.lastSeenAt),
+      suppressedDates: Array.isArray(row.suppressedDates)
+        ? Array.from(
+            new Set(
+              row.suppressedDates.filter(
+                (d): d is string => typeof d === "string" && isDateKey(d),
+              ),
+            ),
+          ).sort()
+        : [],
     });
   }
   return result;

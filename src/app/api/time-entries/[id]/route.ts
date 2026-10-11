@@ -1,9 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { withUserAbsenceLock } from "@/lib/absences/lock";
+import { suppressAbsenceDays } from "@/lib/absences/suppress";
 import { auth } from "@/lib/auth";
 import { keepExactTimes, manualEditOverrides } from "@/lib/manual-edit";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
 import { EntryType } from "@/types/database";
+
+// Wartet ggf. auf einen laufenden Kalender-Abgleich (gleiche Sperre)
+const ABSENCE_TX_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
 
 export async function DELETE(
   _request: NextRequest,
@@ -32,10 +37,20 @@ export async function DELETE(
       );
     }
 
-    // Delete the entry
-    await prisma.timeEntry.delete({
-      where: { id: entryId },
-    });
+    if (entry.absenceId) {
+      // Tag einer Timewarp-Abwesenheit: als unterdrückt vermerken, damit der
+      // Kalender-Abgleich ihn nicht neu anlegt
+      const userId = session.user.id;
+      await prisma.$transaction(async (tx) => {
+        await withUserAbsenceLock(tx, userId);
+        await tx.timeEntry.deleteMany({ where: { id: entryId, userId } });
+        await suppressAbsenceDays(tx, userId, [entry]);
+      }, ABSENCE_TX_OPTIONS);
+    } else {
+      await prisma.timeEntry.delete({
+        where: { id: entryId },
+      });
+    }
 
     // Invalidiere Overtime Cache nach Löschen
     overtimeService.invalidateCache(session.user.id);
@@ -138,15 +153,21 @@ export async function PUT(
       description: (body.description || null) as string | null,
     });
 
-    // Update the entry
-    const updatedEntry = await prisma.timeEntry.update({
-      where: { id },
-      data: {
-        ...edit,
-        ...manualEditOverrides(existingEntry, edit),
-        updatedAt: new Date(),
-      },
-    });
+    const overrides = manualEditOverrides(existingEntry, edit);
+    const data = { ...edit, ...overrides, updatedAt: new Date() };
+    const userId = session.user.id;
+
+    // Bearbeiteter Timewarp-Eintrag: entkoppelt (siehe manualEditOverrides),
+    // der ursprüngliche Tag wird an der Abwesenheit als unterdrückt vermerkt
+    const updatedEntry =
+      overrides.absenceId === null && existingEntry.absenceId
+        ? await prisma.$transaction(async (tx) => {
+            await withUserAbsenceLock(tx, userId);
+            const updated = await tx.timeEntry.update({ where: { id }, data });
+            await suppressAbsenceDays(tx, userId, [existingEntry]);
+            return updated;
+          }, ABSENCE_TX_OPTIONS)
+        : await prisma.timeEntry.update({ where: { id }, data });
 
     // Invalidiere Overtime Cache nach Update
     overtimeService.invalidateCache(session.user.id);

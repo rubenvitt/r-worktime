@@ -1,0 +1,153 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => {
+  const tx = {
+    $queryRaw: vi.fn(async () => []),
+    timeEntry: {
+      deleteMany: vi.fn(async () => ({ count: 1 })),
+      update: vi.fn(async (args: { data: unknown }) => ({
+        id: "e1",
+        ...(args.data as object),
+      })),
+    },
+    absence: {
+      findMany: vi.fn(),
+      update: vi.fn(async () => ({})),
+    },
+  };
+  return {
+    auth: vi.fn(),
+    invalidateCache: vi.fn(),
+    tx,
+    prisma: {
+      timeEntry: {
+        findFirst: vi.fn(),
+        delete: vi.fn(async () => ({})),
+        update: vi.fn(async (args: { data: unknown }) => ({
+          id: "e1",
+          ...(args.data as object),
+        })),
+      },
+      $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
+    },
+  };
+});
+
+vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
+vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
+vi.mock("@/services/overtime.service", () => ({
+  overtimeService: { invalidateCache: mocks.invalidateCache },
+}));
+
+import { DELETE, PUT } from "./route";
+
+const params = { params: Promise.resolve({ id: "e1" }) };
+
+function timewarpEntry(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "e1",
+    userId: "user-1",
+    source: "TIMEWARP",
+    externalId: "/time-entries/9",
+    absenceId: "abs-1",
+    date: new Date("2026-12-22T00:00:00.000Z"),
+    startTime: new Date("2026-12-22T07:00:00.000Z"),
+    endTime: new Date("2026-12-22T15:00:00.000Z"),
+    duration: 8,
+    type: "VACATION",
+    description: "Urlaub - Aus Timewarp",
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.auth.mockResolvedValue({ user: { id: "user-1" } });
+  mocks.tx.absence.findMany.mockResolvedValue([
+    { id: "abs-1", suppressedDates: [] },
+  ]);
+});
+
+describe("DELETE /api/time-entries/[id]", () => {
+  it("unterdrückt den Tag einer Timewarp-Abwesenheit unter der Sperre", async () => {
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(timewarpEntry());
+    const response = await DELETE({} as never, params);
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.timeEntry.deleteMany).toHaveBeenCalledWith({
+      where: { id: "e1", userId: "user-1" },
+    });
+    expect(mocks.tx.absence.update).toHaveBeenCalledWith({
+      where: { id: "abs-1" },
+      data: { suppressedDates: ["2026-12-22"] },
+    });
+    expect(mocks.prisma.timeEntry.delete).not.toHaveBeenCalled();
+  });
+
+  it("löscht Einträge ohne Abwesenheit wie bisher, ohne Sperre", async () => {
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(
+      timewarpEntry({ source: "MANUAL", absenceId: null }),
+    );
+    await DELETE({} as never, params);
+    expect(mocks.prisma.timeEntry.delete).toHaveBeenCalledWith({
+      where: { id: "e1" },
+    });
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("PUT /api/time-entries/[id]", () => {
+  function put(body: Record<string, unknown>) {
+    return PUT(
+      new Request("http://localhost/api/time-entries/e1", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }) as never,
+      params,
+    );
+  }
+
+  it("macht einen bearbeiteten Timewarp-Eintrag MANUAL, entkoppelt ihn und unterdrückt den Tag", async () => {
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(timewarpEntry());
+    const response = await put({
+      date: "2026-12-22T00:00:00.000Z",
+      startTime: "2026-12-22T07:00:00.000Z",
+      endTime: "2026-12-22T11:00:00.000Z",
+      duration: 4,
+      type: "VACATION",
+      description: "Urlaub - Aus Timewarp",
+    });
+
+    expect(response.status).toBe(200);
+    const data = mocks.tx.timeEntry.update.mock.calls[0][0].data;
+    expect(data).toMatchObject({
+      source: "MANUAL",
+      absenceId: null,
+      duration: 4,
+    });
+    expect(mocks.tx.absence.update).toHaveBeenCalledWith({
+      where: { id: "abs-1" },
+      data: { suppressedDates: ["2026-12-22"] },
+    });
+  });
+
+  it("Speichern ohne Änderung lässt den Timewarp-Eintrag verknüpft", async () => {
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(timewarpEntry());
+    await put({
+      date: "2026-12-22T00:00:00.000Z",
+      startTime: "2026-12-22T07:00:00.000Z",
+      endTime: "2026-12-22T15:00:00.000Z",
+      duration: 8,
+      type: "VACATION",
+      description: "Urlaub - Aus Timewarp",
+    });
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    const data = mocks.prisma.timeEntry.update.mock.calls[0][0].data as Record<
+      string,
+      unknown
+    >;
+    expect(data.source).toBeUndefined();
+    expect(data.absenceId).toBeUndefined();
+  });
+});
