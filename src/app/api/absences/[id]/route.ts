@@ -20,28 +20,23 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    // Längere Wartezeit als die Standard-5-s: ein laufender Kalender-Abgleich
-    // hält dieselbe Sperre auch während seiner Timing-Aufrufe
-    const result = await prisma.$transaction(
-      async (tx) => {
-        // Dieselbe Sperre wie Dialog und Abgleich
-        await withUserAbsenceLock(tx, userId);
-        const absence = await tx.absence.findFirst({
-          where: { id, userId },
-          select: { id: true, source: true },
-        });
-        if (!absence) return { status: "notFound" as const };
-        if (absence.source !== AbsenceSource.MANUAL) {
-          return { status: "notManual" as const };
-        }
-        const deleted = await tx.timeEntry.deleteMany({
-          where: { userId, absenceId: absence.id },
-        });
-        await tx.absence.delete({ where: { id: absence.id } });
-        return { status: "deleted" as const, deletedEntries: deleted.count };
-      },
-      { maxWait: 10_000, timeout: 60_000 },
-    );
+    const result = await prisma.$transaction(async (tx) => {
+      // Dieselbe Sperre wie Dialog und Abgleich
+      await withUserAbsenceLock(tx, userId);
+      const absence = await tx.absence.findFirst({
+        where: { id, userId },
+        select: { id: true, source: true },
+      });
+      if (!absence) return { status: "notFound" as const };
+      if (absence.source !== AbsenceSource.MANUAL) {
+        return { status: "notManual" as const };
+      }
+      const deleted = await tx.timeEntry.deleteMany({
+        where: { userId, absenceId: absence.id },
+      });
+      await tx.absence.delete({ where: { id: absence.id } });
+      return { status: "deleted" as const, deletedEntries: deleted.count };
+    });
 
     if (result.status === "notFound") {
       return NextResponse.json(

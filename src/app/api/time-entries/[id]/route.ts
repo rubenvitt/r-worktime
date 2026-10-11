@@ -5,10 +5,8 @@ import { auth } from "@/lib/auth";
 import { keepExactTimes, manualEditOverrides } from "@/lib/manual-edit";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
+import { deleteOwnTimingEntries } from "@/services/timing-entries.service";
 import { EntryType } from "@/types/database";
-
-// Wartet ggf. auf einen laufenden Kalender-Abgleich (gleiche Sperre)
-const ABSENCE_TX_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
 
 export async function DELETE(
   _request: NextRequest,
@@ -45,11 +43,17 @@ export async function DELETE(
         await withUserAbsenceLock(tx, userId);
         await tx.timeEntry.deleteMany({ where: { id: entryId, userId } });
         await suppressAbsenceDays(tx, userId, [entry]);
-      }, ABSENCE_TX_OPTIONS);
+      });
     } else {
       await prisma.timeEntry.delete({
         where: { id: entryId },
       });
+    }
+
+    // Vom Kalender-Abgleich in Timing angelegt: dort auch löschen (best
+    // effort, nach dem Commit – Fehler werden nur geloggt)
+    if (entry.source === "TIMEWARP" && entry.externalId) {
+      await deleteOwnTimingEntries(session.user.id, [entry.externalId]);
     }
 
     // Invalidiere Overtime Cache nach Löschen
@@ -166,7 +170,7 @@ export async function PUT(
             const updated = await tx.timeEntry.update({ where: { id }, data });
             await suppressAbsenceDays(tx, userId, [existingEntry]);
             return updated;
-          }, ABSENCE_TX_OPTIONS)
+          })
         : await prisma.timeEntry.update({ where: { id }, data });
 
     // Invalidiere Overtime Cache nach Update
