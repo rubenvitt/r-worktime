@@ -120,3 +120,42 @@ describe("findProblematicDays (Feiertage)", () => {
     expect(byKey.get("2026-03-30")?.expectedHours).toBe(8);
   });
 });
+
+describe("findProblematicDays (Überstundenabbau, unbezahlt)", () => {
+  beforeEach(() => {
+    prismaMock.userSettings.findUnique.mockResolvedValue({
+      weeklyWorkHours: new Prisma.Decimal(40),
+      workDays: [1, 2, 3, 4, 5],
+    });
+    prismaMock.reviewedDay.findMany.mockResolvedValue([]);
+    prismaMock.timeEntry.findMany.mockReset();
+    officialHolidaysMock.mockReset();
+    officialHolidaysMock.mockResolvedValue({
+      names: { "2026-04-03": "Karfreitag", "2026-04-06": "Ostermontag" },
+      unavailableYears: [],
+    });
+  });
+
+  it("meldet Tage mit Überstundenabbau oder unbezahlter Abwesenheit nicht als fehlend", async () => {
+    const { byKey } = await problemsFor([
+      entry("2026-03-30", 8, "OVERTIME_REDUCTION"),
+      entry("2026-03-31", 8, "UNPAID_LEAVE"),
+      // auch ohne Stunden kein „0:00 erfasst“
+      entry("2026-04-01", 0, "UNPAID_LEAVE"),
+      entry("2026-04-02", 0, "OVERTIME_REDUCTION"),
+    ]);
+    expect(byKey.size).toBe(0);
+  });
+
+  it("meldet einen halben Tag Überstundenabbau ohne Arbeit als unter Soll", async () => {
+    const { byKey } = await problemsFor([
+      entry("2026-03-30", 4, "OVERTIME_REDUCTION"),
+      entry("2026-03-31", 4, "OVERTIME_REDUCTION"),
+      entry("2026-03-31", 4),
+      entry("2026-04-01", 8),
+      entry("2026-04-02", 8),
+    ]);
+    expect([...byKey.keys()]).toEqual(["2026-03-30"]);
+    expect(byKey.get("2026-03-30")?.type).toBe("incomplete");
+  });
+});

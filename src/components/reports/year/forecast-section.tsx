@@ -133,6 +133,14 @@ function MonthRow({
         {month.absenceDays > 0 ? (
           <span>Urlaub/Krank: {formatDecimal(month.absenceDays)}</span>
         ) : null}
+        {month.unpaidDays > 0 ? (
+          <span>Unbezahlt: {formatDecimal(month.unpaidDays)}</span>
+        ) : null}
+        {month.overtimeReductionDays > 0 ? (
+          <span>
+            Überstundenabbau: {formatDecimal(month.overtimeReductionDays)}
+          </span>
+        ) : null}
         <span>
           <Duration
             minutes={hoursToMinutes(month.expectedHours)}
@@ -157,6 +165,23 @@ function MonthRow({
       >
         {month.holidayDays || "–"}
         {month.absenceDays ? ` · ${formatDecimal(month.absenceDays)}` : ""}
+        {month.unpaidDays + month.overtimeReductionDays > 0 ? (
+          <span
+            className="block text-xs"
+            title="Unbezahlt (kein Soll) · Überstundenabbau (Soll bleibt)"
+          >
+            {[
+              month.unpaidDays > 0
+                ? `${formatDecimal(month.unpaidDays)} unbez.`
+                : null,
+              month.overtimeReductionDays > 0
+                ? `${formatDecimal(month.overtimeReductionDays)} Abbau`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        ) : null}
       </span>
       <span className="hidden text-right text-muted-foreground md:block">
         <Duration minutes={hoursToMinutes(month.targetHours)} />
@@ -322,7 +347,7 @@ export function ForecastSection({ data }: { data: ForecastResponse }) {
       <Panel>
         <PanelHeader
           title="Monate"
-          meta={`Feiertage: ${totals.holidayDays} · geplanter Urlaub/Krank: ${formatDecimal(totals.absenceDays)}`}
+          meta={`Feiertage: ${totals.holidayDays} · geplanter Urlaub/Krank: ${formatDecimal(totals.absenceDays)}${totals.unpaidDays > 0 ? ` · unbezahlt: ${formatDecimal(totals.unpaidDays)}` : ""}${totals.overtimeReductionDays > 0 ? ` · Überstundenabbau: ${formatDecimal(totals.overtimeReductionDays)}` : ""}`}
         />
         <div
           className={cn(
@@ -470,7 +495,9 @@ export function ForecastSection({ data }: { data: ForecastResponse }) {
               Feiertage (Niedersachsen) kommen aus dem Feiertags-Dienst und den
               importierten Feiertagen. Geplanter Urlaub und Krankheit zählen
               nur, wenn sie als Eintrag mit zukünftigem Datum vorliegen
-              {totals.absenceDays === 0 ? " – derzeit keiner" : ""}.
+              {totals.absenceDays === 0 ? " – derzeit keiner" : ""}. Unbezahlte
+              Tage haben kein Soll; Überstundenabbau behält das Soll, ohne dass
+              Arbeit erwartet wird.
             </Notice>
             {holidays.unavailableYears.length > 0 ? (
               <Notice warning>

@@ -14,6 +14,10 @@
 //   weiteres Soll); die übrigen Tage prognostiziert die Rechnung ab morgen.
 // - Geplanter Urlaub/Krank wird wie im Abwesenheiten-Bericht in Tage
 //   umgerechnet (je Typ auf halbe Tage, Krankheit vor Urlaub, höchstens 1).
+// - Geplante unbezahlte Abwesenheit (UNPAID_LEAVE) wirkt wie Urlaub: kein
+//   Soll, keine erwartete Arbeit. Geplanter Überstundenabbau
+//   (OVERTIME_REDUCTION) mindert nur das erwartete Ist, das Soll bleibt.
+//   Je Tag zusammen höchstens 1: Krankheit, Urlaub, unbezahlt, Überstundenabbau.
 //
 // Erfahrungswerte nur aus echter Arbeit: Anfangssaldo, Feiertags-Einträge und
 // Auffüllung (synthetische Uhrzeiten, Soll-Werte) zählen nicht. Tage, die
@@ -26,16 +30,19 @@ import {
   shiftMonthKey,
   weekdayOfKey,
 } from "@/lib/dates";
-import { absenceDayShare } from "@/lib/reports/absences";
+import { absenceDayShare, hoursToAbsenceDays } from "@/lib/reports/absences";
 import {
   billableShare,
   classifyBillingStatus,
 } from "@/lib/reports/billing-status";
 import {
+  addLeaveHours,
   dateKeysBetween,
-  isAbsence,
+  emptyLeaveHours,
+  isLeave,
   isRealWork,
   isWorkEntry,
+  type LeaveHours,
   type RangeSummary,
   type ReportEntry,
   roundToQuarterHour,
@@ -153,8 +160,9 @@ function summarizeBaseMonth(
 
   for (const entry of input.entries) {
     if (entry.date < from || entry.date > lastKey) continue;
-    if (isAbsence(entry)) {
-      // 0-h-Einträge sind keine Abwesenheit (wie im Saldo)
+    if (isLeave(entry)) {
+      // 0-h-Einträge sind keine Abwesenheit (wie im Saldo). Überstundenabbau
+      // und unbezahlte Tage sind wie Urlaub keine verfügbaren Tage.
       if (entry.hours > 0) absenceDays.add(entry.date);
     } else if (isRealWork(entry)) {
       realWorkDays.add(entry.date);
@@ -263,6 +271,11 @@ export interface ForecastMonth {
   holidays: string[];
   /** Geplanter Urlaub/Krank an Soll-Tagen; halbe Tage anteilig */
   absenceDays: number;
+  /** Geplante unbezahlte Tage (kein Soll, keine Arbeit); halbe Tage anteilig */
+  unpaidDays: number;
+  /** Geplanter Überstundenabbau (Soll bleibt, keine Arbeit); halbe Tage anteilig */
+  overtimeReductionDays: number;
+  /** Tage mit erwarteter Arbeit: Arbeitstage − Feiertage − alle Abwesenheiten */
   availableDays: number;
   targetHours: number;
   expectedHours: number;
@@ -297,6 +310,8 @@ export interface Forecast {
     availableDays: number;
     holidayDays: number;
     absenceDays: number;
+    unpaidDays: number;
+    overtimeReductionDays: number;
     targetHours: number;
     expectedHours: number;
     expectedBillableHours: number | null;
@@ -351,19 +366,28 @@ export function buildForecast(input: ForecastInput): Forecast {
   // Geplante Abwesenheiten liegen nach heute. Umrechnung wie im
   // Abwesenheiten-Bericht: je Typ Stunden / Tagessoll auf halbe Tage
   // (mindestens ½), Krankheit vor Urlaub, zusammen höchstens ein Tag.
-  const plannedHours = new Map<string, { sick: number; vacation: number }>();
+  const plannedHours = new Map<string, LeaveHours>();
   for (const entry of input.entries) {
-    if (!isAbsence(entry) || entry.date <= todayKey || !(entry.hours > 0))
+    if (!isLeave(entry) || entry.date <= todayKey || !(entry.hours > 0))
       continue;
-    const hours = plannedHours.get(entry.date) ?? { sick: 0, vacation: 0 };
-    if (entry.type === "SICK") hours.sick += entry.hours;
-    else hours.vacation += entry.hours;
+    const hours = plannedHours.get(entry.date) ?? emptyLeaveHours();
+    addLeaveHours(hours, entry);
     plannedHours.set(entry.date, hours);
   }
-  const plannedShare = (key: string): number => {
+  const plannedShares = (key: string) => {
     const hours = plannedHours.get(key);
-    if (!hours) return 0;
-    return absenceDayShare(hours.sick, hours.vacation, schedule.dailyHours);
+    if (!hours) return { absence: 0, unpaid: 0, overtimeReduction: 0 };
+    const daily = schedule.dailyHours;
+    const absence = absenceDayShare(hours.sick, hours.vacation, daily);
+    const unpaid = Math.min(
+      hoursToAbsenceDays(hours.unpaid, daily),
+      1 - absence,
+    );
+    const overtimeReduction = Math.min(
+      hoursToAbsenceDays(hours.overtimeReduction, daily),
+      1 - absence - unpaid,
+    );
+    return { absence, unpaid, overtimeReduction };
   };
 
   // Rest von heute: nur an einem verfügbaren Arbeitstag (kein Feiertag,
@@ -372,7 +396,7 @@ export function buildForecast(input: ForecastInput): Forecast {
   let todayAbsent = false;
   for (const entry of input.entries) {
     if (entry.date !== todayKey) continue;
-    if (isAbsence(entry)) todayAbsent ||= entry.hours > 0;
+    if (isLeave(entry)) todayAbsent ||= entry.hours > 0;
     else if (isWorkEntry(entry)) todayWork += roundToQuarterHour(entry.hours);
   }
   const todayAvailable =
@@ -396,18 +420,33 @@ export function buildForecast(input: ForecastInput): Forecast {
 
     let workDays = 0;
     let absenceDays = 0;
+    let unpaidDays = 0;
+    let overtimeReductionDays = 0;
     const holidays: string[] = [];
     if (hasDays) {
       for (const key of dateKeysBetween(from, lastKey)) {
         if (!schedule.workDays.includes(weekdayOfKey(key))) continue;
         workDays++;
-        if (holidayKeys.has(key)) holidays.push(key);
-        else absenceDays += plannedShare(key);
+        if (holidayKeys.has(key)) {
+          holidays.push(key);
+          continue;
+        }
+        const shares = plannedShares(key);
+        absenceDays += shares.absence;
+        unpaidDays += shares.unpaid;
+        overtimeReductionDays += shares.overtimeReduction;
       }
     }
-    const availableDays = workDays - holidays.length - absenceDays;
+    const availableDays =
+      workDays -
+      holidays.length -
+      absenceDays -
+      unpaidDays -
+      overtimeReductionDays;
     const todayRemainingHours = isCurrent ? todayRemaining : 0;
-    const targetHours = availableDays * schedule.dailyHours;
+    // Überstundenabbau-Tage behalten ihr Soll, ohne erwartete Arbeit
+    const targetHours =
+      (availableDays + overtimeReductionDays) * schedule.dailyHours;
     const expectedHours = availableDays * hoursPerDay + todayRemainingHours;
     const deltaHours = expectedHours - targetHours;
     balance += deltaHours;
@@ -441,6 +480,8 @@ export function buildForecast(input: ForecastInput): Forecast {
       holidayDays: holidays.length,
       holidays,
       absenceDays,
+      unpaidDays,
+      overtimeReductionDays,
       availableDays,
       targetHours,
       expectedHours,
@@ -471,6 +512,8 @@ export function buildForecast(input: ForecastInput): Forecast {
       availableDays: sum((m) => m.availableDays),
       holidayDays: sum((m) => m.holidayDays),
       absenceDays: sum((m) => m.absenceDays),
+      unpaidDays: sum((m) => m.unpaidDays),
+      overtimeReductionDays: sum((m) => m.overtimeReductionDays),
       targetHours: sum((m) => m.targetHours),
       expectedHours: sum((m) => m.expectedHours),
       expectedBillableHours:

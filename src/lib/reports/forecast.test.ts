@@ -27,7 +27,10 @@ function work(
   };
 }
 
-function absence(date: string, type: "VACATION" | "SICK"): ReportEntry {
+function absence(
+  date: string,
+  type: "VACATION" | "SICK" | "OVERTIME_REDUCTION" | "UNPAID_LEAVE",
+): ReportEntry {
   return { date, hours: 8, type, source: "TIMING_SYNC", billingStatus: null };
 }
 
@@ -455,6 +458,105 @@ describe("buildForecast", () => {
       expect(
         novemberAbsenceDays([vacation("2026-11-02", 2), sick("2026-11-02", 2)]),
       ).toBe(1);
+    });
+  });
+  describe("Überstundenabbau und unbezahlte Abwesenheit", () => {
+    function withPlanned(
+      entries: ReportEntry[],
+      todayEntries: ReportEntry[] = [],
+    ) {
+      return buildForecast({
+        todayKey: "2026-10-10",
+        horizon: 3,
+        baseMonths: 1,
+        entries: [...history, ...entries, ...todayEntries],
+        schedule: MON_FRI,
+        holidayKeys: NO_HOLIDAYS,
+        trackingStart: "2026-09-01",
+        currentBalance: 0,
+      });
+    }
+    const week = dateKeysBetween("2026-11-02", "2026-11-06");
+
+    it("Überstundenabbau mindert das erwartete Ist, nicht das Soll", () => {
+      const nov = withPlanned(
+        week.map((key) => absence(key, "OVERTIME_REDUCTION")),
+      ).months[1];
+      expect(nov.workDays).toBe(21);
+      expect(nov.overtimeReductionDays).toBe(5);
+      expect(nov.absenceDays).toBe(0);
+      expect(nov.availableDays).toBe(16);
+      expect(nov.targetHours).toBe(168);
+      expect(nov.expectedHours).toBe(144);
+      expect(nov.deltaHours).toBe(-24);
+    });
+
+    it("unbezahlte Abwesenheit setzt das Soll der Tage auf 0", () => {
+      const forecast = withPlanned(
+        week.map((key) => absence(key, "UNPAID_LEAVE")),
+      );
+      const nov = forecast.months[1];
+      expect(nov.unpaidDays).toBe(5);
+      expect(nov.absenceDays).toBe(0);
+      expect(nov.availableDays).toBe(16);
+      expect(nov.targetHours).toBe(128);
+      expect(nov.expectedHours).toBe(144);
+      expect(forecast.totals.unpaidDays).toBe(5);
+      expect(forecast.totals.overtimeReductionDays).toBe(0);
+    });
+
+    it("rechnet halbe Tage anteilig und höchstens einen Tag je Datum", () => {
+      const nov = withPlanned([
+        { ...absence("2026-11-02", "VACATION"), hours: 4 },
+        { ...absence("2026-11-02", "OVERTIME_REDUCTION"), hours: 4 },
+        { ...absence("2026-11-03", "UNPAID_LEAVE"), hours: 4 },
+        { ...absence("2026-11-03", "OVERTIME_REDUCTION"), hours: 8 },
+      ]).months[1];
+      expect(nov.absenceDays).toBe(0.5);
+      expect(nov.unpaidDays).toBe(0.5);
+      expect(nov.overtimeReductionDays).toBe(1);
+      expect(nov.availableDays).toBe(19);
+      // Soll: 21 − ½ Urlaub − ½ unbezahlt = 20 Tage
+      expect(nov.targetHours).toBe(160);
+    });
+
+    it("lässt vergangene Tage beider Arten aus der Basis heraus", () => {
+      const baseline = computeBaseline({
+        todayKey: "2026-10-10",
+        baseMonths: 1,
+        entries: [
+          ...workEveryWeekday("2026-09-01", "2026-09-30", 9, [
+            "2026-09-01",
+            "2026-09-02",
+          ]),
+          absence("2026-09-01", "OVERTIME_REDUCTION"),
+          absence("2026-09-02", "UNPAID_LEAVE"),
+        ],
+        schedule: MON_FRI,
+        holidayKeys: NO_HOLIDAYS,
+        trackingStart: null,
+      });
+      expect(baseline.months[0].availableDays).toBe(20);
+      expect(baseline.hoursPerDay).toBe(9);
+    });
+
+    it("ergänzt heute keinen Rest bei Überstundenabbau oder unbezahltem Tag", () => {
+      for (const type of ["OVERTIME_REDUCTION", "UNPAID_LEAVE"] as const) {
+        const forecast = buildForecast({
+          todayKey: "2026-10-09",
+          horizon: 3,
+          baseMonths: 1,
+          entries: [
+            ...history.filter((e) => e.date !== "2026-10-09"),
+            absence("2026-10-09", type),
+          ],
+          schedule: MON_FRI,
+          holidayKeys: NO_HOLIDAYS,
+          trackingStart: "2026-09-01",
+          currentBalance: 0,
+        });
+        expect(forecast.months[0].todayRemainingHours).toBe(0);
+      }
     });
   });
 });

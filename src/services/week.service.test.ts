@@ -89,6 +89,27 @@ describe("getWeekData (KW 53/2026 mit Neujahr)", () => {
     expect(week.summary.weekBalance).toBe(4 + 12 - 32);
   });
 
+  it("unbezahlt mindert das Soll, Überstundenabbau lässt es stehen", async () => {
+    prismaMock.timeEntry.findMany.mockResolvedValue([
+      entry("2026-12-28", 8, "UNPAID_LEAVE"),
+      entry("2026-12-29", 4, "UNPAID_LEAVE"),
+      entry("2026-12-29", 4),
+      entry("2026-12-30", 8, "OVERTIME_REDUCTION"),
+    ]);
+    const week = await weekService.getWeekData("u1", 2026, 53);
+
+    const [mon, tue, wed] = week.days;
+    expect(mon.targetHours).toBe(0);
+    expect(mon.absenceHours).toBe(0);
+    expect(mon.difference).toBe(0);
+    expect(tue.targetHours).toBe(4);
+    expect(tue.difference).toBe(0);
+    expect(wed.targetHours).toBe(8);
+    expect(wed.totalHours).toBe(0);
+    expect(wed.absenceHours).toBe(0);
+    expect(wed.difference).toBe(-8);
+  });
+
   it("rechnet das Soll nach den eingestellten Arbeitstagen", async () => {
     prismaMock.userSettings.findUnique.mockResolvedValue({
       weeklyWorkHours: new Prisma.Decimal(32),

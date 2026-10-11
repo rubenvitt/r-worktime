@@ -36,7 +36,14 @@ export interface TimeEntry {
   startTime?: Date;
   endTime?: Date;
   duration: number;
-  type: "WORK" | "VACATION" | "SICK" | "HOLIDAY";
+  type:
+    | "WORK"
+    | "OVERTIME"
+    | "VACATION"
+    | "SICK"
+    | "HOLIDAY"
+    | "OVERTIME_REDUCTION"
+    | "UNPAID_LEAVE";
   description?: string;
   createdAt: Date;
   updatedAt: Date;

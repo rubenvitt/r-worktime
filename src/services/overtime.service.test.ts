@@ -354,6 +354,75 @@ describe("calculateWeeklyStatistics (Urlaub je Tag, offizielle Feiertage)", () =
   });
 });
 
+describe("calculateWeeklyStatistics (Überstundenabbau, unbezahlt)", () => {
+  beforeEach(() => {
+    overtimeService.invalidateCache("u1");
+    prismaMock.userSettings.findUnique.mockResolvedValue({
+      weeklyWorkHours: new Prisma.Decimal(40),
+      workDays: [1, 2, 3, 4, 5],
+    });
+    prismaMock.timeEntry.findMany.mockReset();
+    officialHolidaysMock.mockResolvedValue({ names: {}, unavailableYears: [] });
+  });
+
+  it("setzt das Soll unbezahlter Tage auf 0 und lässt es bei Überstundenabbau stehen", async () => {
+    prismaMock.timeEntry.findMany.mockResolvedValue([
+      entry("2026-03-30", 8, "UNPAID_LEAVE"),
+      entry("2026-03-31", 8, "OVERTIME_REDUCTION"),
+      entry("2026-04-01", 8),
+      entry("2026-04-02", 8),
+      entry("2026-04-03", 8),
+    ]);
+    const stats = await overtimeService.calculateWeeklyStatistics(
+      "u1",
+      2026,
+      14,
+    );
+    const [mon, tue] = stats.dailyBreakdown;
+    expect(mon.targetHours).toBe(0);
+    expect(mon.actualHours).toBe(0);
+    expect(mon.entryType).toBe("UNPAID_LEAVE");
+    expect(tue.targetHours).toBe(8);
+    expect(tue.actualHours).toBe(0);
+    expect(tue.overtimeHours).toBe(-8);
+    expect(tue.entryType).toBe("OVERTIME_REDUCTION");
+    expect(stats.targetHours).toBe(32);
+    expect(stats.overtimeHours).toBe(-8);
+    expect(stats.entryTypes.vacation).toBe(0);
+  });
+});
+
+describe("calculateBalance (Überstundenabbau, unbezahlt)", () => {
+  beforeEach(() => {
+    overtimeService.invalidateCache("u1");
+    prismaMock.userSettings.findUnique.mockResolvedValue({
+      weeklyWorkHours: new Prisma.Decimal(40),
+      workDays: [1, 2, 3, 4, 5],
+    });
+    prismaMock.timeEntry.findMany.mockReset();
+    prismaMock.timeEntry.findFirst.mockReset();
+    prismaMock.timeEntry.findFirst.mockResolvedValue(null);
+    officialHolidaysMock.mockResolvedValue({ names: {}, unavailableYears: [] });
+  });
+
+  it("Überstundenabbau kostet Saldo, unbezahlt ist neutral", async () => {
+    serveEntries([
+      entry("2026-03-30", 8, "UNPAID_LEAVE"),
+      entry("2026-03-31", 8, "OVERTIME_REDUCTION"),
+      entry("2026-04-01", 8),
+      entry("2026-04-02", 8),
+      entry("2026-04-03", 8),
+    ]);
+    const balance = await overtimeService.calculateBalance({
+      userId: "u1",
+      startDate: new Date("2026-03-30T00:00:00.000Z"),
+      endDate: new Date("2026-04-03T00:00:00.000Z"),
+    });
+    expect(balance.details?.targetHours).toBe(32);
+    expect(balance.balance).toBe(-8);
+  });
+});
+
 describe("calculateMonthlyStatistics (Soll)", () => {
   beforeEach(() => {
     overtimeService.invalidateCache("u1");

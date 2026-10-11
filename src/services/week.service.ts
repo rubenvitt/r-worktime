@@ -132,7 +132,15 @@ export class WeekService {
       // Soll wie im Saldo: Tagessoll an Arbeitstagen, offizielle und
       // importierte Feiertage mindern es. Der Feiertags-Eintrag selbst zählt
       // nicht als Arbeit.
+      // Unbezahlte Abwesenheit mindert das Soll um ihre Stunden,
+      // Überstundenabbau lässt es stehen und schreibt nichts gut.
       const holidayKeys = new Set(holiday ? [dateKey] : []);
+      const unpaidHours = dayEntries
+        .filter(
+          (e) =>
+            e.type === PrismaEntryType.UNPAID_LEAVE && Number(e.duration) > 0,
+        )
+        .reduce((sum, e) => sum + Number(e.duration), 0);
       const targetHours = dayTargetHours(
         dateKey,
         {
@@ -140,6 +148,7 @@ export class WeekService {
           dailyHours: userSettings.dailyHours,
         },
         holidayKeys,
+        unpaidHours,
       );
 
       // Urlaub/Krank wie im Saldo: je Tag summiert, höchstens bis zum Soll
