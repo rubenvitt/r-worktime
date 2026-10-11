@@ -17,6 +17,11 @@ const SECTIONS = [
     href: "/settings/timing",
   },
   {
+    title: "Kalender",
+    description: "Abwesenheiten aus Timewarp, Urlaub in Timing, Protokoll",
+    href: "/settings/calendar",
+  },
+  {
     title: "Datei-Import",
     description: "Fallback für Timing-Exporte",
     href: "/upload",

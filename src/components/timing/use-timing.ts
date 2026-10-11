@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidateEntryDependentQueries } from "@/components/app/query-invalidation";
 import type {
   PublicTimingSettings,
   PublicTimingStatus,
@@ -83,9 +84,8 @@ export function useRunTimingSync() {
       }),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: TIMING_STATUS_KEY });
-      // Zeiteinträge und Salden haben sich womöglich geändert
-      queryClient.invalidateQueries({ queryKey: ["overtime"] });
-      queryClient.invalidateQueries({ queryKey: ["problems"] });
+      // Zeiteinträge, Abwesenheiten und Salden haben sich womöglich geändert
+      invalidateEntryDependentQueries(queryClient);
     },
   });
 }
