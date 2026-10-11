@@ -1,4 +1,10 @@
-import { EntrySource } from "@prisma/client";
+import {
+  type AbsenceKind,
+  AbsenceSource,
+  AbsenceStatus,
+  EntrySource,
+} from "@prisma/client";
+import { isAbsenceKind } from "@/lib/absences/kinds";
 import { ADJUSTMENT_MARKER } from "@/lib/adjustment";
 import { isDateKey } from "@/lib/dates";
 
@@ -148,4 +154,92 @@ export function travelDaysFromBackup(
   return Array.from(byDate.entries())
     .map(([date, isTravel]) => ({ date, isTravel }))
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export interface RestoredAbsence {
+  /** ID im Backup; Einträge verweisen über absenceId darauf */
+  id: string;
+  source: AbsenceSource;
+  externalUid: string | null;
+  kind: AbsenceKind;
+  rawType: string | null;
+  /** "YYYY-MM-DD", beide inklusive */
+  startDate: string;
+  endDate: string;
+  halfDay: boolean;
+  status: AbsenceStatus;
+  sequence: number | null;
+  /** ISO-Zeitstempel */
+  lastSeenAt: string | null;
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/**
+ * Abwesenheiten aus `userData` eines Backups. Ältere Backups kennen
+ * `absences` nicht → null; dann fasst ein Restore vorhandene Abwesenheiten
+ * nicht an. Ungültige Zeilen (unbekannte Art/Herkunft/Status, kaputtes oder
+ * vertauschtes Datum, ohne ID) fallen weg.
+ */
+export function absencesFromBackup(
+  userData: unknown,
+): RestoredAbsence[] | null {
+  if (!userData || typeof userData !== "object") return null;
+  const raw = (userData as Record<string, unknown>).absences;
+  if (!Array.isArray(raw)) return null;
+
+  const result: RestoredAbsence[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const id = optionalString(row.id);
+    const startDate =
+      typeof row.startDate === "string" ? row.startDate.slice(0, 10) : "";
+    const endDate =
+      typeof row.endDate === "string" ? row.endDate.slice(0, 10) : "";
+    if (
+      !id ||
+      !isAbsenceKind(row.kind) ||
+      !(Object.values(AbsenceSource) as unknown[]).includes(row.source) ||
+      !(Object.values(AbsenceStatus) as unknown[]).includes(row.status) ||
+      !isDateKey(startDate) ||
+      !isDateKey(endDate) ||
+      startDate > endDate
+    ) {
+      continue;
+    }
+    result.push({
+      id,
+      source: row.source as AbsenceSource,
+      externalUid: optionalString(row.externalUid),
+      kind: row.kind,
+      rawType: optionalString(row.rawType),
+      startDate,
+      endDate,
+      halfDay: row.halfDay === true,
+      status: row.status as AbsenceStatus,
+      sequence: Number.isInteger(row.sequence)
+        ? (row.sequence as number)
+        : null,
+      lastSeenAt: optionalString(row.lastSeenAt),
+    });
+  }
+  return result;
+}
+
+/**
+ * absenceId eines wiederhergestellten Eintrags: alte ID → neue ID. Verweist
+ * der Eintrag auf eine Abwesenheit, die nicht wiederhergestellt wurde, wird
+ * er entkoppelt (null). Fehlt das Feld (älteres Backup) → undefined, damit
+ * ein Update die vorhandene Verknüpfung behält.
+ */
+export function restoreAbsenceId(
+  entry: { absenceId?: string | null },
+  restoredIds: ReadonlyMap<string, string>,
+): string | null | undefined {
+  if (!("absenceId" in entry)) return undefined;
+  if (!entry.absenceId) return null;
+  return restoredIds.get(entry.absenceId) ?? null;
 }
