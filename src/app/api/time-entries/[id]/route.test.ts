@@ -18,8 +18,12 @@ const mocks = vi.hoisted(() => {
   return {
     auth: vi.fn(),
     invalidateCache: vi.fn(),
+    deleteTimeEntry: vi.fn(async (_self: string) => {}),
     tx,
     prisma: {
+      timingIntegration: {
+        findUnique: vi.fn(async () => ({ apiTokenEnc: "enc-token" })),
+      },
       timeEntry: {
         findFirst: vi.fn(),
         delete: vi.fn(async () => ({})),
@@ -37,6 +41,11 @@ vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/services/overtime.service", () => ({
   overtimeService: { invalidateCache: mocks.invalidateCache },
+}));
+vi.mock("@/lib/crypto", () => ({ decryptSecret: () => "timing-token" }));
+vi.mock("@/lib/timing/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/timing/client")>()),
+  createTimingClient: () => ({ deleteTimeEntry: mocks.deleteTimeEntry }),
 }));
 
 import { DELETE, PUT } from "./route";
@@ -83,6 +92,44 @@ describe("DELETE /api/time-entries/[id]", () => {
       data: { suppressedDates: ["2026-12-22"] },
     });
     expect(mocks.prisma.timeEntry.delete).not.toHaveBeenCalled();
+  });
+
+  it("löscht einen vom Abgleich angelegten Eintrag auch in Timing", async () => {
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(timewarpEntry());
+    const response = await DELETE({} as never, params);
+
+    expect(response.status).toBe(200);
+    expect(mocks.deleteTimeEntry).toHaveBeenCalledWith("/time-entries/9");
+    // erst nach der lokalen Löschung
+    expect(
+      mocks.tx.timeEntry.deleteMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.deleteTimeEntry.mock.invocationCallOrder[0]);
+  });
+
+  it("Timing-Fehler beim Löschen: lokal gelöscht und unterdrückt, Antwort 200", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(timewarpEntry());
+    mocks.deleteTimeEntry.mockRejectedValueOnce(new Error("offline"));
+    const response = await DELETE({} as never, params);
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.timeEntry.deleteMany).toHaveBeenCalled();
+    expect(mocks.tx.absence.update).toHaveBeenCalledWith({
+      where: { id: "abs-1" },
+      data: { suppressedDates: ["2026-12-22"] },
+    });
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("löscht fremde Einträge (Timing-Sync) nie in Timing", async () => {
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(
+      timewarpEntry({ source: "TIMING_SYNC" }),
+    );
+    await DELETE({} as never, params);
+    expect(mocks.deleteTimeEntry).not.toHaveBeenCalled();
   });
 
   it("löscht Einträge ohne Abwesenheit wie bisher, ohne Sperre", async () => {

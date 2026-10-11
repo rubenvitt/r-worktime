@@ -5,6 +5,7 @@ import { suppressAbsenceDays } from "@/lib/absences/suppress";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
+import { deleteOwnTimingEntries } from "@/services/timing-entries.service";
 import { EntryType } from "@/types/database";
 
 interface BulkDeleteRequest {
@@ -105,20 +106,30 @@ export async function DELETE(request: NextRequest) {
     // Perform the bulk delete. Tage von Timewarp-Abwesenheiten werden als
     // unterdrückt vermerkt, damit der Kalender-Abgleich sie nicht neu anlegt.
     const userId = session.user.id;
-    const deleteResult = await prisma.$transaction(
+    const { deleteResult, timingIds } = await prisma.$transaction(
       async (tx) => {
         await withUserAbsenceLock(tx, userId);
         const linked = await tx.timeEntry.findMany({
           where: { ...where, absenceId: { not: null } },
           select: { absenceId: true, date: true },
         });
+        // Vom Kalender-Abgleich in Timing angelegte Einträge
+        const ownInTiming = await tx.timeEntry.findMany({
+          where: { ...where, source: "TIMEWARP", externalId: { not: null } },
+          select: { externalId: true },
+        });
         const result = await tx.timeEntry.deleteMany({ where });
         await suppressAbsenceDays(tx, userId, linked);
-        return result;
+        return {
+          deleteResult: result,
+          timingIds: ownInTiming.map((row) => row.externalId),
+        };
       },
-      { maxWait: 10_000, timeout: 60_000 },
     );
     deleteCount = deleteResult.count;
+
+    // Dort auch löschen (best effort, nach dem Commit – Fehler nur im Log)
+    await deleteOwnTimingEntries(userId, timingIds);
 
     // Invalidiere Overtime Cache nach Bulk Delete
     overtimeService.invalidateCache(session.user.id);
