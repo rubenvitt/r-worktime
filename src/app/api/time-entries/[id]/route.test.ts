@@ -197,4 +197,49 @@ describe("PUT /api/time-entries/[id]", () => {
     expect(data.source).toBeUndefined();
     expect(data.absenceId).toBeUndefined();
   });
+  it("entkoppelt einen verknüpften Timing-Sync-Urlaub bei Typwechsel und unterdrückt den Tag", async () => {
+    // Sonst legt der Abgleich den Urlaub neben der neuen Arbeit noch einmal an
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(
+      timewarpEntry({ source: "TIMING_SYNC", externalId: "/time-entries/7" }),
+    );
+    await put({
+      date: "2026-12-22T00:00:00.000Z",
+      startTime: "2026-12-22T07:00:00.000Z",
+      endTime: "2026-12-22T15:00:00.000Z",
+      duration: 8,
+      type: "WORK",
+      description: "Urlaub - Aus Timewarp",
+    });
+    const data = mocks.tx.timeEntry.update.mock.calls[0][0].data;
+    expect(data).toMatchObject({
+      source: "MANUAL",
+      absenceId: null,
+      type: "WORK",
+    });
+    expect(mocks.tx.absence.update).toHaveBeenCalledWith({
+      where: { id: "abs-1" },
+      data: { suppressedDates: ["2026-12-22"] },
+    });
+  });
+
+  it("entkoppelt einen verknüpften Eintrag, der auf einen anderen Tag verschoben wird", async () => {
+    mocks.prisma.timeEntry.findFirst.mockResolvedValue(
+      timewarpEntry({ source: "TIMING_SYNC", externalId: "/time-entries/7" }),
+    );
+    await put({
+      date: "2026-12-28T00:00:00.000Z",
+      startTime: "2026-12-28T07:00:00.000Z",
+      endTime: "2026-12-28T15:00:00.000Z",
+      duration: 8,
+      type: "VACATION",
+      description: "Urlaub - Aus Timewarp",
+    });
+    expect(mocks.tx.timeEntry.update.mock.calls[0][0].data).toMatchObject({
+      absenceId: null,
+    });
+    expect(mocks.tx.absence.update).toHaveBeenCalledWith({
+      where: { id: "abs-1" },
+      data: { suppressedDates: ["2026-12-22"] },
+    });
+  });
 });
