@@ -200,6 +200,9 @@ model Absence {
   status      AbsenceStatus
   sequence    Int?
   lastSeenAt  DateTime?
+  // Tage "YYYY-MM-DD", deren Eintrag von Hand gelöscht oder bearbeitet wurde
+  // (in R-Worktime oder in Timing): der Abgleich legt sie nicht neu an
+  suppressedDates String[]  @default([])
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 

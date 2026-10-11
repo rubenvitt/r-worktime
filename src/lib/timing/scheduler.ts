@@ -1,5 +1,11 @@
+import { isCalendarSyncDue } from "@/lib/calendar/settings";
 import { isEncryptionConfigured, TOKEN_KEY_ENV } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
+import {
+  CalendarSyncInProgressError,
+  isCalendarSyncRunning,
+  syncCalendarForUser,
+} from "@/services/calendar-sync.service";
 import {
   isSyncRunning,
   SyncInProgressError,
@@ -8,7 +14,9 @@ import {
 } from "@/services/timing-sync.service";
 import { isSyncDue } from "./settings";
 
-// Periodischer Timing-Sync im Next-Prozess (gestartet aus src/instrumentation.ts).
+// Periodischer Timing-Sync und Kalender-Abgleich (Timewarp) im Next-Prozess
+// (gestartet aus src/instrumentation.ts). Beide Teile haben eigene
+// Fälligkeitsprüfungen und eigene Fehlerbehandlung.
 
 export const SCHEDULER_TICK_MS = 5 * 60_000;
 const FIRST_TICK_DELAY_MS = 60_000;
@@ -23,6 +31,21 @@ export async function runSchedulerTick(now = new Date()): Promise<void> {
   if (state.__timingSchedulerTickRunning) return;
   state.__timingSchedulerTickRunning = true;
 
+  try {
+    await runTimingSyncs(now);
+    try {
+      await runCalendarSyncs(now);
+    } catch (error) {
+      console.error(
+        `[calendar-sync] Tick fehlgeschlagen: ${error instanceof Error ? error.name : "unbekannter Fehler"}`,
+      );
+    }
+  } finally {
+    state.__timingSchedulerTickRunning = false;
+  }
+}
+
+async function runTimingSyncs(now: Date): Promise<void> {
   try {
     if (!isEncryptionConfigured()) {
       if (!state.__timingSchedulerKeyWarned) {
@@ -68,8 +91,50 @@ export async function runSchedulerTick(now = new Date()): Promise<void> {
     console.error(
       `[timing-sync] Tick fehlgeschlagen: ${sanitizeSyncError(error)}`,
     );
-  } finally {
-    state.__timingSchedulerTickRunning = false;
+  }
+}
+
+/** Stündlicher Kalender-Abgleich je aktiver Integration, nacheinander. */
+export async function runCalendarSyncs(now = new Date()): Promise<void> {
+  if (!isEncryptionConfigured()) return;
+
+  const integrations = await prisma.calendarIntegration.findMany({
+    where: { syncEnabled: true, feedUrlEnc: { not: null } },
+    select: {
+      userId: true,
+      syncEnabled: true,
+      feedUrlEnc: true,
+      lastSyncAt: true,
+    },
+  });
+
+  for (const integration of integrations) {
+    if (
+      !isCalendarSyncDue(integration, now) ||
+      isCalendarSyncRunning(integration.userId)
+    ) {
+      continue;
+    }
+    try {
+      const result = await syncCalendarForUser(integration.userId, {
+        trigger: "scheduler",
+      });
+      const { stats } = result;
+      if (result.status === "success") {
+        console.info(
+          `[calendar-sync] User ${integration.userId}: ${stats.created + stats.timingCreated + stats.timingAdopted} neu, ${stats.linked} verknüpft, ${stats.deleted} gelöscht, ${stats.failed} fehlgeschlagen`,
+        );
+      } else {
+        console.warn(
+          `[calendar-sync] User ${integration.userId}: ${result.error}`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof CalendarSyncInProgressError) continue;
+      console.error(
+        `[calendar-sync] User ${integration.userId} fehlgeschlagen: ${error instanceof Error ? error.name : "unbekannter Fehler"}`,
+      );
+    }
   }
 }
 
@@ -84,6 +149,8 @@ export function startTimingScheduler(): boolean {
   setTimeout(tick, FIRST_TICK_DELAY_MS).unref?.();
   setInterval(tick, SCHEDULER_TICK_MS).unref?.();
 
-  console.info("[timing-sync] Scheduler gestartet (Tick alle 5 Minuten)");
+  console.info(
+    "[timing-sync] Scheduler gestartet (Tick alle 5 Minuten, inkl. Kalender-Abgleich)",
+  );
   return true;
 }

@@ -1,0 +1,873 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// In-Memory-Datenbank mit den Abfrageformen, die der Abgleich nutzt.
+// Transaktionen arbeiten auf einer Kopie und verwerfen sie bei einem Fehler
+// (wie Postgres), damit „Wiederholung ohne Duplikat“ echt geprüft wird.
+const { db, prismaMock, invalidateCache, failNextEntryCreate } = vi.hoisted(
+  () => {
+    process.env.TIMING_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString(
+      "base64",
+    );
+    type Row = Record<string, unknown>;
+    const db = {
+      absences: [] as Row[],
+      entries: [] as Row[],
+      logs: [] as Row[],
+      integration: null as Row | null,
+      timingIntegration: null as Row | null,
+      nextId: 1,
+    };
+    const failNextEntryCreate = { value: false };
+
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === "object" &&
+      v !== null &&
+      !(v instanceof Date) &&
+      !Array.isArray(v);
+    const same = (a: unknown, b: unknown) =>
+      a instanceof Date && b instanceof Date
+        ? a.getTime() === b.getTime()
+        : a === b;
+
+    function matches(row: Row, where: Record<string, unknown> = {}): boolean {
+      return Object.entries(where).every(([key, cond]) => {
+        if (key === "OR") {
+          return (cond as Record<string, unknown>[]).some((c) =>
+            matches(row, c),
+          );
+        }
+        const value = row[key];
+        if (isPlainObject(cond)) {
+          if (
+            "in" in cond &&
+            !(cond.in as unknown[]).some((v) => same(v, value))
+          )
+            return false;
+          if ("not" in cond && same(cond.not, value ?? null)) return false;
+          if ("gte" in cond && (value as Date) < (cond.gte as Date))
+            return false;
+          if ("lte" in cond && (value as Date) > (cond.lte as Date))
+            return false;
+          return true;
+        }
+        return same(value ?? null, cond);
+      });
+    }
+
+    function pick(row: Row, select?: Record<string, boolean>): Row {
+      if (!select) return { ...row };
+      return Object.fromEntries(
+        Object.keys(select).map((key) => [key, row[key]]),
+      );
+    }
+
+    function table(
+      get: () => Row[],
+      set: (rows: Row[]) => void,
+      defaults: () => Row,
+    ) {
+      return {
+        findMany: vi.fn(
+          async (
+            args: {
+              where?: Record<string, unknown>;
+              select?: Record<string, boolean>;
+              orderBy?: Record<string, "asc" | "desc">;
+              skip?: number;
+            } = {},
+          ) => {
+            let rows = get().filter((row) => matches(row, args.where));
+            if (args.orderBy) {
+              const [[key, dir]] = Object.entries(args.orderBy);
+              rows = [...rows].sort((a, b) => {
+                const diff =
+                  (a[key] as Date).getTime() - (b[key] as Date).getTime();
+                return dir === "desc" ? -diff : diff;
+              });
+            }
+            return rows
+              .slice(args.skip ?? 0)
+              .map((row) => pick(row, args.select));
+          },
+        ),
+        findFirst: vi.fn(
+          async (args: {
+            where?: Record<string, unknown>;
+            select?: Record<string, boolean>;
+          }) => {
+            const row = get().find((r) => matches(r, args.where));
+            return row ? pick(row, args.select) : null;
+          },
+        ),
+        create: vi.fn(
+          async (args: { data: Row; select?: Record<string, boolean> }) => {
+            const row: Row = {
+              id: `id-${db.nextId++}`,
+              ...defaults(),
+              ...args.data,
+            };
+            if (
+              row.externalId &&
+              get().some(
+                (r) =>
+                  r.userId === row.userId && r.externalId === row.externalId,
+              )
+            ) {
+              throw new Error("Unique constraint failed on externalId");
+            }
+            set([...get(), row]);
+            return pick(row, args.select);
+          },
+        ),
+        update: vi.fn(async (args: { where: { id: string }; data: Row }) => {
+          const row = get().find((r) => r.id === args.where.id);
+          if (!row) throw new Error("Record to update not found");
+          Object.assign(row, args.data);
+          return { ...row };
+        }),
+        updateMany: vi.fn(
+          async (args: { where: Record<string, unknown>; data: Row }) => {
+            const rows = get().filter((r) => matches(r, args.where));
+            for (const row of rows) Object.assign(row, args.data);
+            return { count: rows.length };
+          },
+        ),
+        deleteMany: vi.fn(async (args: { where: Record<string, unknown> }) => {
+          const before = get().length;
+          set(get().filter((r) => !matches(r, args.where)));
+          return { count: before - get().length };
+        }),
+      };
+    }
+
+    const absence = table(
+      () => db.absences,
+      (rows) => {
+        db.absences = rows;
+      },
+      () => ({ suppressedDates: [], createdAt: new Date() }),
+    );
+    const timeEntry = table(
+      () => db.entries,
+      (rows) => {
+        db.entries = rows;
+      },
+      () => ({ externalId: null, absenceId: null }),
+    );
+    const realEntryCreate = timeEntry.create.getMockImplementation();
+    timeEntry.create.mockImplementation(async (args) => {
+      if (failNextEntryCreate.value) {
+        failNextEntryCreate.value = false;
+        throw new Error("Verbindung zur Datenbank verloren");
+      }
+      if (!realEntryCreate) throw new Error("create fehlt");
+      return realEntryCreate(args);
+    });
+    const absenceSyncLog = table(
+      () => db.logs,
+      (rows) => {
+        db.logs = rows;
+      },
+      () => ({}),
+    );
+
+    const tx = {
+      $queryRaw: vi.fn(async () => [{ locked: 1 }]),
+      absence,
+      timeEntry,
+    };
+    const prismaMock = {
+      calendarIntegration: {
+        findUnique: vi.fn(async () =>
+          db.integration ? { ...db.integration } : null,
+        ),
+        update: vi.fn(async (args: { data: Row }) => {
+          Object.assign(db.integration ?? {}, args.data);
+          return db.integration;
+        }),
+      },
+      timingIntegration: {
+        findUnique: vi.fn(async () => db.timingIntegration),
+      },
+      absenceSyncLog,
+      $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => {
+        const snapshot = structuredClone({
+          absences: db.absences,
+          entries: db.entries,
+        });
+        try {
+          return await fn(tx);
+        } catch (error) {
+          db.absences = snapshot.absences;
+          db.entries = snapshot.entries;
+          throw error;
+        }
+      }),
+    };
+    return {
+      db,
+      prismaMock,
+      invalidateCache: vi.fn(),
+      failNextEntryCreate,
+    };
+  },
+);
+
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("@/services/overtime.service", () => ({
+  overtimeService: { invalidateCache },
+}));
+vi.mock("@/services/holiday.service", () => ({
+  loadOfficialHolidays: vi.fn(async () => ({
+    names: {
+      "2026-12-25": "1. Weihnachtstag",
+      "2026-12-26": "2. Weihnachtstag",
+    },
+    unavailableYears: [],
+  })),
+}));
+vi.mock("@/services/settings.service", () => ({
+  getUserSettings: vi.fn(async () => ({
+    weeklyWorkHours: 40,
+    workDays: [1, 2, 3, 4, 5],
+  })),
+}));
+
+import { encryptSecret } from "@/lib/crypto";
+import {
+  TimingApiError,
+  type TimingApiTimeEntry,
+  type TimingClient,
+} from "@/lib/timing/client";
+import {
+  CalendarNotConfiguredError,
+  CalendarSyncInProgressError,
+  isCalendarSyncRunning,
+  syncCalendarForUser,
+} from "./calendar-sync.service";
+
+const USER = "user-1";
+const FEED_TOKEN = "feed-token-xyz";
+const FEED_URL = `https://timewarp.innoq.io/export/${FEED_TOKEN}/calendar.ics`;
+const NOW = new Date("2026-10-11T10:00:00.000Z");
+const PROJECT = "/projects/42";
+
+function vevent(lines: string[]): string {
+  return ["BEGIN:VEVENT", ...lines, "END:VEVENT"].join("\r\n");
+}
+
+function feed(...events: string[]): string {
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//timewarp//DE",
+    "METHOD:CANCEL",
+    ...events,
+    "END:VCALENDAR",
+  ].join("\r\n");
+}
+
+// Mo 21. bis Mi 23.12.2026
+const VACATION = vevent([
+  "UID:abs-100",
+  "SEQUENCE:1",
+  "DTSTART;VALUE=DATE:20261221",
+  "DTEND;VALUE=DATE:20261224",
+  "SUMMARY:Max Muster: URLAUB",
+]);
+const VACATION_CANCELLED = vevent([
+  "UID:abs-100",
+  "SEQUENCE:2",
+  "STATUS:CANCELLED",
+  "DTSTART;VALUE=DATE:20261221",
+  "DTEND;VALUE=DATE:20261224",
+  "SUMMARY:Max Muster: URLAUB",
+]);
+const EVENT = vevent([
+  "UID:ev-1",
+  "DTSTART;VALUE=DATE:20261105",
+  "DTEND;VALUE=DATE:20261105",
+  "SUMMARY:Max Muster: Event in Köln",
+]);
+const UNKNOWN = vevent([
+  "UID:abs-200",
+  "DTSTART;VALUE=DATE:20270301",
+  "DTEND;VALUE=DATE:20270302",
+  "SUMMARY:Max Muster: WORKATION",
+]);
+
+function feedFetch(body: string, status = 200) {
+  return vi.fn(
+    async () => new Response(body, { status }),
+  ) as unknown as typeof fetch;
+}
+
+/** Timing als In-Memory-Fake */
+function fakeTiming() {
+  const entries: TimingApiTimeEntry[] = [];
+  let next = 1000;
+  const failCreates = { count: 0 };
+  const client: TimingClient & {
+    entries: TimingApiTimeEntry[];
+    failCreates: typeof failCreates;
+  } = {
+    entries,
+    failCreates,
+    listTimeEntries: vi.fn(async (range) =>
+      entries.filter((e) => {
+        const key = e.start_date.slice(0, 10);
+        return key >= range.from && key <= range.to;
+      }),
+    ),
+    createTimeEntry: vi.fn(async (input) => {
+      if (failCreates.count > 0) {
+        failCreates.count--;
+        throw new TimingApiError(
+          "HTTP_ERROR",
+          "Timing-API antwortet mit HTTP 500.",
+          500,
+        );
+      }
+      const entry: TimingApiTimeEntry = {
+        self: `/time-entries/${next++}`,
+        start_date: input.start.toISOString(),
+        end_date: input.end.toISOString(),
+        duration: (input.end.getTime() - input.start.getTime()) / 1000,
+        project: {
+          self: input.projectRef,
+          title_chain: ["Work", "INNOQ", "Urlaub"],
+        },
+        title: input.title,
+        notes: input.notes ?? null,
+        is_running: false,
+      };
+      entries.push(entry);
+      return entry;
+    }),
+    deleteTimeEntry: vi.fn(async (self) => {
+      const index = entries.findIndex((e) => e.self === self);
+      if (index >= 0) entries.splice(index, 1);
+    }),
+    listProjects: vi.fn(async () => []),
+    testConnection: vi.fn(async () => ({ projectCount: 0 })),
+  };
+  return client;
+}
+
+function run(
+  ics: string,
+  timingClient?: TimingClient,
+  trigger: "manual" | "scheduler" = "manual",
+) {
+  return syncCalendarForUser(USER, {
+    trigger,
+    now: NOW,
+    feedFetchImpl: feedFetch(ics),
+    timingClient,
+  });
+}
+
+const timewarpEntries = () => db.entries.filter((e) => e.source === "TIMEWARP");
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  db.absences = [];
+  db.entries = [];
+  db.logs = [];
+  db.nextId = 1;
+  failNextEntryCreate.value = false;
+  db.integration = {
+    id: "cal-1",
+    userId: USER,
+    feedUrlEnc: encryptSecret(FEED_URL),
+    syncEnabled: true,
+    writeToTiming: true,
+    timingProjectId: PROJECT,
+    lastSyncAt: null,
+    lastSyncStatus: null,
+    lastSyncError: null,
+    lastSyncStats: null,
+  };
+  db.timingIntegration = null;
+});
+
+describe("syncCalendarForUser – Grundlauf", () => {
+  it("legt Abwesenheit, Tage und Timing-Einträge an und protokolliert", async () => {
+    const timing = fakeTiming();
+    const result = await run(feed(VACATION, EVENT, UNKNOWN), timing);
+
+    expect(result.status).toBe("success");
+    expect(result.stats).toMatchObject({
+      absences: 1,
+      cancelled: 0,
+      events: 1,
+      unknownTypes: ["WORKATION"],
+      absencesCreated: 1,
+      timingCreated: 3,
+      created: 0,
+      failed: 0,
+    });
+    expect(result.actions.map((a) => [a.date, a.action])).toEqual([
+      ["2027-03-01", "skippedUnknownType"],
+      ["2026-12-21", "timingCreated"],
+      ["2026-12-22", "timingCreated"],
+      ["2026-12-23", "timingCreated"],
+    ]);
+
+    expect(db.absences).toHaveLength(1);
+    expect(db.absences[0]).toMatchObject({
+      source: "TIMEWARP",
+      externalUid: "abs-100",
+      kind: "VACATION",
+      status: "ACTIVE",
+      sequence: 1,
+      lastSeenAt: NOW,
+    });
+
+    expect(timing.entries).toHaveLength(3);
+    expect(timing.createTimeEntry).toHaveBeenCalledWith({
+      start: new Date("2026-12-21T07:00:00.000Z"),
+      end: new Date("2026-12-21T15:00:00.000Z"),
+      projectRef: PROJECT,
+      title: "Urlaub",
+      notes: "Aus Timewarp",
+      billingStatus: "not_billable",
+    });
+    // Suche vorher einmal über den ganzen Zeitraum im Projekt
+    expect(timing.listTimeEntries).toHaveBeenCalledTimes(1);
+    expect(timing.listTimeEntries).toHaveBeenCalledWith(
+      { from: "2026-12-21", to: "2026-12-23" },
+      { projects: [PROJECT], includeChildProjects: true },
+    );
+
+    expect(timewarpEntries()).toHaveLength(3);
+    expect(timewarpEntries()[0]).toMatchObject({
+      type: "VACATION",
+      duration: 8,
+      title: "Urlaub",
+      notes: "Aus Timewarp",
+      description: "Urlaub - Aus Timewarp",
+      projectPath: "Work ▸ INNOQ ▸ Urlaub",
+      billingStatus: "not_billable",
+      absenceId: db.absences[0].id,
+      externalId: timing.entries[0].self,
+    });
+
+    expect(db.logs).toHaveLength(1);
+    expect(db.logs[0]).toMatchObject({ status: "success", error: null });
+    expect(db.integration).toMatchObject({
+      lastSyncStatus: "success",
+      lastSyncError: null,
+    });
+    expect((db.integration?.lastSyncAt as Date) instanceof Date).toBe(true);
+    expect(invalidateCache).toHaveBeenCalledWith(USER);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    // Sperre als erstes in der Transaktion
+    expect(isCalendarSyncRunning(USER)).toBe(false);
+  });
+
+  it("ist wiederholbar: zweiter Lauf ändert nichts", async () => {
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    const second = await run(feed(VACATION), timing);
+
+    expect(second.status).toBe("success");
+    expect(second.actions).toEqual([]);
+    expect(timing.entries).toHaveLength(3);
+    expect(timewarpEntries()).toHaveLength(3);
+    expect(timing.createTimeEntry).toHaveBeenCalledTimes(3);
+  });
+
+  it("verknüpft vorhandene Urlaubseinträge aus dem Timing-Sync statt neu anzulegen", async () => {
+    db.entries.push({
+      id: "sync-1",
+      userId: USER,
+      date: new Date("2026-12-22T00:00:00.000Z"),
+      type: "VACATION",
+      source: "TIMING_SYNC",
+      externalId: "/time-entries/500",
+      absenceId: null,
+      duration: 8,
+    });
+    const timing = fakeTiming();
+    const result = await run(feed(VACATION), timing);
+
+    expect(result.actions.map((a) => [a.date, a.action])).toEqual([
+      ["2026-12-22", "linked"],
+      ["2026-12-21", "timingCreated"],
+      ["2026-12-23", "timingCreated"],
+    ]);
+    expect(db.entries.find((e) => e.id === "sync-1")?.absenceId).toBe(
+      db.absences[0].id,
+    );
+    expect(timing.entries).toHaveLength(2);
+  });
+
+  it("übernimmt einen vorhandenen Eintrag im Timing-Projekt statt ihn doppelt anzulegen", async () => {
+    const timing = fakeTiming();
+    timing.entries.push({
+      self: "/time-entries/77",
+      start_date: "2026-12-21T07:00:00.000Z",
+      end_date: "2026-12-21T15:00:00.000Z",
+      duration: 28_800,
+      project: { self: PROJECT, title_chain: ["Work", "INNOQ", "Urlaub"] },
+      title: "Weihnachtsurlaub",
+      notes: null,
+      is_running: false,
+    });
+    const result = await run(feed(VACATION), timing);
+
+    expect(result.actions[0]).toMatchObject({
+      date: "2026-12-21",
+      action: "timingAdopted",
+    });
+    expect(timing.entries).toHaveLength(3);
+    expect(
+      timewarpEntries().find((e) => e.externalId === "/time-entries/77"),
+    ).toMatchObject({
+      title: "Weihnachtsurlaub",
+      description: "Weihnachtsurlaub",
+    });
+  });
+});
+
+describe("syncCalendarForUser – keine Duplikate in Timing", () => {
+  it("legt keinen zweiten Timing-Eintrag an, wenn der vorhandene lokal schon zugeordnet ist", async () => {
+    const timing = fakeTiming();
+    timing.entries.push({
+      self: "/time-entries/88",
+      start_date: "2026-12-21T07:00:00.000Z",
+      end_date: "2026-12-21T15:00:00.000Z",
+      duration: 28_800,
+      project: { self: PROJECT, title_chain: ["Work", "INNOQ", "Urlaub"] },
+      title: "Urlaub",
+      notes: null,
+      is_running: false,
+    });
+    // Lokal hängt die Timing-ID an einem anderen Eintrag (anderer Typ)
+    db.entries.push({
+      id: "other",
+      userId: USER,
+      date: new Date("2026-12-21T00:00:00.000Z"),
+      type: "WORK",
+      source: "MANUAL",
+      externalId: "/time-entries/88",
+      absenceId: null,
+      duration: 8,
+    });
+    const result = await run(feed(VACATION), timing);
+
+    expect(result.actions[0]).toMatchObject({
+      date: "2026-12-21",
+      action: "created",
+      detail: expect.stringContaining("Nicht in Timing"),
+    });
+    expect(timing.entries).toHaveLength(3);
+    expect(
+      timing.entries.filter((e) => e.start_date.startsWith("2026-12-21")),
+    ).toHaveLength(1);
+  });
+});
+
+describe("syncCalendarForUser – passende Übernahme und Artwechsel", () => {
+  it("übernimmt keinen halben Timing-Eintrag für einen ganzen Tag und schreibt auch keinen zweiten", async () => {
+    const timing = fakeTiming();
+    timing.entries.push({
+      self: "/time-entries/66",
+      start_date: "2026-12-21T07:00:00.000Z",
+      end_date: "2026-12-21T11:00:00.000Z",
+      duration: 14_400,
+      project: { self: PROJECT, title_chain: ["Work", "INNOQ", "Urlaub"] },
+      title: "Urlaub",
+      notes: null,
+      is_running: false,
+    });
+    const first = await run(feed(VACATION), timing);
+    expect(first.actions[0]).toMatchObject({
+      date: "2026-12-21",
+      action: "created",
+    });
+    expect(timing.entries).toHaveLength(3);
+
+    // Zweiter Lauf: nichts wird gelöscht oder ersetzt
+    const second = await run(feed(VACATION), timing);
+    expect(second.actions).toEqual([]);
+    expect(timing.entries.map((e) => e.self)).toContain("/time-entries/66");
+  });
+
+  it("Artwechsel Urlaub → Überstundenabbau löscht die Timing-Einträge", async () => {
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    const reduction = VACATION.replace("SEQUENCE:1", "SEQUENCE:2").replace(
+      "URLAUB",
+      "ÜBERSTUNDENABBAU",
+    );
+    const result = await run(feed(reduction), timing);
+
+    expect(result.stats).toMatchObject({
+      absencesUpdated: 1,
+      deleted: 3,
+      created: 3,
+    });
+    expect(timing.entries).toHaveLength(0);
+    expect(timewarpEntries().map((e) => e.type)).toEqual([
+      "OVERTIME_REDUCTION",
+      "OVERTIME_REDUCTION",
+      "OVERTIME_REDUCTION",
+    ]);
+    expect(timewarpEntries().every((e) => e.externalId === null)).toBe(true);
+  });
+});
+
+describe("syncCalendarForUser – Fehler und Wiederholung", () => {
+  it("Fehler beim Anlegen in Timing: Tag bleibt leer, nächster Lauf holt ihn nach – ohne Duplikat", async () => {
+    const timing = fakeTiming();
+    timing.failCreates.count = 1;
+    const first = await run(feed(VACATION), timing);
+
+    expect(first.status).toBe("success");
+    expect(first.stats).toMatchObject({ timingCreated: 2, failed: 1 });
+    expect(first.actions[0]).toMatchObject({
+      date: "2026-12-21",
+      action: "failed",
+      detail: expect.stringContaining("HTTP 500"),
+    });
+    expect(timewarpEntries()).toHaveLength(2);
+    expect(db.integration?.lastSyncError).toMatch(/1 Aktion/);
+
+    const second = await run(feed(VACATION), timing);
+    expect(second.actions.map((a) => [a.date, a.action])).toEqual([
+      ["2026-12-21", "timingCreated"],
+    ]);
+    expect(timing.entries).toHaveLength(3);
+    expect(timewarpEntries()).toHaveLength(3);
+    expect(new Set(timewarpEntries().map((e) => e.externalId)).size).toBe(3);
+  });
+
+  it("Speichern scheitert nach dem Anlegen in Timing: nächster Lauf übernimmt den Timing-Eintrag", async () => {
+    const timing = fakeTiming();
+    failNextEntryCreate.value = true;
+    const first = await run(feed(VACATION), timing);
+
+    expect(first.status).toBe("error");
+    expect(first.error).toBe("Der Kalender-Abgleich ist fehlgeschlagen.");
+    expect(first.actions).toEqual([]);
+    // Transaktion verworfen, Timing-Eintrag existiert schon
+    expect(db.absences).toHaveLength(0);
+    expect(db.entries).toHaveLength(0);
+    expect(timing.entries).toHaveLength(1);
+    expect(db.integration?.lastSyncStatus).toBe("error");
+
+    const second = await run(feed(VACATION), timing);
+    expect(second.status).toBe("success");
+    expect(second.actions.map((a) => [a.date, a.action])).toEqual([
+      ["2026-12-21", "timingAdopted"],
+      ["2026-12-22", "timingCreated"],
+      ["2026-12-23", "timingCreated"],
+    ]);
+    expect(timing.entries).toHaveLength(3);
+    expect(timewarpEntries()).toHaveLength(3);
+  });
+
+  it("Feed nicht abrufbar: Status error ohne URL/Token, nichts geändert", async () => {
+    const timing = fakeTiming();
+    const result = await syncCalendarForUser(USER, {
+      trigger: "scheduler",
+      now: NOW,
+      feedFetchImpl: feedFetch("kaputt", 500),
+      timingClient: timing,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.error).toMatch(/HTTP 500/);
+    expect(result.error).not.toContain(FEED_TOKEN);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(db.logs[0]).toMatchObject({ status: "error" });
+    expect(String(db.logs[0].error)).not.toContain(FEED_TOKEN);
+    expect(db.integration?.lastSyncStatus).toBe("error");
+    expect(db.integration?.lastSyncAt).toBeInstanceOf(Date);
+  });
+
+  it("leerer Feed bei künftigen Abwesenheiten: Abbruch statt Massen-Storno", async () => {
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    const result = await run(feed(), timing);
+
+    expect(result.status).toBe("error");
+    expect(result.error).toMatch(/keine Termine/);
+    expect(db.absences[0].status).toBe("ACTIVE");
+    expect(timing.entries).toHaveLength(3);
+    expect(timewarpEntries()).toHaveLength(3);
+  });
+
+  it("lässt pro Nutzer nur einen Lauf gleichzeitig zu", async () => {
+    let release: (r: Response) => void = () => {};
+    const slowFetch = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    ) as unknown as typeof fetch;
+    const first = syncCalendarForUser(USER, {
+      trigger: "manual",
+      now: NOW,
+      feedFetchImpl: slowFetch,
+      timingClient: fakeTiming(),
+    });
+    await vi.waitFor(() => expect(slowFetch).toHaveBeenCalled());
+    expect(isCalendarSyncRunning(USER)).toBe(true);
+    await expect(run(feed(VACATION), fakeTiming())).rejects.toBeInstanceOf(
+      CalendarSyncInProgressError,
+    );
+    release(new Response(feed(VACATION), { status: 200 }));
+    await first;
+    expect(isCalendarSyncRunning(USER)).toBe(false);
+  });
+
+  it("meldet eine fehlende Feed-URL", async () => {
+    db.integration = { ...db.integration, feedUrlEnc: null };
+    await expect(run(feed(VACATION))).rejects.toBeInstanceOf(
+      CalendarNotConfiguredError,
+    );
+    expect(isCalendarSyncRunning(USER)).toBe(false);
+  });
+});
+
+describe("syncCalendarForUser – Storno, Timing aus, unterdrückte Tage", () => {
+  it("Storno löscht eigene Einträge in Timing und lokal, fremde werden entkoppelt", async () => {
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    // Ein fremder, verknüpfter Eintrag (z. B. aus dem Timing-Sync)
+    db.entries.push({
+      id: "foreign",
+      userId: USER,
+      date: new Date("2026-12-24T00:00:00.000Z"),
+      type: "VACATION",
+      source: "MANUAL",
+      absenceId: db.absences[0].id,
+      externalId: null,
+      duration: 8,
+    });
+
+    const result = await run(feed(VACATION_CANCELLED), timing);
+    expect(result.status).toBe("success");
+    expect(result.stats).toMatchObject({
+      cancelled: 1,
+      absencesCancelled: 1,
+      deleted: 3,
+      unlinked: 1,
+    });
+    expect(db.absences[0].status).toBe("CANCELLED");
+    expect(timing.entries).toHaveLength(0);
+    expect(timing.deleteTimeEntry).toHaveBeenCalledTimes(3);
+    expect(timewarpEntries()).toHaveLength(0);
+    expect(db.entries.find((e) => e.id === "foreign")?.absenceId).toBeNull();
+  });
+
+  it("Löschen in Timing scheitert: lokaler Eintrag bleibt, nächster Lauf versucht es erneut", async () => {
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    vi.mocked(timing.deleteTimeEntry).mockRejectedValueOnce(
+      new TimingApiError("NETWORK_ERROR", "Timing-API nicht erreichbar."),
+    );
+
+    const first = await run(feed(VACATION_CANCELLED), timing);
+    expect(first.stats).toMatchObject({ deleted: 2, failed: 1 });
+    expect(timewarpEntries()).toHaveLength(1);
+
+    const second = await run(feed(VACATION_CANCELLED), timing);
+    expect(second.stats).toMatchObject({ deleted: 1, failed: 0 });
+    expect(timewarpEntries()).toHaveLength(0);
+    expect(timing.entries).toHaveLength(0);
+  });
+
+  it("verschwundene künftige Abwesenheit wird storniert und aufgeräumt", async () => {
+    const timing = fakeTiming();
+    await run(feed(VACATION, EVENT), timing);
+    const result = await run(feed(EVENT), timing);
+    expect(result.stats.absencesCancelled).toBe(1);
+    expect(db.absences[0].status).toBe("CANCELLED");
+    expect(timewarpEntries()).toHaveLength(0);
+    expect(timing.entries).toHaveLength(0);
+  });
+
+  it("ohne Timing-Projekt nur lokale Einträge, mit Hinweis", async () => {
+    db.integration = { ...db.integration, timingProjectId: null };
+    const timing = fakeTiming();
+    const result = await run(feed(VACATION), timing);
+
+    expect(result.stats.timingSkippedReason).toMatch(/Kein Timing-Projekt/);
+    expect(result.stats).toMatchObject({ created: 3, timingCreated: 0 });
+    expect(result.actions[0].detail).toMatch(/Nicht in Timing/);
+    expect(timing.createTimeEntry).not.toHaveBeenCalled();
+    expect(timewarpEntries()[0]).toMatchObject({
+      externalId: null,
+      billingStatus: null,
+    });
+  });
+
+  it("ohne Timing-Token nur lokale Einträge", async () => {
+    const result = await run(feed(VACATION));
+    expect(result.stats.timingSkippedReason).toMatch(/Kein Timing-Token/);
+    expect(result.stats.created).toBe(3);
+  });
+
+  it("Schreiben nach Timing abgeschaltet: lokale Einträge ohne Hinweis", async () => {
+    db.integration = { ...db.integration, writeToTiming: false };
+    const timing = fakeTiming();
+    const result = await run(feed(VACATION), timing);
+    expect(result.stats.timingSkippedReason).toBeNull();
+    expect(result.actions[0].detail).not.toMatch(/Nicht in Timing/);
+    expect(timing.createTimeEntry).not.toHaveBeenCalled();
+  });
+
+  it("legt einen von Hand gelöschten (unterdrückten) Tag nicht neu an", async () => {
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    // Wie DELETE /api/time-entries/[id]: Eintrag weg, Tag unterdrückt
+    db.entries = db.entries.filter(
+      (e) => (e.date as Date).toISOString().slice(0, 10) !== "2026-12-22",
+    );
+    db.absences[0].suppressedDates = ["2026-12-22"];
+
+    const result = await run(feed(VACATION), timing);
+    expect(result.actions).toEqual([]);
+    expect(timewarpEntries()).toHaveLength(2);
+  });
+
+  it("lässt vergangene, aus dem Feed gefallene Abwesenheiten unangetastet", async () => {
+    db.absences.push({
+      id: "past",
+      userId: USER,
+      source: "TIMEWARP",
+      externalUid: "abs-old",
+      kind: "VACATION",
+      rawType: "URLAUB",
+      startDate: new Date("2026-09-01T00:00:00.000Z"),
+      endDate: new Date("2026-09-02T00:00:00.000Z"),
+      halfDay: false,
+      status: "ACTIVE",
+      sequence: 0,
+      suppressedDates: [],
+    });
+    const timing = fakeTiming();
+    const result = await run(feed(VACATION), timing);
+    expect(db.absences.find((a) => a.id === "past")?.status).toBe("ACTIVE");
+    expect(result.actions.every((a) => a.date >= "2026-12-21")).toBe(true);
+  });
+
+  it("behält nur die letzten 50 Protokolle", async () => {
+    for (let i = 0; i < 50; i++) {
+      db.logs.push({
+        id: `old-${i}`,
+        userId: USER,
+        startedAt: new Date(Date.UTC(2026, 0, 1, 0, i)),
+        status: "success",
+        actions: [],
+      });
+    }
+    await run(feed(VACATION), fakeTiming());
+    expect(db.logs).toHaveLength(50);
+    expect(db.logs.some((l) => l.id === "old-0")).toBe(false);
+  });
+});

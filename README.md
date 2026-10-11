@@ -36,7 +36,8 @@ DATABASE_URL="postgresql://..."
 NEXTAUTH_SECRET="..."
 NEXTAUTH_URL="http://localhost:3000"
 TIMING_TOKEN_ENCRYPTION_KEY="..."   # openssl rand -base64 32, für den Timing-Sync
-TIMING_SYNC_SCHEDULER="on"          # "off" schaltet den Hintergrund-Sync ab
+TIMING_SYNC_SCHEDULER="on"          # "off" schaltet den Hintergrund-Sync (Timing und Kalender) ab
+CALENDAR_FEED_HOSTS="timewarp.innoq.io"  # erlaubte Hosts für den Kalender-Feed, kommagetrennt
 REGISTRATION_ENABLED="false"        # "true" erlaubt neue Accounts über /register
 ```
 

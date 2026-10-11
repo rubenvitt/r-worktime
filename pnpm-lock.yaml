@@ -80,6 +80,9 @@ importers:
       express-rate-limit:
         specifier: ^8.6.1
         version: 8.6.1(express@5.1.0)
+      ical.js:
+        specifier: 2.2.1
+        version: 2.2.1
       lucide-react:
         specifier: ^1.28.0
         version: 1.28.0(react@19.2.8)
@@ -2572,6 +2575,9 @@ packages:
     resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
     engines: {node: '>=18'}
     hasBin: true
+
+  ical.js@2.2.1:
+    resolution: {integrity: sha512-yK/UlPbEs316igb/tjRgbFA8ZV75rCsBJp/hWOatpyaPNlgw0dGDmU+FoicOcwX4xXkeXOkYiOmCqNPFpNPkQg==}
 
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
@@ -5545,6 +5551,8 @@ snapshots:
       toidentifier: 1.0.1
 
   husky@9.1.7: {}
+
+  ical.js@2.2.1: {}
 
   iconv-lite@0.6.3:
     dependencies:
