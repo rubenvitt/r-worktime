@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const ITEMS = [
   { href: "/settings/overtime", label: "Arbeitszeit" },
   { href: "/settings/timing", label: "Timing-Sync" },
+  { href: "/settings/calendar", label: "Kalender" },
   { href: "/upload", label: "Datei-Import" },
 ] as const;
 
