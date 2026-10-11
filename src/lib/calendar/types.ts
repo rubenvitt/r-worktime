@@ -87,12 +87,28 @@ export interface PublicCalendarSettings {
   lastSyncStats: CalendarSyncStats | null;
 }
 
+/** Body von PUT /api/calendar/settings; fehlende Felder bleiben unverändert */
+export interface CalendarSettingsInput {
+  /** null oder "" löscht die Feed-URL */
+  feedUrl?: string | null;
+  syncEnabled?: boolean;
+  writeToTiming?: boolean;
+  /** Timing-Referenz ("/projects/123"); null oder "" = keins */
+  timingProjectId?: string | null;
+}
+
 /** Testabruf beim Speichern einer Feed-URL */
 export interface CalendarFeedTest {
   absences: number;
   cancelled: number;
   events: number;
   unknownTypes: string[];
+}
+
+/** Antwort von PUT /api/calendar/settings; test nur bei neuer Feed-URL */
+export interface CalendarSettingsSaveResponse {
+  settings: PublicCalendarSettings;
+  test?: CalendarFeedTest;
 }
 
 /** Eintrag von GET /api/calendar/logs */

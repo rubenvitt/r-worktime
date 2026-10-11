@@ -28,7 +28,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CalendarFeedTest, CalendarSettings } from "./api-types";
+import type {
+  CalendarFeedTest,
+  PublicCalendarSettings,
+} from "@/lib/calendar/types";
 import { formatFeedTest, maskedFeedUrl } from "./calendar-format";
 import { useSaveCalendarSettings } from "./use-calendar";
 
@@ -53,7 +56,11 @@ export function FeedTestResult({ test }: { test: CalendarFeedTest }) {
   );
 }
 
-export function CalendarFeedCard({ settings }: { settings: CalendarSettings }) {
+export function CalendarFeedCard({
+  settings,
+}: {
+  settings: PublicCalendarSettings;
+}) {
   const save = useSaveCalendarSettings();
   const [url, setUrl] = useState("");
   const [editing, setEditing] = useState(!settings.configured);

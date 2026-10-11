@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CalendarSettings } from "./api-types";
+import type { PublicCalendarSettings } from "@/lib/calendar/types";
 import {
   actionLabel,
   deriveCalendarSyncState,
@@ -13,7 +13,7 @@ import {
   summarizeActions,
 } from "./calendar-format";
 
-const baseSettings: CalendarSettings = {
+const baseSettings: PublicCalendarSettings = {
   configured: true,
   feedHost: "timewarp.innoq.io",
   syncEnabled: true,
@@ -42,25 +42,25 @@ describe("Aktionen", () => {
           date: "2026-10-13",
           kind: "VACATION",
           action: "timingCreated",
-          detail: null,
+          detail: "",
         },
         {
           date: "2026-10-12",
           kind: "VACATION",
           action: "created",
-          detail: null,
+          detail: "",
         },
         {
           date: "2026-10-13",
           kind: "VACATION",
           action: "created",
-          detail: null,
+          detail: "",
         },
         {
-          date: null,
+          date: "2027-03-01",
           kind: "EVENT",
           action: "skippedUnknownType",
-          detail: null,
+          detail: "",
         },
       ]),
     ).toBe(
@@ -69,16 +69,16 @@ describe("Aktionen", () => {
     expect(summarizeActions([])).toBe("");
   });
 
-  it("sortiert Aktionen nach Datum, ohne Datum zuletzt", () => {
+  it("sortiert Aktionen nach Datum", () => {
     const sorted = sortActions([
-      { date: null, kind: null, action: "failed", detail: null },
-      { date: "2026-10-13", kind: null, action: "created", detail: null },
-      { date: "2026-10-12", kind: null, action: "created", detail: null },
+      { date: "2027-03-01", kind: "WORKATION", action: "failed", detail: "" },
+      { date: "2026-10-13", kind: "VACATION", action: "created", detail: "" },
+      { date: "2026-10-12", kind: "VACATION", action: "created", detail: "" },
     ]);
     expect(sorted.map((a) => a.date)).toEqual([
       "2026-10-12",
       "2026-10-13",
-      null,
+      "2027-03-01",
     ]);
   });
 
