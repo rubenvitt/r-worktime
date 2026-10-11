@@ -107,6 +107,8 @@ export class ImportPreviewService {
       VACATION: 0,
       SICK: 0,
       HOLIDAY: 0,
+      OVERTIME_REDUCTION: 0,
+      UNPAID_LEAVE: 0,
     };
 
     // Process each date
