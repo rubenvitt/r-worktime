@@ -12,6 +12,8 @@ export interface EditableEntrySnapshot {
   duration: { toString(): string } | number;
   type: string;
   description: string | null;
+  /** Verknüpfte Abwesenheit; fehlt bei älteren Aufrufern */
+  absenceId?: string | null;
 }
 
 export interface ManualEdit {
@@ -81,6 +83,10 @@ export function hasEntryChanged(
  *   zur Abwesenheit (externalId bleibt, siehe oben): Der Abgleich löscht oder
  *   ersetzt sie dann nicht mehr. Die Route vermerkt den ursprünglichen Tag
  *   zusätzlich als unterdrückt, damit der Abgleich ihn nicht neu anlegt.
+ * - Verknüpfte Einträge anderer Herkunft (Timing-Sync, Dialog) verlieren die
+ *   Verknüpfung, wenn Typ oder Tag sich ändern: Sonst entkoppelt der Abgleich
+ *   sie selbst und legt den Tag ein zweites Mal an. Auch hier vermerkt die
+ *   Route den ursprünglichen Tag als unterdrückt.
  * - Neue description → title/notes leeren, sonst zeigt der Stundenzettel
  *   (title vor description) weiter den alten Titel.
  */
@@ -99,6 +105,12 @@ export function manualEditOverrides(
   }
   if (existing.source === EntrySource.TIMEWARP) {
     overrides.source = EntrySource.MANUAL;
+    overrides.absenceId = null;
+  } else if (
+    existing.absenceId &&
+    (existing.type !== next.type ||
+      existing.date.getTime() !== next.date.getTime())
+  ) {
     overrides.absenceId = null;
   }
   if ((existing.description ?? null) !== (next.description ?? null)) {

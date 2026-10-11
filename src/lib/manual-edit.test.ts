@@ -141,3 +141,40 @@ describe("keepExactTimes", () => {
     expect(keepExactTimes(exact, sent)).toEqual(sent);
   });
 });
+
+describe("manualEditOverrides – verknüpfte Einträge", () => {
+  const linked = (overrides: Partial<EditableEntrySnapshot> = {}) =>
+    existing({ type: "VACATION", absenceId: "abs-1", ...overrides });
+
+  it("entkoppelt bei Typwechsel oder anderem Tag", () => {
+    expect(manualEditOverrides(linked(), edit({ type: "VACATION" }))).toEqual(
+      {},
+    );
+    expect(manualEditOverrides(linked(), edit({ type: "WORK" }))).toEqual({
+      source: "MANUAL",
+      absenceId: null,
+    });
+    expect(
+      manualEditOverrides(
+        linked({ source: "MANUAL", externalId: null }),
+        edit({
+          type: "VACATION",
+          date: new Date("2026-09-02T00:00:00.000Z"),
+        }),
+      ),
+    ).toEqual({ absenceId: null });
+  });
+
+  it("lässt die Verknüpfung bei anderer Dauer stehen", () => {
+    expect(
+      manualEditOverrides(
+        linked(),
+        edit({
+          type: "VACATION",
+          endTime: new Date("2026-09-01T08:00:00.000Z"),
+          duration: 2,
+        }),
+      ),
+    ).toEqual({ source: "MANUAL" });
+  });
+});
