@@ -10,6 +10,7 @@ import {
   PanelFooter,
   PanelHeader,
 } from "@/components/app/panel";
+import { useTimingSettings } from "@/components/timing/use-timing";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -26,7 +27,7 @@ import type {
   CalendarTimingProject,
   PublicCalendarSettings,
 } from "@/lib/calendar/types";
-import { suggestVacationProject } from "./calendar-format";
+import { projectOutsideRoots, suggestVacationProject } from "./calendar-format";
 import { useSaveCalendarSettings, useTimingProjects } from "./use-calendar";
 
 /** Radix Select erlaubt keinen leeren Wert: Platzhalter für „kein Projekt“ */
@@ -74,6 +75,17 @@ export function CalendarSyncSettingsCard({
 
   // Ohne Token liefert die Route 409 → null
   const timingConnected = settings.timingConnected && projects.data !== null;
+
+  // Projekt außerhalb der Wurzeln des Timing-Syncs: Hinweis
+  const timingSettings = useTimingSettings();
+  const roots = timingSettings.data?.projectRoots ?? null;
+  const selectedPath =
+    projectList.find((project) => project.id === projectId)?.path ?? null;
+  const outsideRoots =
+    timingConnected &&
+    roots !== null &&
+    selectedPath !== null &&
+    projectOutsideRoots(selectedPath, roots);
 
   const handleSave = () => {
     save.mutate(
@@ -170,6 +182,20 @@ export function CalendarSyncSettingsCard({
                   ? "Vorschlag nach dem Projektnamen – wird erst mit dem Speichern übernommen."
                   : "In dieses Projekt trägt der Abgleich Urlaubstage ein (ab 08:00, Dauer nach Tagessoll, halber Tag nach halbem Soll)."}
               </p>
+              {outsideRoots ? (
+                <p className="max-w-prose text-[13px] text-warning">
+                  Das Projekt liegt außerhalb der Projekt-Wurzeln des
+                  Timing-Syncs ({roots?.join(", ") || "keine"}). Vorhandene
+                  Urlaube darin kommen dann nicht nach r-worktime, der Abgleich
+                  trägt solche Tage nur hier ein.{" "}
+                  <Link
+                    href="/settings/timing"
+                    className="font-medium underline-offset-4 hover:underline"
+                  >
+                    Wurzeln anpassen
+                  </Link>
+                </p>
+              ) : null}
             </>
           )}
         </div>

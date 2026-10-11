@@ -13,6 +13,7 @@ import {
 } from "@/lib/calendar/types";
 import { isDateKey } from "@/lib/dates";
 import { formatDateShort, plural } from "@/lib/format";
+import { matchesProjectRoot } from "@/lib/timing/project-path";
 
 /** Aktion als ganzer Satzteil für die Zeile im Protokoll */
 export const ACTION_LABELS: Record<CalendarSyncActionType, string> = {
@@ -92,11 +93,14 @@ export function sortActions(
   return [...actions].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Testabruf als Satz: „3 Abwesenheiten (1 storniert), 21 Events, 0 unbekannte Typen“ */
+/**
+ * Testabruf als Satz: „3 Abwesenheiten (dazu 1 stornierte), 21 Events,
+ * 0 unbekannte Typen“ – `absences` zählt nur die aktiven
+ */
 export function formatFeedTest(test: CalendarFeedTest): string {
   const absences = plural(test.absences, "Abwesenheit", "Abwesenheiten");
   const cancelled =
-    test.cancelled > 0 ? ` (davon ${test.cancelled} storniert)` : "";
+    test.cancelled > 0 ? ` (dazu ${test.cancelled} stornierte)` : "";
   const events = plural(test.events, "Event", "Events");
   const unknown = plural(
     test.unknownTypes.length,
@@ -119,6 +123,18 @@ export function suggestVacationProject(
     projects.find((project) => /urlaub/i.test(project.path.normalize("NFC"))) ??
     null
   );
+}
+
+/**
+ * Liegt das Urlaubsprojekt außerhalb der Projekt-Wurzeln des Timing-Syncs?
+ * Dann kommen vorhandene Urlaube darin nicht über den Timing-Sync nach
+ * r-worktime, und der Abgleich verknüpft sie nicht (er trägt nur lokal ein).
+ */
+export function projectOutsideRoots(
+  path: string,
+  roots: readonly string[],
+): boolean {
+  return !matchesProjectRoot(path, [...roots]);
 }
 
 export type CalendarSyncState =
@@ -165,8 +181,8 @@ export const CALENDAR_SYNC_STATE_TONE: Record<CalendarSyncState, Tone> = {
 
 /** Bekannte Zahlen aus lastSyncStats; die Form gehört dem Abgleich */
 const STATS_LABELS: Record<string, string> = {
-  absences: "Abwesenheiten im Feed",
-  cancelled: "Storniert",
+  absences: "Aktive Abwesenheiten im Feed",
+  cancelled: "Stornierte im Feed",
   events: "Events",
   unknownTypes: "Unbekannte Typen",
   ...ACTION_LABELS,

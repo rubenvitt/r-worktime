@@ -490,7 +490,7 @@ function absenceDayRows(userId, absence, { source, withTimingId, note }) {
       projectPath: withTimingId ? P.vacation : null,
       source,
       externalId: withTimingId
-        ? `/time-entries/demo-timewarp-${++timingEntryCounter}`
+        ? `/time-entries/${8_000_000 + ++timingEntryCounter}`
         : null,
       billingStatus: withTimingId ? "not_billable" : null,
     });
@@ -626,11 +626,30 @@ async function seedAbsences(userId) {
       ),
       syncEnabled: true,
       writeToTiming: true,
-      timingProjectId: "/projects/demo-urlaub",
+      // Gültige Timing-Referenzen (/projects/<Zahl>), wie sie die API liefert
+      timingProjectId: "/projects/9001",
       lastSyncAt: seenAt,
-      lastSyncStatus: "SUCCESS",
+      lastSyncStatus: "success",
       lastSyncError: null,
-      lastSyncStats: { absences: 6, events: 21, unknownTypes: 0 },
+      lastSyncStats: {
+        trigger: "scheduler",
+        absences: 6,
+        cancelled: 1,
+        events: 21,
+        unknownTypes: [],
+        absencesCreated: 0,
+        absencesUpdated: 1,
+        absencesCancelled: 1,
+        created: 1,
+        linked: 1,
+        timingCreated: 1,
+        timingAdopted: 0,
+        deleted: 1,
+        unlinked: 0,
+        failed: 0,
+        timingSkippedReason: null,
+        durationMs: 2300,
+      },
     },
   });
   await prisma.absenceSyncLog.create({
@@ -638,25 +657,25 @@ async function seedAbsences(userId) {
       userId,
       startedAt: seenAt,
       finishedAt: new Date(seenAt.getTime() + 2300),
-      status: "SUCCESS",
+      status: "success",
       actions: [
         {
           date: "2026-08-21",
           kind: "VACATION",
           action: "linked",
-          detail: null,
+          detail: "Vorhandenen Eintrag mit der Abwesenheit verknüpft.",
         },
         {
           date: "2026-10-16",
           kind: "OVERTIME_REDUCTION",
           action: "created",
-          detail: null,
+          detail: "Überstundenabbau eingetragen.",
         },
         {
           date: "2026-10-23",
           kind: "SPECIAL_LEAVE",
           action: "timingCreated",
-          detail: null,
+          detail: "Sonderurlaub in Timing eingetragen.",
         },
         {
           date: "2026-11-20",
