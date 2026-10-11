@@ -45,6 +45,8 @@ export interface AbsenceRow {
   endDate: string;
   halfDay: boolean;
   status: AbsenceBlockStatus;
+  /** Von Hand gelöschte/bearbeitete Tage (Timewarp): zählen nicht mit */
+  suppressedDates?: readonly string[];
 }
 
 /** Eintragstypen, die als lose Abwesenheit in die Liste kommen */
@@ -88,17 +90,21 @@ function isCountedDay(
   return workDays.has(weekdayOfKey(key)) && !holidays.has(key);
 }
 
-/** Abwesenheitstage von from bis to: Arbeitstage ohne Feiertage. */
+/** Abwesenheitstage von from bis to: Arbeitstage ohne Feiertage und ohne unterdrückte Tage. */
 export function countAbsenceDays(
   from: string,
   to: string,
   halfDay: boolean,
   ctx: Pick<BlockContext, "workDays" | "holidays">,
+  suppressedDates: readonly string[] = [],
 ): number {
   const workDays = new Set(ctx.workDays);
+  const suppressed = new Set(suppressedDates);
   let count = 0;
   for (let key = from; key <= to; key = shiftDateKey(key, 1)) {
-    if (isCountedDay(key, workDays, ctx.holidays)) count++;
+    if (isCountedDay(key, workDays, ctx.holidays) && !suppressed.has(key)) {
+      count++;
+    }
   }
   return halfDay ? count / 2 : count;
 }
@@ -219,6 +225,7 @@ export function buildAbsenceBlocks(input: BuildBlocksInput): AbsenceBlock[] {
         absence.endDate,
         absence.halfDay,
         input,
+        absence.suppressedDates,
       ),
       deletable: absence.source === "MANUAL",
     }),

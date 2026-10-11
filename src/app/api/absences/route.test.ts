@@ -124,6 +124,30 @@ describe("GET /api/absences", () => {
     expect(mocks.loadHolidays).toHaveBeenCalledWith("user-1", [2026, 2027]);
   });
 
+  it("zählt von Hand gelöschte Tage einer Timewarp-Abwesenheit nicht mit", async () => {
+    mocks.absenceFindMany.mockResolvedValue([
+      {
+        id: "a2",
+        source: "TIMEWARP",
+        kind: "VACATION",
+        // Mo 21. bis Mi 23.12., der 22. unterdrückt
+        startDate: dbDate("2026-12-21"),
+        endDate: dbDate("2026-12-23"),
+        halfDay: false,
+        status: "ACTIVE",
+        suppressedDates: ["2026-12-22"],
+      },
+    ]);
+    mocks.timeEntryFindMany.mockResolvedValue([]);
+
+    const body = await (await call("?year=2026")).json();
+    expect(body.blocks).toHaveLength(1);
+    expect(body.blocks[0]).toMatchObject({ id: "a2", days: 2 });
+    expect(mocks.absenceFindMany.mock.calls[0][0].select).toMatchObject({
+      suppressedDates: true,
+    });
+  });
+
   it("meldet Datenbankfehler als 500", async () => {
     mocks.absenceFindMany.mockRejectedValue(new Error("db down"));
     vi.spyOn(console, "error").mockImplementation(() => {});
