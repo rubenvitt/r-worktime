@@ -608,3 +608,51 @@ describe("planDays – Timing nachtragen", () => {
     ).toEqual([]);
   });
 });
+
+describe("planDays – Timing nachtragen ohne Duplikat", () => {
+  it("verknüpft einen inzwischen importierten Urlaub statt nachzutragen und entfernt den lokalen", () => {
+    const own = entry({ date: "2026-12-21", externalId: null });
+    const synced = entry({
+      date: "2026-12-21",
+      source: "TIMING_SYNC",
+      absenceId: null,
+      externalId: "/time-entries/555",
+    });
+    const plan = planDays(
+      input({
+        absences: [absence({ endDate: "2026-12-21" })],
+        entries: [own, synced],
+      }),
+    );
+    expect(plan.create).toEqual([]);
+    expect(plan.link).toEqual([
+      expect.objectContaining({ date: "2026-12-21", entryId: synced.id }),
+    ]);
+    expect(plan.remove).toEqual([
+      expect.objectContaining({
+        entryId: own.id,
+        externalId: null,
+        reason: "duplicate",
+      }),
+    ]);
+  });
+
+  it("trägt nicht nach, wenn der Tag inzwischen als Krankheit belegt ist", () => {
+    const own = entry({ date: "2026-12-21", externalId: null });
+    const sick = entry({
+      date: "2026-12-21",
+      type: "SICK",
+      source: "TIMING_SYNC",
+      absenceId: null,
+      externalId: "/time-entries/556",
+    });
+    const plan = planDays(
+      input({
+        absences: [absence({ endDate: "2026-12-21" })],
+        entries: [own, sick],
+      }),
+    );
+    expect(plan.create).toEqual([]);
+    expect(plan.remove).toEqual([]);
+  });
+});

@@ -306,13 +306,28 @@ export function planDays(input: DayPlanInput): DayPlan {
         continue;
       }
       covered.add(entry.date);
-      // Nur lokal eingetragen, Timing inzwischen eingerichtet: nachtragen
-      // (der Abgleich sucht vorher in Timing, also kein Duplikat)
+      if (!own || entry.externalId !== null) continue;
+      // Nur lokal eingetragen, inzwischen kam derselbe Tag z. B. über den
+      // Timing-Sync herein: den vorhandenen verknüpfen, den eigenen entfernen
+      const free = freeEntry(entry.date, entryType);
+      if (free) {
+        usedEntryIds.add(free.id);
+        plan.link.push({ ...ref(entry.date), entryId: free.id });
+        plan.remove.push({
+          ...ref(entry.date),
+          entryId: entry.id,
+          externalId: null,
+          reason: "duplicate",
+        });
+        continue;
+      }
+      // Timing inzwischen eingerichtet: nachtragen (der Abgleich sucht
+      // vorher in Timing, also kein Duplikat). Ist der Tag anderweitig
+      // belegt (z. B. Krankheit), nicht.
       if (
-        own &&
-        entry.externalId === null &&
         input.timingEnabled &&
-        writesToTiming(absence.kind)
+        writesToTiming(absence.kind) &&
+        !occupiedDates.has(entry.date)
       ) {
         const hours = timewarpDayHours(absence.halfDay, input.dailyHours);
         plan.create.push({
