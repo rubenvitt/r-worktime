@@ -5,6 +5,7 @@ import {
   berlinWallClock,
   countDaysInclusive,
   MAX_ABSENCE_RANGE_DAYS,
+  manualAbsenceFor,
   planAbsenceRange,
   validateAbsenceRange,
 } from "./absence-range";
@@ -218,6 +219,26 @@ describe("planAbsenceRange", () => {
     expect(plan.totalHours).toBe(24);
   });
 
+  it("überspringt auch Tage mit Überstundenabbau oder unbezahlter Abwesenheit", () => {
+    const plan = planAbsenceRange(
+      input({
+        existingEntries: [
+          { date: "2026-10-06", type: "OVERTIME_REDUCTION", description: null },
+          { date: "2026-10-07", type: "UNPAID_LEAVE", description: null },
+        ],
+      }),
+    );
+    expect(plan.days.map((d) => d.date)).toEqual([
+      "2026-10-05",
+      "2026-10-08",
+      "2026-10-09",
+    ]);
+    expect(plan.skipped).toEqual([
+      { date: "2026-10-06", reason: "existing", label: "Überstundenabbau" },
+      { date: "2026-10-07", reason: "existing", label: "Unbezahlter Urlaub" },
+    ]);
+  });
+
   it("legt einen halben Tag mit halbem Tagessoll an, der als halber Urlaubstag zählt", () => {
     const plan = planAbsenceRange(
       input({
@@ -275,6 +296,39 @@ describe("planAbsenceRange", () => {
       ["2026-10-23", "2026-10-23T07:00:00.000Z", "2026-10-23T15:00:00.000Z"],
       ["2026-10-26", "2026-10-26T08:00:00.000Z", "2026-10-26T16:00:00.000Z"],
     ]);
+  });
+});
+
+describe("manualAbsenceFor", () => {
+  const range = { from: "2026-10-05", to: "2026-10-09", halfDay: false };
+
+  it("legt für Urlaub eine manuelle Abwesenheit über den Zeitraum an", () => {
+    expect(manualAbsenceFor("VACATION", range, 5)).toEqual({
+      source: "MANUAL",
+      kind: "VACATION",
+      startDate: "2026-10-05",
+      endDate: "2026-10-09",
+      halfDay: false,
+      status: "ACTIVE",
+    });
+  });
+
+  it("übernimmt den halben Tag", () => {
+    expect(
+      manualAbsenceFor(
+        "VACATION",
+        { from: "2026-10-05", to: "2026-10-05", halfDay: true },
+        1,
+      ),
+    ).toMatchObject({ halfDay: true, startDate: "2026-10-05" });
+  });
+
+  it("legt für Krankheit keine Abwesenheit an", () => {
+    expect(manualAbsenceFor("SICK", range, 5)).toBeNull();
+  });
+
+  it("legt ohne angelegte Tage keine Abwesenheit an", () => {
+    expect(manualAbsenceFor("VACATION", range, 0)).toBeNull();
   });
 });
 

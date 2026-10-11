@@ -6,9 +6,12 @@ import {
   type AbsencePlan,
   type AbsenceRangeResponse,
   absenceDescription,
+  manualAbsenceFor,
+  OCCUPYING_ENTRY_TYPES,
   planAbsenceRange,
   validateAbsenceRange,
 } from "@/lib/absence-range";
+import { withUserAbsenceLock } from "@/lib/absences/lock";
 import { auth } from "@/lib/auth";
 import { berlinDayStart, dateKeyFromDbDate, yearsOfRange } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
@@ -36,7 +39,10 @@ const absenceRangeSchema = z
     if (message) ctx.addIssue({ code: "custom", message });
   });
 
-// POST /api/time-entries/absences – Urlaub/Krankheit für einen Zeitraum, mit dryRun als Vorschau
+// POST /api/time-entries/absences – Urlaub/Krankheit für einen Zeitraum, mit dryRun als Vorschau.
+// Urlaub legt zusätzlich eine Absence (source MANUAL, kind VACATION) an und
+// verknüpft die Tage; Krankheit bleibt ohne Absence (siehe manualAbsenceFor).
+// Der Dialog schreibt nicht nach Timing.
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -71,9 +77,7 @@ export async function POST(request: NextRequest) {
       const existing = await db.timeEntry.findMany({
         where: {
           userId,
-          type: {
-            in: [EntryType.VACATION, EntryType.SICK, EntryType.HOLIDAY],
-          },
+          type: { in: [...OCCUPYING_ENTRY_TYPES, EntryType.HOLIDAY] },
           source: { not: EntrySource.ADJUSTMENT },
           date: { gte: berlinDayStart(from), lte: berlinDayStart(to) },
         },
@@ -95,15 +99,36 @@ export async function POST(request: NextRequest) {
     };
 
     let plan: AbsencePlan;
+    let absenceId: string | null = null;
     if (dryRun) {
       plan = await planWith(prisma);
     } else {
       const trimmedNote = note?.trim() || null;
       plan = await prisma.$transaction(async (tx) => {
         // Je Nutzer serialisieren (Doppelklick, zwei Tabs): ohne Sperre legen
-        // zwei Requests dieselben Tage doppelt an
-        await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtext(${`absences:${userId}`}))) AS locked`;
+        // zwei Requests dieselben Tage doppelt an. Dieselbe Sperre nutzen
+        // DELETE /api/absences/[id] und der Timewarp-Abgleich.
+        await withUserAbsenceLock(tx, userId);
         const txPlan = await planWith(tx);
+        const absenceData = manualAbsenceFor(
+          type,
+          { from, to, halfDay },
+          txPlan.days.length,
+        );
+        const absence = absenceData
+          ? await tx.absence.create({
+              data: {
+                userId,
+                source: absenceData.source,
+                kind: absenceData.kind,
+                startDate: berlinDayStart(absenceData.startDate),
+                endDate: berlinDayStart(absenceData.endDate),
+                halfDay: absenceData.halfDay,
+                status: absenceData.status,
+              },
+              select: { id: true },
+            })
+          : null;
         if (txPlan.days.length > 0) {
           await tx.timeEntry.createMany({
             data: txPlan.days.map((day) => ({
@@ -117,9 +142,11 @@ export async function POST(request: NextRequest) {
               notes: trimmedNote,
               description: absenceDescription(type, trimmedNote),
               source: EntrySource.MANUAL,
+              absenceId: absence?.id ?? null,
             })),
           });
         }
+        absenceId = absence?.id ?? null;
         return txPlan;
       });
       if (plan.days.length > 0) overtimeService.invalidateCache(userId);
@@ -128,6 +155,7 @@ export async function POST(request: NextRequest) {
     const response: AbsenceRangeResponse = {
       dryRun,
       created: plan.days.length,
+      absenceId,
       days: plan.days.map(({ date, hours }) => ({ date, hours })),
       skipped: plan.skipped,
       nonWorkDays: plan.nonWorkDays,
