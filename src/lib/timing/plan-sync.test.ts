@@ -152,6 +152,42 @@ describe("planSync", () => {
     expect(plan.update).toEqual([]);
   });
 
+  it("lässt verknüpfte TIMEWARP-Einträge in Ruhe: kein Update, kein Konflikt, kein Duplikat", () => {
+    const timewarp = existing("tw", "TIMEWARP", {
+      type: "VACATION",
+      description: "Urlaub - Aus Timewarp",
+      notes: "Aus Timewarp",
+    });
+    const plan = planSync([timewarp], [incoming("tw")], WINDOW);
+    expect(plan.linked).toEqual(["/time-entries/tw"]);
+    expect(plan.create).toEqual([]);
+    expect(plan.update).toEqual([]);
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.delete).toEqual([]);
+  });
+
+  it("löscht TIMEWARP-Einträge im Fenster nicht, wenn Timing sie nicht mehr liefert", () => {
+    const plan = planSync(
+      [existing("tw", "TIMEWARP"), existing("gone", "TIMING_SYNC")],
+      [],
+      WINDOW,
+    );
+    expect(plan.delete).toEqual(["db-gone"]);
+    expect(plan.linked).toEqual([]);
+  });
+
+  it("ersetzt Datei-Importe am Tag eines verknüpften TIMEWARP-Eintrags", () => {
+    const plan = planSync(
+      [
+        existing("tw", "TIMEWARP"),
+        existing("file", "FILE_IMPORT", { externalId: null }),
+      ],
+      [incoming("tw")],
+      WINDOW,
+    );
+    expect(plan.replaceFileImports).toEqual(["db-file"]);
+  });
+
   it("dedupliziert doppelt gelieferte IDs (der letzte gewinnt)", () => {
     const later = { ...incoming("1"), notes: "später" };
     const plan = planSync([], [incoming("1"), later], WINDOW);

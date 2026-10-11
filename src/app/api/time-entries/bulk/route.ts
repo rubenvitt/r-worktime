@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
+import { withUserAbsenceLock } from "@/lib/absences/lock";
+import { suppressAbsenceDays } from "@/lib/absences/suppress";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
@@ -100,8 +102,22 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Perform the bulk delete
-    const deleteResult = await prisma.timeEntry.deleteMany({ where });
+    // Perform the bulk delete. Tage von Timewarp-Abwesenheiten werden als
+    // unterdrückt vermerkt, damit der Kalender-Abgleich sie nicht neu anlegt.
+    const userId = session.user.id;
+    const deleteResult = await prisma.$transaction(
+      async (tx) => {
+        await withUserAbsenceLock(tx, userId);
+        const linked = await tx.timeEntry.findMany({
+          where: { ...where, absenceId: { not: null } },
+          select: { absenceId: true, date: true },
+        });
+        const result = await tx.timeEntry.deleteMany({ where });
+        await suppressAbsenceDays(tx, userId, linked);
+        return result;
+      },
+      { maxWait: 10_000, timeout: 60_000 },
+    );
     deleteCount = deleteResult.count;
 
     // Invalidiere Overtime Cache nach Bulk Delete

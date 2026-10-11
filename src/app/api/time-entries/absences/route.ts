@@ -104,51 +104,56 @@ export async function POST(request: NextRequest) {
       plan = await planWith(prisma);
     } else {
       const trimmedNote = note?.trim() || null;
-      plan = await prisma.$transaction(async (tx) => {
-        // Je Nutzer serialisieren (Doppelklick, zwei Tabs): ohne Sperre legen
-        // zwei Requests dieselben Tage doppelt an. Dieselbe Sperre nutzen
-        // DELETE /api/absences/[id] und der Timewarp-Abgleich.
-        await withUserAbsenceLock(tx, userId);
-        const txPlan = await planWith(tx);
-        const absenceData = manualAbsenceFor(
-          type,
-          { from, to, halfDay },
-          txPlan.days.length,
-        );
-        const absence = absenceData
-          ? await tx.absence.create({
-              data: {
+      // Längere Wartezeit als die Standard-5-s: ein laufender Kalender-Abgleich
+      // hält dieselbe Sperre auch während seiner Timing-Aufrufe
+      plan = await prisma.$transaction(
+        async (tx) => {
+          // Je Nutzer serialisieren (Doppelklick, zwei Tabs): ohne Sperre legen
+          // zwei Requests dieselben Tage doppelt an. Dieselbe Sperre nutzen
+          // DELETE /api/absences/[id] und der Timewarp-Abgleich.
+          await withUserAbsenceLock(tx, userId);
+          const txPlan = await planWith(tx);
+          const absenceData = manualAbsenceFor(
+            type,
+            { from, to, halfDay },
+            txPlan.days.length,
+          );
+          const absence = absenceData
+            ? await tx.absence.create({
+                data: {
+                  userId,
+                  source: absenceData.source,
+                  kind: absenceData.kind,
+                  startDate: berlinDayStart(absenceData.startDate),
+                  endDate: berlinDayStart(absenceData.endDate),
+                  halfDay: absenceData.halfDay,
+                  status: absenceData.status,
+                },
+                select: { id: true },
+              })
+            : null;
+          if (txPlan.days.length > 0) {
+            await tx.timeEntry.createMany({
+              data: txPlan.days.map((day) => ({
                 userId,
-                source: absenceData.source,
-                kind: absenceData.kind,
-                startDate: berlinDayStart(absenceData.startDate),
-                endDate: berlinDayStart(absenceData.endDate),
-                halfDay: absenceData.halfDay,
-                status: absenceData.status,
-              },
-              select: { id: true },
-            })
-          : null;
-        if (txPlan.days.length > 0) {
-          await tx.timeEntry.createMany({
-            data: txPlan.days.map((day) => ({
-              userId,
-              date: berlinDayStart(day.date),
-              startTime: day.startTime,
-              endTime: day.endTime,
-              duration: day.hours,
-              type,
-              title: ABSENCE_TITLE[type],
-              notes: trimmedNote,
-              description: absenceDescription(type, trimmedNote),
-              source: EntrySource.MANUAL,
-              absenceId: absence?.id ?? null,
-            })),
-          });
-        }
-        absenceId = absence?.id ?? null;
-        return txPlan;
-      });
+                date: berlinDayStart(day.date),
+                startTime: day.startTime,
+                endTime: day.endTime,
+                duration: day.hours,
+                type,
+                title: ABSENCE_TITLE[type],
+                notes: trimmedNote,
+                description: absenceDescription(type, trimmedNote),
+                source: EntrySource.MANUAL,
+                absenceId: absence?.id ?? null,
+              })),
+            });
+          }
+          absenceId = absence?.id ?? null;
+          return txPlan;
+        },
+        { maxWait: 10_000, timeout: 60_000 },
+      );
       if (plan.days.length > 0) overtimeService.invalidateCache(userId);
     }
 

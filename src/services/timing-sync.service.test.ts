@@ -12,6 +12,7 @@ const { prismaMock, txMock, invalidateCache } = vi.hoisted(() => {
       update: vi.fn(),
       createMany: vi.fn(),
     },
+    absence: { findMany: vi.fn(), update: vi.fn() },
   };
   const prismaMock = {
     timingIntegration: { findUnique: vi.fn(), update: vi.fn() },
@@ -274,6 +275,44 @@ describe("syncTimingForUser", () => {
     );
     await first;
     expect(isSyncRunning("user-1")).toBe(false);
+  });
+
+  it("vermerkt in Timing gelöschte Tage einer Timewarp-Abwesenheit als unterdrückt", async () => {
+    txMock.timeEntry.findMany.mockResolvedValue([
+      {
+        id: "db-vacation",
+        externalId: "/time-entries/vac",
+        source: "TIMING_SYNC",
+        date: new Date("2026-03-10T00:00:00.000Z"),
+        startTime: new Date("2026-03-10T07:00:00.000Z"),
+        endTime: new Date("2026-03-10T15:00:00.000Z"),
+        duration: new Prisma.Decimal(8),
+        type: "VACATION",
+        description: "Urlaub",
+        title: "Urlaub",
+        notes: null,
+        projectPath: "Work ▸ INNOQ ▸ Urlaub",
+        billingStatus: null,
+        absenceId: "abs-1",
+      },
+    ]);
+    txMock.absence.findMany.mockResolvedValue([
+      { id: "abs-1", suppressedDates: [] },
+    ]);
+
+    await syncTimingForUser("user-1", {
+      trigger: "manual",
+      fetchImpl: fetchReturning([]),
+      now: NOW,
+    });
+
+    expect(txMock.timeEntry.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", id: { in: ["db-vacation"] } },
+    });
+    expect(txMock.absence.update).toHaveBeenCalledWith({
+      where: { id: "abs-1" },
+      data: { suppressedDates: ["2026-03-10"] },
+    });
   });
 
   it("meldet fehlende Konfiguration", async () => {

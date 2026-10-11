@@ -3,6 +3,7 @@ import {
   type Prisma,
   type TimingIntegration,
 } from "@prisma/client";
+import { suppressAbsenceDays } from "@/lib/absences/suppress";
 import { decryptSecret } from "@/lib/crypto";
 import {
   berlinDayStart,
@@ -218,10 +219,24 @@ async function runSync(
           notes: true,
           projectPath: true,
           billingStatus: true,
+          absenceId: true,
         },
       });
 
-      const result = planSync(rows.map(toExistingEntry), entries, range);
+      const result = planSync(
+        rows.map(({ absenceId: _absenceId, ...row }) => toExistingEntry(row)),
+        entries,
+        range,
+      );
+
+      // In Timing gelöschte Tage einer Timewarp-Abwesenheit: als unterdrückt
+      // vermerken, sonst legt der Kalender-Abgleich sie neu an
+      const deletedIds = new Set(result.delete);
+      await suppressAbsenceDays(
+        tx,
+        userId,
+        rows.filter((row) => deletedIds.has(row.id) && row.absenceId),
+      );
 
       const idsToDelete = [...result.delete, ...result.replaceFileImports];
       if (idsToDelete.length > 0) {

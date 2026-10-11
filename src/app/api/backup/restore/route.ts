@@ -216,6 +216,7 @@ export async function POST(request: NextRequest) {
             lastSeenAt: absence.lastSeenAt
               ? new Date(absence.lastSeenAt)
               : null,
+            suppressedDates: absence.suppressedDates,
           };
           const existing = absence.externalUid
             ? await tx.absence.findUnique({

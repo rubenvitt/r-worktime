@@ -183,6 +183,7 @@ describe("absencesFromBackup", () => {
     status: "ACTIVE",
     sequence: 2,
     lastSeenAt: "2026-10-11T08:00:00.000Z",
+    suppressedDates: ["2026-11-03", "kaputt", "2026-11-02", "2026-11-03"],
   };
 
   it("liefert null für Backups ohne Abwesenheiten (älteres Format)", () => {
@@ -217,6 +218,7 @@ describe("absencesFromBackup", () => {
         status: "ACTIVE",
         sequence: 2,
         lastSeenAt: "2026-10-11T08:00:00.000Z",
+        suppressedDates: ["2026-11-02", "2026-11-03"],
       },
       {
         id: "old-2",
@@ -230,6 +232,7 @@ describe("absencesFromBackup", () => {
         status: "ACTIVE",
         sequence: null,
         lastSeenAt: null,
+        suppressedDates: [],
       },
     ]);
   });

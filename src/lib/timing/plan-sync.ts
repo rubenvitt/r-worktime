@@ -31,6 +31,11 @@ export interface SyncPlan {
   replaceFileImports: string[];
   /** Eingehende IDs, die schon an einem geschützten Eintrag hängen */
   conflicts: string[];
+  /**
+   * Eingehende IDs, die an einem vom Timewarp-Abgleich angelegten Eintrag
+   * hängen: verknüpft, weder Update noch Konflikt noch Löschen
+   */
+  linked: string[];
 }
 
 const SYNC_OWNED: ReadonlySet<EntrySource> = new Set<EntrySource>([
@@ -75,6 +80,7 @@ export function planSync(
     delete: [],
     replaceFileImports: [],
     conflicts: [],
+    linked: [],
   };
 
   // Doppelte IDs: der letzte gewinnt
@@ -93,6 +99,9 @@ export function planSync(
     const match = existingById.get(externalId);
     if (!match) {
       plan.create.push(data);
+    } else if (match.source === "TIMEWARP") {
+      // Den Eintrag verwaltet der Timewarp-Abgleich
+      plan.linked.push(externalId);
     } else if (!SYNC_OWNED.has(match.source)) {
       // Manuelle Einträge, Feiertage, Bulk-Fill, Saldo nie anfassen
       plan.conflicts.push(externalId);
@@ -108,6 +117,8 @@ export function planSync(
     if (inWindow(data.dateKey, window)) syncedDates.add(data.dateKey);
   }
 
+  // TIMEWARP-Einträge, die Timing nicht mehr liefert, löscht nur der
+  // Timewarp-Abgleich – hier fallen sie durch (weder TIMING_SYNC noch FILE_IMPORT).
   for (const entry of existing) {
     if (touchedIds.has(entry.id) || !inWindow(entry.dateKey, window)) continue;
 

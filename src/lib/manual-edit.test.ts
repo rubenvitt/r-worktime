@@ -69,6 +69,22 @@ describe("manualEditOverrides", () => {
     ).toEqual({});
   });
 
+  it("macht geänderte Timewarp-Einträge zu MANUAL und entkoppelt sie, mit oder ohne Timing-ID", () => {
+    for (const externalId of ["/time-entries/9", null]) {
+      expect(
+        manualEditOverrides(
+          existing({ source: "TIMEWARP", externalId, type: "VACATION" }),
+          edit({ type: "WORK", duration: 2 }),
+        ),
+      ).toEqual({ source: "MANUAL", absenceId: null });
+    }
+  });
+
+  it("lässt Timewarp-Einträge beim Speichern ohne Änderung verknüpft", () => {
+    const entry = existing({ source: "TIMEWARP" });
+    expect(manualEditOverrides(entry, edit())).toEqual({});
+  });
+
   it("fasst die Quelle anderer Einträge nicht an", () => {
     for (const source of ["MANUAL", "BULK_FILL", "HOLIDAY"] as EntrySource[]) {
       expect(
