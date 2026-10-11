@@ -59,7 +59,9 @@ describe("filterTimesheetEntries", () => {
     const overtime = entry({ type: "OVERTIME" });
     const vacation = entry({ type: "VACATION" });
     const holiday = entry({ type: "HOLIDAY", source: "HOLIDAY" });
-    const all = [work, overtime, vacation, holiday];
+    const reduction = entry({ type: "OVERTIME_REDUCTION", source: "TIMEWARP" });
+    const unpaid = entry({ type: "UNPAID_LEAVE", source: "TIMEWARP" });
+    const all = [work, overtime, vacation, holiday, reduction, unpaid];
     expect(filterTimesheetEntries(all, baseFilter)).toEqual([work, overtime]);
     expect(
       filterTimesheetEntries(all, { ...baseFilter, includeAbsences: true }),

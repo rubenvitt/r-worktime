@@ -23,6 +23,8 @@ const ABSENCE_TYPES: ReadonlySet<string> = new Set([
   "VACATION",
   "SICK",
   "HOLIDAY",
+  "OVERTIME_REDUCTION",
+  "UNPAID_LEAVE",
 ]);
 
 interface DayView {
