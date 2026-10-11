@@ -401,6 +401,8 @@ async function main() {
     },
   });
 
+  await seedAbsences(user.id);
+
   const syncAt = new Date("2026-10-09T06:00:00.000Z");
   await prisma.timingIntegration.create({
     data: {
@@ -442,6 +444,229 @@ async function main() {
   console.table(
     counts.map((c) => ({ source: c.source, type: c.type, n: c._count })),
   );
+}
+
+// ---------- Abwesenheiten (Timewarp und Dialog) ----------
+// Berliner Uhrzeit mit der richtigen Zeitzone: Sommerzeit endet am 25.10.2026
+function berlinWallClock(dateKey, minutesOfDay) {
+  const offsetH = dateKey >= "2026-10-25" && dateKey < "2027-03-28" ? 1 : 2;
+  const d = new Date(`${dateKey}T00:00:00.000Z`);
+  d.setUTCMinutes(minutesOfDay - offsetH * 60);
+  return d;
+}
+
+const ABSENCE_TITLES = {
+  VACATION: "Urlaub",
+  RESIDUAL_VACATION: "Resturlaub",
+  SPECIAL_LEAVE: "Sonderurlaub",
+  OVERTIME_REDUCTION: "Überstundenabbau",
+};
+const ENTRY_TYPE_OF_KIND = {
+  VACATION: "VACATION",
+  RESIDUAL_VACATION: "VACATION",
+  SPECIAL_LEAVE: "VACATION",
+  OVERTIME_REDUCTION: "OVERTIME_REDUCTION",
+};
+
+let timingEntryCounter = 0;
+/** Tage einer Abwesenheit wie der Abgleich: 08:00, ganzer/halber Tag, Mo–Fr */
+function absenceDayRows(userId, absence, { source, withTimingId, note }) {
+  const rows = [];
+  const minutes = absence.halfDay ? 240 : 480;
+  for (let key = absence.from; key <= absence.to; key = addDays(key, 1)) {
+    const wd = weekday(key);
+    if (wd === 0 || wd === 6) continue;
+    const title = ABSENCE_TITLES[absence.kind];
+    rows.push({
+      userId,
+      date: new Date(`${key}T00:00:00.000Z`),
+      startTime: berlinWallClock(key, 8 * 60),
+      endTime: berlinWallClock(key, 8 * 60 + minutes),
+      duration: minutes / 60,
+      type: ENTRY_TYPE_OF_KIND[absence.kind],
+      title,
+      notes: note ?? null,
+      description: note ? `${title} - ${note}` : title,
+      projectPath: withTimingId ? P.vacation : null,
+      source,
+      externalId: withTimingId
+        ? `/time-entries/demo-timewarp-${++timingEntryCounter}`
+        : null,
+      billingStatus: withTimingId ? "not_billable" : null,
+    });
+  }
+  return rows;
+}
+
+async function seedAbsences(userId) {
+  const day = (key) => new Date(`${key}T00:00:00.000Z`);
+  const seenAt = new Date("2026-10-09T06:00:00.000Z");
+  const timewarp = (uid, kind, rawType, from, to, extra = {}) => ({
+    userId,
+    source: "TIMEWARP",
+    externalUid: `${uid}@timewarp.demo`,
+    kind,
+    rawType,
+    startDate: day(from),
+    endDate: day(to),
+    halfDay: false,
+    status: "ACTIVE",
+    sequence: 0,
+    lastSeenAt: seenAt,
+    ...extra,
+  });
+
+  // 1. Vergangener Urlaub aus Timewarp, verknüpft mit dem Timing-Eintrag
+  const past = await prisma.absence.create({
+    data: timewarp("tw-1", "VACATION", "URLAUB", "2026-08-21", "2026-08-21"),
+  });
+  await prisma.timeEntry.updateMany({
+    where: { userId, date: day("2026-08-21"), type: "VACATION" },
+    data: { absenceId: past.id },
+  });
+
+  // 2.–5. Geplant aus Timewarp: Überstundenabbau, Sonderurlaub, Herbsturlaub,
+  // halber Tag Resturlaub
+  const planned = [
+    {
+      data: timewarp(
+        "tw-2",
+        "OVERTIME_REDUCTION",
+        "ÜBERSTUNDENABBAU",
+        "2026-10-16",
+        "2026-10-16",
+      ),
+      withTimingId: false,
+    },
+    {
+      data: timewarp(
+        "tw-3",
+        "SPECIAL_LEAVE",
+        "SONDERURLAUB",
+        "2026-10-23",
+        "2026-10-23",
+      ),
+      withTimingId: true,
+    },
+    {
+      data: timewarp("tw-4", "VACATION", "URLAUB", "2026-11-02", "2026-11-06", {
+        sequence: 1,
+      }),
+      withTimingId: true,
+    },
+    {
+      data: timewarp(
+        "tw-5",
+        "RESIDUAL_VACATION",
+        "RESTURLAUB",
+        "2026-12-23",
+        "2026-12-23",
+        { halfDay: true },
+      ),
+      withTimingId: true,
+    },
+  ];
+  const rows = [];
+  for (const { data, withTimingId } of planned) {
+    const absence = await prisma.absence.create({ data });
+    rows.push(
+      ...absenceDayRows(
+        userId,
+        {
+          kind: data.kind,
+          from: data.startDate.toISOString().slice(0, 10),
+          to: data.endDate.toISOString().slice(0, 10),
+          halfDay: data.halfDay,
+        },
+        { source: "TIMEWARP", withTimingId, note: "Aus Timewarp" },
+      ).map((row) => ({ ...row, absenceId: absence.id })),
+    );
+  }
+
+  // 6. In Timewarp storniert: Abwesenheit bleibt, ohne Einträge
+  await prisma.absence.create({
+    data: timewarp("tw-6", "VACATION", "URLAUB", "2026-11-20", "2026-11-20", {
+      status: "CANCELLED",
+      sequence: 2,
+    }),
+  });
+
+  // 7. Über den Dialog eingetragen (manuell, ohne Timing)
+  const manual = await prisma.absence.create({
+    data: {
+      userId,
+      source: "MANUAL",
+      kind: "VACATION",
+      startDate: day("2026-12-28"),
+      endDate: day("2026-12-30"),
+      status: "ACTIVE",
+    },
+  });
+  rows.push(
+    ...absenceDayRows(
+      userId,
+      {
+        kind: "VACATION",
+        from: "2026-12-28",
+        to: "2026-12-30",
+        halfDay: false,
+      },
+      { source: "MANUAL", withTimingId: false, note: "Zwischen den Jahren" },
+    ).map((row) => ({ ...row, absenceId: manual.id })),
+  );
+
+  await prisma.timeEntry.createMany({ data: rows });
+
+  // Kalender-Integration mit Demo-Feed und einem Abgleichsprotokoll
+  await prisma.calendarIntegration.create({
+    data: {
+      userId,
+      feedUrlEnc: encryptSecret(
+        "https://timewarp.innoq.io/export/demo-token-0000/calendar.ics",
+      ),
+      syncEnabled: true,
+      writeToTiming: true,
+      timingProjectId: "/projects/demo-urlaub",
+      lastSyncAt: seenAt,
+      lastSyncStatus: "SUCCESS",
+      lastSyncError: null,
+      lastSyncStats: { absences: 6, events: 21, unknownTypes: 0 },
+    },
+  });
+  await prisma.absenceSyncLog.create({
+    data: {
+      userId,
+      startedAt: seenAt,
+      finishedAt: new Date(seenAt.getTime() + 2300),
+      status: "SUCCESS",
+      actions: [
+        {
+          date: "2026-08-21",
+          kind: "VACATION",
+          action: "linked",
+          detail: null,
+        },
+        {
+          date: "2026-10-16",
+          kind: "OVERTIME_REDUCTION",
+          action: "created",
+          detail: null,
+        },
+        {
+          date: "2026-10-23",
+          kind: "SPECIAL_LEAVE",
+          action: "timingCreated",
+          detail: null,
+        },
+        {
+          date: "2026-11-20",
+          kind: "VACATION",
+          action: "deleted",
+          detail: "In Timewarp storniert",
+        },
+      ],
+    },
+  });
 }
 
 main()
