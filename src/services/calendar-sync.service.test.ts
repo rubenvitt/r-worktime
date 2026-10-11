@@ -664,6 +664,7 @@ describe("syncCalendarForUser – fremde Timing-Einträge und Sperre", () => {
     expect(result.stats).toMatchObject({ timingCreated: 2, deleted: 1 });
     expect(result.actions.at(-1)).toMatchObject({
       date: "2026-12-22",
+      kind: "VACATION",
       action: "deleted",
     });
     // Am 22. nur der Dialog-Eintrag, in Timing nichts

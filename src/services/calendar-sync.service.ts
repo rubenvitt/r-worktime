@@ -601,8 +601,14 @@ type TimingOutcome =
   /** In Timing belegt, aber nicht nutzbar: nur lokal eintragen */
   | { type: "occupied" }
   /** In Timing neu angelegt */
-  | { type: "created"; entry: TimingApiTimeEntry }
+  | { type: "created"; entry: TimingApiTimeEntry; create: PlannedCreate }
   | { type: "failed"; detail: string };
+
+/** In Timing angelegt, aber vom frischen Plan nicht mehr gebraucht */
+interface Orphan {
+  entry: TimingApiTimeEntry;
+  create: PlannedCreate;
+}
 
 interface TimingWork {
   /** Lokale Eintrags-IDs, deren Timing-Eintrag gelöscht ist (auch 404) */
@@ -757,7 +763,7 @@ async function runTimingCalls(
         notes: TIMEWARP_NOTE,
         billingStatus: "not_billable",
       });
-      work.outcomes.set(key, { type: "created", entry: created });
+      work.outcomes.set(key, { type: "created", entry: created, create });
     } catch (error) {
       work.outcomes.set(key, {
         type: "failed",
@@ -779,7 +785,7 @@ async function applyDays(
   holidays: Holidays,
   schedule: { workDays: number[]; dailyHours: number },
   work: TimingWork,
-): Promise<TimingApiTimeEntry[]> {
+): Promise<Orphan[]> {
   const { userId, timing } = ctx;
   await withUserAbsenceLock(tx, userId);
 
@@ -967,10 +973,10 @@ async function applyDays(
     );
   }
 
-  const orphans: TimingApiTimeEntry[] = [];
+  const orphans: Orphan[] = [];
   for (const [key, outcome] of work.outcomes) {
     if (outcome.type === "created" && !consumed.has(key)) {
-      orphans.push(outcome.entry);
+      orphans.push({ entry: outcome.entry, create: outcome.create });
     }
   }
   return orphans;
@@ -983,13 +989,12 @@ async function applyDays(
  */
 async function removeOrphans(
   ctx: RunContext,
-  orphans: readonly TimingApiTimeEntry[],
+  orphans: readonly Orphan[],
 ): Promise<void> {
   const client = ctx.timing.client;
   if (!client) return;
-  for (const entry of orphans) {
-    const date = berlinDateKey(new Date(entry.start_date));
-    const kind = entry.title?.trim() || "Timing";
+  for (const { entry, create } of orphans) {
+    const { date, kind } = create;
     try {
       await client.deleteTimeEntry(entry.self);
       addAction(
