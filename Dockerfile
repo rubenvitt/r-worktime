@@ -42,8 +42,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Install pnpm and prisma CLI for migrations
-RUN npm install -g pnpm prisma
+# Migrationen laufen über das projekteigene Prisma-CLI aus node_modules (Version aus dem
+# Lockfile). Ein global installiertes, ungepinntes `prisma` zog 2026-10 eine 8er-RC, in der
+# `migrate` anders heißt — der Container hing in einer Restart-Schleife.
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -72,5 +73,10 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+
+# Gesund heißt: Server antwortet und die DB ist erreichbar (/api/health prüft SELECT 1).
+# Der deploy-agent des Servers wartet nach dem Ausrollen auf `healthy`.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
