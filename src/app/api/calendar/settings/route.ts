@@ -14,7 +14,10 @@ import {
   summarizeFeed,
   TimewarpParseError,
 } from "@/lib/calendar/timewarp";
-import type { CalendarFeedTest } from "@/lib/calendar/types";
+import type {
+  CalendarFeedTest,
+  CalendarSettingsSaveResponse,
+} from "@/lib/calendar/types";
 import { EncryptionKeyError, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { strictRateLimit } from "@/lib/rate-limit";
@@ -143,8 +146,9 @@ export async function PUT(request: NextRequest) {
     timingConnected(userId),
   ]);
 
-  return NextResponse.json({
+  const response: CalendarSettingsSaveResponse = {
     settings: toPublicCalendarSettings(integration, connected),
     ...(test && { test }),
-  });
+  };
+  return NextResponse.json(response);
 }

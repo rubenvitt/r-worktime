@@ -3,13 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invalidateEntryDependentQueries } from "@/components/app/query-invalidation";
 import type {
-  CalendarSettings,
   CalendarSettingsInput,
   CalendarSettingsSaveResponse,
-  CalendarSyncLog,
+  CalendarSyncLogEntry,
   CalendarSyncResult,
-  TimingProjectOption,
-} from "./api-types";
+  CalendarTimingProject,
+  PublicCalendarSettings,
+} from "@/lib/calendar/types";
 
 export const CALENDAR_KEYS = {
   all: ["calendar"] as const,
@@ -35,22 +35,14 @@ export function isConflict(error: unknown): boolean {
   return error instanceof CalendarApiError && error.status === 409;
 }
 
-/**
- * Einziger Abruf der Kalender-Routen: JSON wie vereinbart, Fehler als
- * `{error}`. Liefert eine Route doch die Hülle `{success, data}` wie die
- * Timing-Routen, wird sie hier ausgepackt.
- */
+/** Einziger Abruf der Kalender-Routen: JSON ohne Hülle, Fehler als `{error}`. */
 async function calendarRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: init?.body ? { "Content-Type": "application/json" } : undefined,
   });
   const body: unknown = await response.json().catch(() => null);
-  const envelope =
-    body && typeof body === "object" && "success" in body
-      ? (body as { success: unknown; data?: unknown; error?: unknown })
-      : null;
-  if (!response.ok || envelope?.success === false) {
+  if (!response.ok) {
     const error =
       body && typeof body === "object" && "error" in body
         ? (body as { error: unknown }).error
@@ -62,13 +54,14 @@ async function calendarRequest<T>(url: string, init?: RequestInit): Promise<T> {
       response.status,
     );
   }
-  return (envelope ? envelope.data : body) as T;
+  return body as T;
 }
 
 export function useCalendarSettings(options: { quiet?: boolean } = {}) {
   return useQuery({
     queryKey: CALENDAR_KEYS.settings,
-    queryFn: () => calendarRequest<CalendarSettings>("/api/calendar/settings"),
+    queryFn: () =>
+      calendarRequest<PublicCalendarSettings>("/api/calendar/settings"),
     // Im Bericht nur ein Hinweis: nicht wiederholen, Fehler still schlucken
     retry: options.quiet ? false : undefined,
   });
@@ -92,7 +85,9 @@ export function useCalendarLogs(limit = CALENDAR_LOG_LIMIT) {
   return useQuery({
     queryKey: CALENDAR_KEYS.logs(limit),
     queryFn: () =>
-      calendarRequest<CalendarSyncLog[]>(`/api/calendar/logs?limit=${limit}`),
+      calendarRequest<CalendarSyncLogEntry[]>(
+        `/api/calendar/logs?limit=${limit}`,
+      ),
   });
 }
 
@@ -105,7 +100,7 @@ export function useTimingProjects(enabled: boolean) {
     queryKey: CALENDAR_KEYS.timingProjects,
     queryFn: async () => {
       try {
-        return await calendarRequest<TimingProjectOption[]>(
+        return await calendarRequest<CalendarTimingProject[]>(
           "/api/calendar/timing-projects",
         );
       } catch (error) {

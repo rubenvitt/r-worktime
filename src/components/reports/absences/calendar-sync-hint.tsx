@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { CalendarSettings } from "@/components/calendar/api-types";
 import { useCalendarSettings } from "@/components/calendar/use-calendar";
+import type { PublicCalendarSettings } from "@/lib/calendar/types";
 import { formatRelative, formatTimestamp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +15,7 @@ const linkClass =
 export function CalendarSyncHintText({
   settings,
 }: {
-  settings: CalendarSettings;
+  settings: PublicCalendarSettings;
 }) {
   if (!settings.configured) {
     return (

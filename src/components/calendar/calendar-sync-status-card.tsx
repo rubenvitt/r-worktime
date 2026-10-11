@@ -7,8 +7,8 @@ import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import type { PublicCalendarSettings } from "@/lib/calendar/types";
 import { formatRelative, formatTimestamp } from "@/lib/format";
-import type { CalendarSettings } from "./api-types";
 import {
   CALENDAR_SYNC_STATE_LABEL,
   CALENDAR_SYNC_STATE_TONE,
@@ -48,7 +48,7 @@ function CalendarSyncNowButton({
   settings,
   sync,
 }: {
-  settings: CalendarSettings;
+  settings: PublicCalendarSettings;
   sync: RunCalendarSync;
 }) {
   return (
@@ -73,7 +73,7 @@ export function CalendarSyncStatusCard({
   sync,
   onConfigure,
 }: {
-  settings: CalendarSettings;
+  settings: PublicCalendarSettings;
   sync: RunCalendarSync;
   /** Ohne Feed: springt zum Eingabefeld */
   onConfigure?: () => void;

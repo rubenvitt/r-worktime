@@ -3,15 +3,16 @@
 
 import type { Tone } from "@/components/app/status-badge";
 import { isAbsenceKind, KIND_LABELS } from "@/lib/absences/kinds";
+import {
+  CALENDAR_SYNC_STATUS_ERROR,
+  type CalendarFeedTest,
+  type CalendarSyncAction,
+  type CalendarSyncActionType,
+  type CalendarTimingProject,
+  type PublicCalendarSettings,
+} from "@/lib/calendar/types";
 import { isDateKey } from "@/lib/dates";
 import { formatDateShort, plural } from "@/lib/format";
-import type {
-  CalendarFeedTest,
-  CalendarSettings,
-  CalendarSyncAction,
-  CalendarSyncActionType,
-  TimingProjectOption,
-} from "./api-types";
 
 /** Aktion als ganzer Satzteil für die Zeile im Protokoll */
 export const ACTION_LABELS: Record<CalendarSyncActionType, string> = {
@@ -84,16 +85,11 @@ export function summarizeActions(
   return [...known, ...unknown].join(" · ");
 }
 
-/** Aktionen chronologisch, Aktionen ohne Datum zuletzt */
+/** Aktionen chronologisch (stabil: gleiche Tage in Protokollreihenfolge) */
 export function sortActions(
   actions: readonly CalendarSyncAction[],
 ): CalendarSyncAction[] {
-  return [...actions].sort((a, b) => {
-    if (a.date === b.date) return 0;
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    return a.date.localeCompare(b.date);
-  });
+  return [...actions].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** Testabruf als Satz: „3 Abwesenheiten (1 storniert), 21 Events, 0 unbekannte Typen“ */
@@ -117,8 +113,8 @@ export function maskedFeedUrl(feedHost: string | null): string {
 
 /** Vorschlag fürs Urlaubsprojekt: erstes Projekt mit „Urlaub“ im Pfad */
 export function suggestVacationProject(
-  projects: readonly TimingProjectOption[],
-): TimingProjectOption | null {
+  projects: readonly CalendarTimingProject[],
+): CalendarTimingProject | null {
   return (
     projects.find((project) => /urlaub/i.test(project.path.normalize("NFC"))) ??
     null
@@ -136,13 +132,13 @@ export type CalendarSyncState =
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export function deriveCalendarSyncState(
-  settings: CalendarSettings | undefined,
+  settings: PublicCalendarSettings | undefined,
   running: boolean,
   now: Date = new Date(),
 ): CalendarSyncState {
   if (!settings?.configured) return "not-configured";
   if (running) return "running";
-  if (settings.lastSyncStatus === "error") return "failed";
+  if (settings.lastSyncStatus === CALENDAR_SYNC_STATUS_ERROR) return "failed";
   if (!settings.lastSyncAt) return "never";
   if (now.getTime() - new Date(settings.lastSyncAt).getTime() > STALE_AFTER_MS)
     return "stale";

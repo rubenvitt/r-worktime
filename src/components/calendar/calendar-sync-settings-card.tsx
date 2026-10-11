@@ -22,7 +22,10 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import type { CalendarSettings, TimingProjectOption } from "./api-types";
+import type {
+  CalendarTimingProject,
+  PublicCalendarSettings,
+} from "@/lib/calendar/types";
 import { suggestVacationProject } from "./calendar-format";
 import { useSaveCalendarSettings, useTimingProjects } from "./use-calendar";
 
@@ -32,7 +35,7 @@ const NO_PROJECT = "none";
 export function CalendarSyncSettingsCard({
   settings,
 }: {
-  settings: CalendarSettings;
+  settings: PublicCalendarSettings;
 }) {
   const save = useSaveCalendarSettings();
   const projects = useTimingProjects(settings.timingConnected);
@@ -43,7 +46,7 @@ export function CalendarSyncSettingsCard({
   const [writeToTiming, setWriteToTiming] = useState(settings.writeToTiming);
   const [syncEnabled, setSyncEnabled] = useState(settings.syncEnabled);
 
-  const projectList: TimingProjectOption[] = projects.data ?? [];
+  const projectList: CalendarTimingProject[] = projects.data ?? [];
   const suggestion =
     settings.timingProjectId === null
       ? suggestVacationProject(projectList)

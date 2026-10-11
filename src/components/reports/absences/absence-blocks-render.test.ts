@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { CalendarSettings } from "@/components/calendar/api-types";
 import type { AbsenceBlock } from "@/lib/absences/blocks";
+import type { PublicCalendarSettings } from "@/lib/calendar/types";
 import { formatBlockDays, formatBlockPeriod } from "./absence-blocks-format";
 import { AbsenceBlocksList } from "./absence-blocks-list";
 import { CalendarSyncHintText } from "./calendar-sync-hint";
@@ -103,7 +103,7 @@ describe("AbsenceBlocksList", () => {
 });
 
 describe("CalendarSyncHintText", () => {
-  const settings: CalendarSettings = {
+  const settings: PublicCalendarSettings = {
     configured: true,
     feedHost: "timewarp.innoq.io",
     syncEnabled: true,

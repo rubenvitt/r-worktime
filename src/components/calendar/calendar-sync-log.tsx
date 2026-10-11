@@ -6,8 +6,8 @@ import { ErrorState } from "@/components/app/error-state";
 import { Panel, PanelHeader } from "@/components/app/panel";
 import { SkeletonRows } from "@/components/app/skeletons";
 import { StatusBadge } from "@/components/app/status-badge";
+import type { CalendarSyncLogEntry } from "@/lib/calendar/types";
 import { formatRelative, formatTimestamp, plural } from "@/lib/format";
-import type { CalendarSyncLog } from "./api-types";
 import {
   actionLabel,
   actionTone,
@@ -18,7 +18,7 @@ import {
 } from "./calendar-format";
 import { CALENDAR_LOG_LIMIT, useCalendarLogs } from "./use-calendar";
 
-function RunEntry({ log }: { log: CalendarSyncLog }) {
+function RunEntry({ log }: { log: CalendarSyncLogEntry }) {
   const failed = log.status === "error";
   const summary = summarizeActions(log.actions);
   const actions = sortActions(log.actions);
@@ -104,7 +104,11 @@ function RunEntry({ log }: { log: CalendarSyncLog }) {
 }
 
 /** Läufe mit ihren Aktionen, neueste zuerst; je Lauf aufklappbar. */
-export function CalendarSyncLogList({ logs }: { logs: CalendarSyncLog[] }) {
+export function CalendarSyncLogList({
+  logs,
+}: {
+  logs: CalendarSyncLogEntry[];
+}) {
   if (logs.length === 0) {
     return (
       <EmptyState
