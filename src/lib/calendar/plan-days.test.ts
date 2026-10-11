@@ -198,11 +198,32 @@ describe("planDays – verknüpfen", () => {
       }),
     );
     expect(plan.link).toEqual([]);
-    expect(dates(plan.create)).toEqual([
-      "2026-12-21",
-      "2026-12-22",
-      "2026-12-23",
-    ]);
+    // 23.: von einer anderen Abwesenheit belegt – kein zweiter Eintrag
+    expect(dates(plan.create)).toEqual(["2026-12-21", "2026-12-22"]);
+  });
+
+  it("legt an Tagen nichts an, die eine andere Abwesenheit (Dialog) oder Krankheit belegt", () => {
+    const plan = planDays(
+      input({
+        entries: [
+          // Dialog „Abwesenheit eintragen“: MANUAL mit eigener Abwesenheit
+          entry({
+            date: "2026-12-21",
+            source: "MANUAL",
+            absenceId: "manual-abs",
+            externalId: null,
+          }),
+          entry({
+            date: "2026-12-22",
+            type: "SICK",
+            source: "TIMING_SYNC",
+            absenceId: null,
+          }),
+        ],
+      }),
+    );
+    expect(plan.link).toEqual([]);
+    expect(dates(plan.create)).toEqual(["2026-12-23"]);
   });
 
   it("verknüpft Überstundenabbau nur mit Überstundenabbau", () => {

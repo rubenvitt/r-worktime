@@ -1,5 +1,5 @@
-import type { EntryType } from "@prisma/client";
-import { berlinDateKey } from "@/lib/dates";
+import { EntrySource, type EntryType } from "@prisma/client";
+import { berlinDateKey, berlinDayStart } from "@/lib/dates";
 import { detectEntryType } from "@/lib/schemas/timing-import";
 import type { TimingApiTimeEntry } from "./client";
 import { joinTitleChain, matchesProjectRoot } from "./project-path";
@@ -108,4 +108,23 @@ export function filterAndMapEntries(
     }
   }
   return { entries: kept, stats };
+}
+
+/** Felder des lokalen Eintrags, wie der Timing-Sync sie schreibt (ohne userId). */
+export function toSyncEntryRow(entry: SyncEntryData) {
+  return {
+    date: berlinDayStart(entry.dateKey),
+    startTime: entry.startTime,
+    endTime: entry.endTime,
+    duration: entry.duration,
+    type: entry.type,
+    description: entry.description,
+    title: entry.title,
+    notes: entry.notes,
+    projectPath: entry.projectPath,
+    externalId: entry.externalId,
+    billingStatus: entry.billingStatus,
+    source: EntrySource.TIMING_SYNC,
+    importLogId: null,
+  };
 }

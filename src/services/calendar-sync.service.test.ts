@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // In-Memory-Datenbank mit den Abfrageformen, die der Abgleich nutzt.
 // Transaktionen arbeiten auf einer Kopie und verwerfen sie bei einem Fehler
 // (wie Postgres), damit „Wiederholung ohne Duplikat“ echt geprüft wird.
-const { db, prismaMock, invalidateCache, failNextEntryCreate } = vi.hoisted(
-  () => {
+const { db, prismaMock, invalidateCache, failNextEntryCreate, txState } =
+  vi.hoisted(() => {
     process.env.TIMING_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString(
       "base64",
     );
@@ -18,6 +18,8 @@ const { db, prismaMock, invalidateCache, failNextEntryCreate } = vi.hoisted(
       nextId: 1,
     };
     const failNextEntryCreate = { value: false };
+    /** Läuft gerade eine Transaktion (= wird die Abwesenheits-Sperre gehalten)? */
+    const txState = { active: false };
 
     const isPlainObject = (v: unknown): v is Record<string, unknown> =>
       typeof v === "object" &&
@@ -189,18 +191,23 @@ const { db, prismaMock, invalidateCache, failNextEntryCreate } = vi.hoisted(
       timingIntegration: {
         findUnique: vi.fn(async () => db.timingIntegration),
       },
+      absence,
+      timeEntry,
       absenceSyncLog,
       $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => {
         const snapshot = structuredClone({
           absences: db.absences,
           entries: db.entries,
         });
+        txState.active = true;
         try {
           return await fn(tx);
         } catch (error) {
           db.absences = snapshot.absences;
           db.entries = snapshot.entries;
           throw error;
+        } finally {
+          txState.active = false;
         }
       }),
     };
@@ -209,9 +216,9 @@ const { db, prismaMock, invalidateCache, failNextEntryCreate } = vi.hoisted(
       prismaMock,
       invalidateCache: vi.fn(),
       failNextEntryCreate,
+      txState,
     };
-  },
-);
+  });
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/services/overtime.service", () => ({
@@ -302,6 +309,16 @@ function feedFetch(body: string, status = 200) {
   ) as unknown as typeof fetch;
 }
 
+/** Timing-Aufrufe unter der Sperre wären ein Fehler (Dialog müsste warten) */
+const timingCalls = { total: 0, inTransaction: 0 };
+function assertNoTransaction() {
+  timingCalls.total++;
+  if (txState.active) {
+    timingCalls.inTransaction++;
+    throw new Error("Timing-Aufruf während einer Transaktion");
+  }
+}
+
 /** Timing als In-Memory-Fake */
 function fakeTiming() {
   const entries: TimingApiTimeEntry[] = [];
@@ -313,13 +330,15 @@ function fakeTiming() {
   } = {
     entries,
     failCreates,
-    listTimeEntries: vi.fn(async (range) =>
-      entries.filter((e) => {
+    listTimeEntries: vi.fn(async (range) => {
+      assertNoTransaction();
+      return entries.filter((e) => {
         const key = e.start_date.slice(0, 10);
         return key >= range.from && key <= range.to;
-      }),
-    ),
+      });
+    }),
     createTimeEntry: vi.fn(async (input) => {
+      assertNoTransaction();
       if (failCreates.count > 0) {
         failCreates.count--;
         throw new TimingApiError(
@@ -345,6 +364,7 @@ function fakeTiming() {
       return entry;
     }),
     deleteTimeEntry: vi.fn(async (self) => {
+      assertNoTransaction();
       const index = entries.findIndex((e) => e.self === self);
       if (index >= 0) entries.splice(index, 1);
     }),
@@ -376,6 +396,9 @@ beforeEach(() => {
   db.logs = [];
   db.nextId = 1;
   failNextEntryCreate.value = false;
+  txState.active = false;
+  timingCalls.total = 0;
+  timingCalls.inTransaction = 0;
   db.integration = {
     id: "cal-1",
     userId: USER,
@@ -461,8 +484,8 @@ describe("syncCalendarForUser – Grundlauf", () => {
     });
     expect((db.integration?.lastSyncAt as Date) instanceof Date).toBe(true);
     expect(invalidateCache).toHaveBeenCalledWith(USER);
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-    // Sperre als erstes in der Transaktion
+    // Zwei kurze Transaktionen (Abwesenheiten, Tage), Timing dazwischen
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
     expect(isCalendarSyncRunning(USER)).toBe(false);
   });
 
@@ -503,7 +526,7 @@ describe("syncCalendarForUser – Grundlauf", () => {
     expect(timing.entries).toHaveLength(2);
   });
 
-  it("übernimmt einen vorhandenen Eintrag im Timing-Projekt statt ihn doppelt anzulegen", async () => {
+  it("verknüpft einen fremden Urlaubseintrag in Timing nur (wie der Timing-Sync), statt ihn doppelt anzulegen", async () => {
     const timing = fakeTiming();
     timing.entries.push({
       self: "/time-entries/77",
@@ -513,6 +536,40 @@ describe("syncCalendarForUser – Grundlauf", () => {
       project: { self: PROJECT, title_chain: ["Work", "INNOQ", "Urlaub"] },
       title: "Weihnachtsurlaub",
       notes: null,
+      billing_status: "not_billable",
+      is_running: false,
+    });
+    const result = await run(feed(VACATION), timing);
+
+    expect(result.actions[0]).toMatchObject({
+      date: "2026-12-21",
+      action: "linked",
+    });
+    expect(result.stats).toMatchObject({ linked: 1, timingCreated: 2 });
+    expect(timing.entries).toHaveLength(3);
+    expect(
+      db.entries.find((e) => e.externalId === "/time-entries/77"),
+    ).toMatchObject({
+      source: "TIMING_SYNC",
+      type: "VACATION",
+      absenceId: db.absences[0].id,
+      title: "Weihnachtsurlaub",
+      description: "Weihnachtsurlaub",
+      projectPath: "Work ▸ INNOQ ▸ Urlaub",
+      duration: 8,
+    });
+  });
+
+  it("übernimmt einen eigenen Timing-Eintrag (Notiz „Aus Timewarp“) als TIMEWARP", async () => {
+    const timing = fakeTiming();
+    timing.entries.push({
+      self: "/time-entries/78",
+      start_date: "2026-12-21T07:00:00.000Z",
+      end_date: "2026-12-21T15:00:00.000Z",
+      duration: 28_800,
+      project: { self: PROJECT, title_chain: ["Work", "INNOQ", "Urlaub"] },
+      title: "Urlaub",
+      notes: "Aus Timewarp",
       is_running: false,
     });
     const result = await run(feed(VACATION), timing);
@@ -521,13 +578,107 @@ describe("syncCalendarForUser – Grundlauf", () => {
       date: "2026-12-21",
       action: "timingAdopted",
     });
-    expect(timing.entries).toHaveLength(3);
     expect(
-      timewarpEntries().find((e) => e.externalId === "/time-entries/77"),
-    ).toMatchObject({
-      title: "Weihnachtsurlaub",
-      description: "Weihnachtsurlaub",
+      db.entries.find((e) => e.externalId === "/time-entries/78"),
+    ).toMatchObject({ source: "TIMEWARP", absenceId: db.absences[0].id });
+    expect(timing.entries).toHaveLength(3);
+  });
+});
+
+describe("syncCalendarForUser – fremde Timing-Einträge und Sperre", () => {
+  function foreignVacation(self: string, day: string) {
+    return {
+      self,
+      start_date: `${day}T07:00:00.000Z`,
+      end_date: `${day}T15:00:00.000Z`,
+      duration: 28_800,
+      project: { self: PROJECT, title_chain: ["Work", "INNOQ", "Urlaub"] },
+      title: "Osterurlaub",
+      notes: "von Hand",
+      is_running: false,
+    } satisfies TimingApiTimeEntry;
+  }
+
+  it("Storno entkoppelt einen verknüpften fremden Timing-Eintrag und löscht ihn nie in Timing", async () => {
+    const timing = fakeTiming();
+    timing.entries.push(foreignVacation("/time-entries/90", "2026-12-22"));
+    await run(feed(VACATION), timing);
+    expect(
+      db.entries.find((e) => e.externalId === "/time-entries/90"),
+    ).toMatchObject({ source: "TIMING_SYNC", absenceId: db.absences[0].id });
+
+    const result = await run(feed(VACATION_CANCELLED), timing);
+    expect(result.stats).toMatchObject({ deleted: 2, unlinked: 1 });
+    expect(timing.deleteTimeEntry).toHaveBeenCalledTimes(2);
+    expect(timing.deleteTimeEntry).not.toHaveBeenCalledWith("/time-entries/90");
+    expect(timing.entries.map((e) => e.self)).toEqual(["/time-entries/90"]);
+    expect(
+      db.entries.find((e) => e.externalId === "/time-entries/90"),
+    ).toMatchObject({ source: "TIMING_SYNC", absenceId: null });
+  });
+
+  it("ruft Timing nie innerhalb einer Transaktion auf", async () => {
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    await run(feed(VACATION_CANCELLED), timing);
+    expect(timingCalls.total).toBeGreaterThan(0);
+    expect(timingCalls.inTransaction).toBe(0);
+  });
+
+  it("Tag wird während der Timing-Aufrufe per Dialog belegt: kein Duplikat, Timing-Eintrag wieder gelöscht", async () => {
+    const timing = fakeTiming();
+    const create = vi.mocked(timing.createTimeEntry);
+    const impl = create.getMockImplementation();
+    create.mockImplementation(async (input) => {
+      const result = await (impl as NonNullable<typeof impl>)(input);
+      if (input.start.toISOString().startsWith("2026-12-22")) {
+        // Parallel: Dialog „Abwesenheit eintragen“ legt den 22. an
+        db.absences.push({
+          id: "manual-abs",
+          userId: USER,
+          source: "MANUAL",
+          externalUid: null,
+          kind: "VACATION",
+          startDate: new Date("2026-12-22T00:00:00.000Z"),
+          endDate: new Date("2026-12-22T00:00:00.000Z"),
+          halfDay: false,
+          status: "ACTIVE",
+          suppressedDates: [],
+        });
+        db.entries.push({
+          id: "dialog-1",
+          userId: USER,
+          date: new Date("2026-12-22T00:00:00.000Z"),
+          type: "VACATION",
+          source: "MANUAL",
+          externalId: null,
+          absenceId: "manual-abs",
+          duration: 8,
+        });
+      }
+      return result;
     });
+
+    const result = await run(feed(VACATION), timing);
+    expect(result.status).toBe("success");
+    expect(result.stats).toMatchObject({ timingCreated: 2, deleted: 1 });
+    expect(result.actions.at(-1)).toMatchObject({
+      date: "2026-12-22",
+      action: "deleted",
+    });
+    // Am 22. nur der Dialog-Eintrag, in Timing nichts
+    const on22 = db.entries.filter(
+      (e) => (e.date as Date).toISOString().slice(0, 10) === "2026-12-22",
+    );
+    expect(on22.map((e) => e.id)).toEqual(["dialog-1"]);
+    expect(
+      timing.entries.filter((e) => e.start_date.startsWith("2026-12-22")),
+    ).toHaveLength(0);
+    expect(timing.entries).toHaveLength(2);
+
+    // Nächster Lauf: nichts mehr zu tun
+    const second = await run(feed(VACATION), timing);
+    expect(second.actions).toEqual([]);
   });
 });
 
@@ -570,7 +721,7 @@ describe("syncCalendarForUser – keine Duplikate in Timing", () => {
 });
 
 describe("syncCalendarForUser – passende Übernahme und Artwechsel", () => {
-  it("übernimmt keinen halben Timing-Eintrag für einen ganzen Tag und schreibt auch keinen zweiten", async () => {
+  it("verknüpft einen fremden halben Timing-Eintrag auch für einen ganzen Tag und lässt ihn danach in Ruhe", async () => {
     const timing = fakeTiming();
     timing.entries.push({
       self: "/time-entries/66",
@@ -585,7 +736,7 @@ describe("syncCalendarForUser – passende Übernahme und Artwechsel", () => {
     const first = await run(feed(VACATION), timing);
     expect(first.actions[0]).toMatchObject({
       date: "2026-12-21",
-      action: "created",
+      action: "linked",
     });
     expect(timing.entries).toHaveLength(3);
 
@@ -644,7 +795,7 @@ describe("syncCalendarForUser – Fehler und Wiederholung", () => {
     expect(new Set(timewarpEntries().map((e) => e.externalId)).size).toBe(3);
   });
 
-  it("Speichern scheitert nach dem Anlegen in Timing: nächster Lauf übernimmt den Timing-Eintrag", async () => {
+  it("Speichern scheitert nach dem Anlegen in Timing: nächster Lauf übernimmt die eigenen Timing-Einträge", async () => {
     const timing = fakeTiming();
     failNextEntryCreate.value = true;
     const first = await run(feed(VACATION), timing);
@@ -652,19 +803,21 @@ describe("syncCalendarForUser – Fehler und Wiederholung", () => {
     expect(first.status).toBe("error");
     expect(first.error).toBe("Der Kalender-Abgleich ist fehlgeschlagen.");
     expect(first.actions).toEqual([]);
-    // Transaktion verworfen, Timing-Eintrag existiert schon
-    expect(db.absences).toHaveLength(0);
+    // Abwesenheit aus Transaktion 1 bleibt, Tage verworfen, Timing-Einträge da
+    expect(first.stats).toMatchObject({ absencesCreated: 1, timingCreated: 0 });
+    expect(db.absences).toHaveLength(1);
     expect(db.entries).toHaveLength(0);
-    expect(timing.entries).toHaveLength(1);
+    expect(timing.entries).toHaveLength(3);
     expect(db.integration?.lastSyncStatus).toBe("error");
 
     const second = await run(feed(VACATION), timing);
     expect(second.status).toBe("success");
     expect(second.actions.map((a) => [a.date, a.action])).toEqual([
       ["2026-12-21", "timingAdopted"],
-      ["2026-12-22", "timingCreated"],
-      ["2026-12-23", "timingCreated"],
+      ["2026-12-22", "timingAdopted"],
+      ["2026-12-23", "timingAdopted"],
     ]);
+    expect(timing.createTimeEntry).toHaveBeenCalledTimes(3);
     expect(timing.entries).toHaveLength(3);
     expect(timewarpEntries()).toHaveLength(3);
   });
