@@ -256,7 +256,10 @@ import {
 const USER = "user-1";
 const FEED_TOKEN = "feed-token-xyz";
 const FEED_URL = `https://timewarp.innoq.io/export/${FEED_TOKEN}/calendar.ics`;
-const NOW = new Date("2026-10-11T10:00:00.000Z");
+// Alle Urlaubstage der Fixtures haben begonnen – Timing nimmt nur solche an
+const NOW = new Date("2026-12-23T12:00:00.000Z");
+// Vor den Urlaubstagen: für künftige Abwesenheiten
+const BEFORE = new Date("2026-10-11T10:00:00.000Z");
 const PROJECT = "/projects/42";
 
 function vevent(lines: string[]): string {
@@ -319,17 +322,19 @@ function assertNoTransaction() {
   }
 }
 
-/** Timing als In-Memory-Fake */
-function fakeTiming() {
+/** Timing als In-Memory-Fake; lehnt wie Timing Einträge in der Zukunft ab */
+function fakeTiming(clock: Date = NOW) {
   const entries: TimingApiTimeEntry[] = [];
   let next = 1000;
   const failCreates = { count: 0 };
   const client: TimingClient & {
     entries: TimingApiTimeEntry[];
     failCreates: typeof failCreates;
+    clock: Date;
   } = {
     entries,
     failCreates,
+    clock,
     listTimeEntries: vi.fn(async (range) => {
       assertNoTransaction();
       return entries.filter((e) => {
@@ -339,6 +344,13 @@ function fakeTiming() {
     }),
     createTimeEntry: vi.fn(async (input) => {
       assertNoTransaction();
+      if (input.start.getTime() > client.clock.getTime()) {
+        throw new TimingApiError(
+          "HTTP_ERROR",
+          "Timing-API antwortet mit HTTP 422: The start date must not lie in the future.",
+          422,
+        );
+      }
       if (failCreates.count > 0) {
         failCreates.count--;
         throw new TimingApiError(
@@ -378,10 +390,11 @@ function run(
   ics: string,
   timingClient?: TimingClient,
   trigger: "manual" | "scheduler" = "manual",
+  now: Date = NOW,
 ) {
   return syncCalendarForUser(USER, {
     trigger,
-    now: NOW,
+    now,
     feedFetchImpl: feedFetch(ics),
     timingClient,
   });
@@ -843,14 +856,13 @@ describe("syncCalendarForUser – Fehler und Wiederholung", () => {
   });
 
   it("leerer Feed bei künftigen Abwesenheiten: Abbruch statt Massen-Storno", async () => {
-    const timing = fakeTiming();
-    await run(feed(VACATION), timing);
-    const result = await run(feed(), timing);
+    const timing = fakeTiming(BEFORE);
+    await run(feed(VACATION), timing, "manual", BEFORE);
+    const result = await run(feed(), timing, "manual", BEFORE);
 
     expect(result.status).toBe("error");
     expect(result.error).toMatch(/keine Termine/);
     expect(db.absences[0].status).toBe("ACTIVE");
-    expect(timing.entries).toHaveLength(3);
     expect(timewarpEntries()).toHaveLength(3);
   });
 
@@ -884,6 +896,68 @@ describe("syncCalendarForUser – Fehler und Wiederholung", () => {
       CalendarNotConfiguredError,
     );
     expect(isCalendarSyncRunning(USER)).toBe(false);
+  });
+});
+
+describe("syncCalendarForUser – künftige Tage", () => {
+  it("trägt künftige Tage nur lokal ein, ohne Timing zu fragen", async () => {
+    const timing = fakeTiming(BEFORE);
+    const result = await run(feed(VACATION), timing, "manual", BEFORE);
+
+    expect(result.status).toBe("success");
+    expect(result.stats).toMatchObject({
+      created: 3,
+      timingCreated: 0,
+      failed: 0,
+    });
+    expect(result.actions.map((a) => [a.date, a.action])).toEqual([
+      ["2026-12-21", "created"],
+      ["2026-12-22", "created"],
+      ["2026-12-23", "created"],
+    ]);
+    expect(result.actions[0].detail).toMatch(/sobald er begonnen hat/);
+    expect(timing.createTimeEntry).not.toHaveBeenCalled();
+    expect(timing.listTimeEntries).not.toHaveBeenCalled();
+    expect(timewarpEntries().map((e) => e.externalId)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+
+    // Weitere Läufe vor den Tagen bleiben still
+    const again = await run(feed(VACATION), timing, "manual", BEFORE);
+    expect(again.actions).toEqual([]);
+    expect(timing.createTimeEntry).not.toHaveBeenCalled();
+  });
+
+  it("trägt jeden Tag nach Timing nach, sobald er begonnen hat – ohne Duplikat", async () => {
+    await run(feed(VACATION), fakeTiming(BEFORE), "manual", BEFORE);
+
+    // Mo 22.12., 11:00 Uhr: 21. und 22. haben begonnen, der 23. nicht
+    const monday = new Date("2026-12-22T10:00:00.000Z");
+    const timing = fakeTiming(monday);
+    const first = await run(feed(VACATION), timing, "scheduler", monday);
+    expect(first.status).toBe("success");
+    expect(first.actions.map((a) => [a.date, a.action])).toEqual([
+      ["2026-12-21", "timingCreated"],
+      ["2026-12-22", "timingCreated"],
+    ]);
+    expect(first.actions[0].detail).toMatch(/nachgetragen/);
+    expect(timing.entries).toHaveLength(2);
+
+    timing.clock = NOW;
+    const later = await run(feed(VACATION), timing, "scheduler", NOW);
+    expect(later.actions.map((a) => [a.date, a.action])).toEqual([
+      ["2026-12-23", "timingCreated"],
+    ]);
+    expect(timing.entries).toHaveLength(3);
+    expect(timing.createTimeEntry).toHaveBeenCalledTimes(3);
+    expect(timewarpEntries()).toHaveLength(3);
+    expect(
+      timewarpEntries()
+        .map((e) => e.externalId)
+        .sort(),
+    ).toEqual(timing.entries.map((e) => e.self).sort());
   });
 });
 
@@ -936,9 +1010,9 @@ describe("syncCalendarForUser – Storno, Timing aus, unterdrückte Tage", () =>
   });
 
   it("verschwundene künftige Abwesenheit wird storniert und aufgeräumt", async () => {
-    const timing = fakeTiming();
-    await run(feed(VACATION, EVENT), timing);
-    const result = await run(feed(EVENT), timing);
+    const timing = fakeTiming(BEFORE);
+    await run(feed(VACATION, EVENT), timing, "manual", BEFORE);
+    const result = await run(feed(EVENT), timing, "manual", BEFORE);
     expect(result.stats.absencesCancelled).toBe(1);
     expect(db.absences[0].status).toBe("CANCELLED");
     expect(timewarpEntries()).toHaveLength(0);

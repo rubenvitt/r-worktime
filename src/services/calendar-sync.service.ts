@@ -620,6 +620,12 @@ type TimingOutcome =
   | { type: "linkForeign"; entry: TimingApiTimeEntry; data: SyncEntryData }
   /** In Timing belegt, aber nicht nutzbar: nur lokal eintragen */
   | { type: "occupied" }
+  /**
+   * Beginnt erst in der Zukunft – Timing lehnt das ab („The start date must
+   * not lie in the future“, HTTP 422): nur lokal eintragen, ein späterer
+   * Lauf trägt den Tag nach, sobald er begonnen hat
+   */
+  | { type: "notYet" }
   /** In Timing neu angelegt */
   | { type: "created"; entry: TimingApiTimeEntry; create: PlannedCreate }
   | { type: "failed"; detail: string };
@@ -685,10 +691,16 @@ async function runTimingCalls(
   const projectRef = timing.projectRef;
   if (!projectRef) return work;
   const failedRemovals = new Set(work.deleteFailed.keys());
-  const toTiming = plan.create.filter(
-    (create) =>
-      create.toTiming && creatable(create, holidays, failedRemovals) === "ok",
-  );
+  const toTiming: PlannedCreate[] = [];
+  for (const create of plan.create) {
+    if (!create.toTiming) continue;
+    if (creatable(create, holidays, failedRemovals) !== "ok") continue;
+    if (create.startTime.getTime() > ctx.now.getTime()) {
+      work.outcomes.set(createKey(create), { type: "notYet" });
+      continue;
+    }
+    toTiming.push(create);
+  }
   if (toTiming.length === 0) return work;
 
   // Vorhandene Einträge im Projekt einmal für den ganzen Zeitraum suchen
@@ -902,6 +914,8 @@ async function applyDays(
   };
   const occupiedHint =
     " Nicht in Timing: dort gibt es an dem Tag schon einen Eintrag im Urlaubsprojekt.";
+  const notYetHint =
+    " In Timing wird der Tag nachgetragen, sobald er begonnen hat – Timing nimmt keine Einträge in der Zukunft an.";
 
   /**
    * Eigenen, bisher nur lokalen Eintrag nach Timing nachtragen. Belegt Timing
@@ -913,7 +927,9 @@ async function applyDays(
     if (!create.toTiming || !timing.client || !timing.projectRef) return;
     const key = createKey(create);
     const outcome = work.outcomes.get(key);
-    if (!outcome || outcome.type === "occupied") return;
+    if (!outcome || outcome.type === "occupied" || outcome.type === "notYet") {
+      return;
+    }
     if (outcome.type === "failed") {
       addAction(ctx, "failed", create.date, create.kind, outcome.detail);
       return;
@@ -1033,6 +1049,10 @@ async function applyDays(
     }
     if (outcome.type === "occupied") {
       await createLocalOnly(create, occupiedHint);
+      continue;
+    }
+    if (outcome.type === "notYet") {
+      await createLocalOnly(create, notYetHint);
       continue;
     }
     if (await externalIdInUse(outcome.entry.self)) {

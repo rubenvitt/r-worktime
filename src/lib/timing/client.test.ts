@@ -353,6 +353,10 @@ describe("createTimingClient – Schreiben und Projekte", () => {
       })
       .catch((e: unknown) => e);
     expect((error as TimingApiError).status).toBe(422);
+    // Begründung aus der Antwort, damit ein 422 nicht rätselhaft bleibt
+    expect((error as TimingApiError).message).toBe(
+      "Timing-API antwortet mit HTTP 422: nope",
+    );
 
     const noId = vi.fn(async () => jsonResponse({ data: {} }, 201));
     await expect(
