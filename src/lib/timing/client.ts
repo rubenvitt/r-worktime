@@ -144,7 +144,7 @@ export function splitIntoMonthChunks(range: DateRange): DateRange[] {
   return chunks;
 }
 
-function errorForStatus(status: number): TimingApiError {
+function errorForStatus(status: number, reason?: string): TimingApiError {
   if (status === 401 || status === 403) {
     return new TimingApiError(
       "UNAUTHORIZED",
@@ -161,9 +161,31 @@ function errorForStatus(status: number): TimingApiError {
   }
   return new TimingApiError(
     "HTTP_ERROR",
-    `Timing-API antwortet mit HTTP ${status}.`,
+    reason
+      ? `Timing-API antwortet mit HTTP ${status}: ${reason}`
+      : `Timing-API antwortet mit HTTP ${status}.`,
     status,
   );
+}
+
+const MAX_REASON_LENGTH = 200;
+
+/**
+ * Begründung aus einer Fehlerantwort (Laravel-Format {message}), z. B. bei 422
+ * „The start date must not lie in the future.“ – sonst undefined.
+ */
+async function errorReason(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as { message?: unknown };
+    const message =
+      typeof body?.message === "string" ? body.message.trim() : "";
+    if (!message) return undefined;
+    return message.length > MAX_REASON_LENGTH
+      ? `${message.slice(0, MAX_REASON_LENGTH)}…`
+      : message;
+  } catch {
+    return undefined;
+  }
 }
 
 export function createTimingClient(options: TimingClientOptions): TimingClient {
@@ -317,7 +339,9 @@ export function createTimingClient(options: TimingClientOptions): TimingClient {
         billing_status: input.billingStatus ?? "not_billable",
         replace_existing: false,
       });
-      if (!response.ok) throw errorForStatus(response.status);
+      if (!response.ok) {
+        throw errorForStatus(response.status, await errorReason(response));
+      }
       const body = await parseJson<
         { data?: TimingApiTimeEntry } | TimingApiTimeEntry
       >(response);
