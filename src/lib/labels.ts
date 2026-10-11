@@ -10,7 +10,9 @@ export type EntryTypeKey =
   | "OVERTIME"
   | "VACATION"
   | "SICK"
-  | "HOLIDAY";
+  | "HOLIDAY"
+  | "OVERTIME_REDUCTION"
+  | "UNPAID_LEAVE";
 
 export const ENTRY_TYPE_LABEL: Record<EntryTypeKey, string> = {
   WORK: "Arbeit",
@@ -18,6 +20,8 @@ export const ENTRY_TYPE_LABEL: Record<EntryTypeKey, string> = {
   VACATION: "Urlaub",
   SICK: "Krank",
   HOLIDAY: "Feiertag",
+  OVERTIME_REDUCTION: "Überstundenabbau",
+  UNPAID_LEAVE: "Unbezahlt",
 };
 
 export type EntrySourceKey =
@@ -26,7 +30,8 @@ export type EntrySourceKey =
   | "FILE_IMPORT"
   | "BULK_FILL"
   | "HOLIDAY"
-  | "ADJUSTMENT";
+  | "ADJUSTMENT"
+  | "TIMEWARP";
 
 export const ENTRY_SOURCE_LABEL: Record<EntrySourceKey, string> = {
   TIMING_SYNC: "Timing",
@@ -35,6 +40,7 @@ export const ENTRY_SOURCE_LABEL: Record<EntrySourceKey, string> = {
   BULK_FILL: "Aufgefüllt",
   HOLIDAY: "Feiertag",
   ADJUSTMENT: "Anfangs-Saldo",
+  TIMEWARP: "Timewarp",
 };
 
 /** Bekannte Status deutsch (z. B. billable/unbilled „Offen“), leer „—“, sonst Rohwert */

@@ -6,6 +6,8 @@ export enum EntryType {
   VACATION = "VACATION",
   SICK = "SICK",
   HOLIDAY = "HOLIDAY",
+  OVERTIME_REDUCTION = "OVERTIME_REDUCTION",
+  UNPAID_LEAVE = "UNPAID_LEAVE",
 }
 
 export enum EntrySource {
@@ -15,6 +17,7 @@ export enum EntrySource {
   BULK_FILL = "BULK_FILL",
   HOLIDAY = "HOLIDAY",
   ADJUSTMENT = "ADJUSTMENT",
+  TIMEWARP = "TIMEWARP",
 }
 
 export interface TimeEntry {
@@ -33,6 +36,7 @@ export interface TimeEntry {
   source: EntrySource;
   billingStatus?: string | null;
   importLogId?: string | null;
+  absenceId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
