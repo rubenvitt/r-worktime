@@ -10,7 +10,13 @@ import {
 import { loadOfficialHolidays } from "@/lib/reports/forecast-data";
 import { getUserSettings } from "@/services/settings.service";
 
-const ABSENCE_TYPES: AbsenceEntryType[] = ["VACATION", "SICK", "HOLIDAY"];
+const ABSENCE_TYPES: AbsenceEntryType[] = [
+  "VACATION",
+  "SICK",
+  "HOLIDAY",
+  "OVERTIME_REDUCTION",
+  "UNPAID_LEAVE",
+];
 
 const yearSchema = z
   .string()
@@ -57,7 +63,13 @@ export async function GET(request: NextRequest) {
             source: { not: "ADJUSTMENT" },
             date: range,
           },
-          select: { date: true, type: true, duration: true },
+          // Art der verknüpften Abwesenheit: entscheidet über das Urlaubskonto
+          select: {
+            date: true,
+            type: true,
+            duration: true,
+            absence: { select: { kind: true } },
+          },
         }),
         prisma.reviewedDay.findMany({
           where: { userId, date: range, reason: { not: null } },
@@ -90,6 +102,7 @@ export async function GET(request: NextRequest) {
         dateKey: dateKeyFromDbDate(entry.date),
         type: entry.type as AbsenceEntryType,
         hours: Number(entry.duration),
+        kind: entry.absence?.kind ?? null,
       })),
       reviewedDays: reviewedDays.map((day) => ({
         dateKey: dateKeyFromDbDate(day.date),

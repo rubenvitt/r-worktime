@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { AbsenceDay } from "@/lib/reports/absences";
+import {
+  type AbsenceDay,
+  type CategoryValues,
+  emptyCategoryValues,
+} from "@/lib/reports/absences";
 import {
   describeAbsenceDay,
   formatDayCount,
@@ -7,13 +11,17 @@ import {
   formatWorkDays,
 } from "./absence-style";
 
+function vals(values: Partial<CategoryValues>): CategoryValues {
+  return { ...emptyCategoryValues(), ...values };
+}
+
 function day(overrides: Partial<AbsenceDay>): AbsenceDay {
   return {
     dateKey: "2026-08-03",
     isWorkDay: true,
     isFuture: false,
-    hours: { vacation: 0, sick: 0, holiday: 0, unpaid: 0 },
-    days: { vacation: 0, sick: 0, holiday: 0, unpaid: 0 },
+    hours: vals({ vacation: 0, sick: 0, holiday: 0, unpaid: 0 }),
+    days: vals({ vacation: 0, sick: 0, holiday: 0, unpaid: 0 }),
     primary: "vacation",
     ...overrides,
   };
@@ -60,8 +68,8 @@ describe("describeAbsenceDay", () => {
       describeAbsenceDay(
         day({
           isFuture: true,
-          hours: { vacation: 8, sick: 0, holiday: 0, unpaid: 0 },
-          days: { vacation: 1, sick: 0, holiday: 0, unpaid: 0 },
+          hours: vals({ vacation: 8, sick: 0, holiday: 0, unpaid: 0 }),
+          days: vals({ vacation: 1, sick: 0, holiday: 0, unpaid: 0 }),
         }),
       ),
     ).toBe("Mo 03.08. · Urlaub 8:00 h · geplant · zählt 1 Tag");
@@ -72,7 +80,7 @@ describe("describeAbsenceDay", () => {
       describeAbsenceDay(
         day({
           dateKey: "2026-12-25",
-          days: { vacation: 0, sick: 0, holiday: 1, unpaid: 0 },
+          days: vals({ vacation: 0, sick: 0, holiday: 1, unpaid: 0 }),
           primary: "holiday",
           holidayName: "1. Weihnachtstag",
           holidayImported: false,
@@ -85,8 +93,8 @@ describe("describeAbsenceDay", () => {
     expect(
       describeAbsenceDay(
         day({
-          hours: { vacation: 4, sick: 4, holiday: 0, unpaid: 0 },
-          days: { vacation: 0.5, sick: 0.5, holiday: 0, unpaid: 0 },
+          hours: vals({ vacation: 4, sick: 4, holiday: 0, unpaid: 0 }),
+          days: vals({ vacation: 0.5, sick: 0.5, holiday: 0, unpaid: 0 }),
           primary: "sick",
         }),
       ),
@@ -101,17 +109,48 @@ describe("describeAbsenceDay", () => {
         day({
           dateKey: "2026-08-08",
           isWorkDay: false,
-          hours: { vacation: 8, sick: 0, holiday: 0, unpaid: 0 },
+          hours: vals({ vacation: 8, sick: 0, holiday: 0, unpaid: 0 }),
         }),
       ),
     ).toBe("Sa 08.08. · Urlaub 8:00 h · kein Arbeitstag, nicht gezählt");
     expect(
       describeAbsenceDay(
         day({
-          days: { vacation: 0, sick: 0, holiday: 0, unpaid: 1 },
+          days: vals({ vacation: 0, sick: 0, holiday: 0, unpaid: 1 }),
           primary: "unpaid",
         }),
       ),
     ).toBe("Mo 03.08. · Unbezahlter Urlaub (geprüfter Tag) · zählt 1 Tag");
+  });
+
+  it("nennt Sonderurlaub, Überstundenabbau und unbezahlte Einträge", () => {
+    expect(
+      describeAbsenceDay(
+        day({
+          isFuture: true,
+          hours: vals({ specialLeave: 8 }),
+          days: vals({ specialLeave: 1 }),
+          primary: "specialLeave",
+        }),
+      ),
+    ).toBe("Mo 03.08. · Sonderurlaub 8:00 h · geplant · zählt 1 Tag");
+    expect(
+      describeAbsenceDay(
+        day({
+          hours: vals({ overtimeReduction: 8 }),
+          days: vals({ overtimeReduction: 1 }),
+          primary: "overtimeReduction",
+        }),
+      ),
+    ).toBe("Mo 03.08. · Überstundenabbau 8:00 h · zählt 1 Tag");
+    expect(
+      describeAbsenceDay(
+        day({
+          hours: vals({ unpaid: 4 }),
+          days: vals({ unpaid: 0.5 }),
+          primary: "unpaid",
+        }),
+      ),
+    ).toBe("Mo 03.08. · Unbezahlter Urlaub 4:00 h · zählt 0,5 Tage");
   });
 });

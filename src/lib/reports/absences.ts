@@ -22,14 +22,40 @@
 //   gleiche Arbeitstage, an Feiertagen keine Gutschrift, höchstens ein Tag.
 //   Der Saldo schreibt die Stunden gut (4 h Urlaub = 4 h), der Bericht zählt
 //   Tage in halben Schritten (4 h = ½ Tag); 0-h-Einträge zählen in beiden nicht.
+// - Kategorie aus Eintragstyp und Art der verknüpften Abwesenheit
+//   (Absence.kind): VACATION-Einträge zu Sonderurlaub bzw. Bildungsurlaub
+//   sind eigene Kategorien und belasten das Urlaubskonto nicht; VACATION
+//   ohne verknüpfte Abwesenheit (Timing-Sync, Altbestand) belastet es wie
+//   bisher. OVERTIME_REDUCTION ist „Überstundenabbau“, UNPAID_LEAVE
+//   (unbezahlter Urlaub, Elternzeit, Mutterschutz, Sabbatical) zählt zu
+//   „Unbezahlt“ wie die geprüften Tage.
+// - Vorrang je Tag (höchstens ein Tag): Feiertag, Krankheit, Urlaub,
+//   Sonderurlaub, Bildungsurlaub, Unbezahlt, Überstundenabbau.
 
+import type { AbsenceKind } from "@/lib/absences/kinds";
 import { weekdayOfKey } from "@/lib/dates";
 
-export type AbsenceEntryType = "VACATION" | "SICK" | "HOLIDAY";
-export type AbsenceCategory = "vacation" | "sick" | "holiday" | "unpaid";
+export type AbsenceEntryType =
+  | "VACATION"
+  | "SICK"
+  | "HOLIDAY"
+  | "OVERTIME_REDUCTION"
+  | "UNPAID_LEAVE";
+
+export type AbsenceCategory =
+  | "vacation"
+  | "specialLeave"
+  | "educationalLeave"
+  | "overtimeReduction"
+  | "sick"
+  | "holiday"
+  | "unpaid";
 
 export const ABSENCE_CATEGORIES: readonly AbsenceCategory[] = [
   "vacation",
+  "specialLeave",
+  "educationalLeave",
+  "overtimeReduction",
   "sick",
   "holiday",
   "unpaid",
@@ -37,10 +63,27 @@ export const ABSENCE_CATEGORIES: readonly AbsenceCategory[] = [
 
 export const ABSENCE_CATEGORY_LABELS: Record<AbsenceCategory, string> = {
   vacation: "Urlaub",
+  specialLeave: "Sonderurlaub",
+  educationalLeave: "Bildungsurlaub",
+  overtimeReduction: "Überstundenabbau",
   sick: "Krankheit",
   holiday: "Feiertag",
   unpaid: "Unbezahlter Urlaub",
 };
+
+/** Kategorien, die im Urlaubskonto als eigene Zeilen erscheinen (ohne Belastung). */
+export type NonCountingCategory =
+  | "specialLeave"
+  | "educationalLeave"
+  | "overtimeReduction"
+  | "unpaid";
+
+export const NON_COUNTING_CATEGORIES: readonly NonCountingCategory[] = [
+  "specialLeave",
+  "educationalLeave",
+  "overtimeReduction",
+  "unpaid",
+];
 
 /** Fallback wie im Überstunden-Service, wenn Einstellungen unbrauchbar sind. */
 const DEFAULT_DAILY_HOURS = 8;
@@ -53,6 +96,8 @@ export interface AbsenceEntryInput {
   type: AbsenceEntryType;
   /** Dauer in Stunden */
   hours: number;
+  /** Art der verknüpften Abwesenheit; fehlt bei Einträgen ohne absenceId */
+  kind?: AbsenceKind | null;
 }
 
 export interface ReviewedDayInput {
@@ -107,12 +152,22 @@ export interface AbsenceMonth {
   plannedVacationDays: number;
 }
 
+export interface AccountLine {
+  /** bis einschließlich heute */
+  taken: number;
+  /** nach heute */
+  planned: number;
+}
+
 export interface VacationAccount {
   entitlement: number;
+  /** Belastende Tage (Urlaub, Resturlaub, Urlaub ohne Abwesenheit) bis heute */
   taken: number;
   planned: number;
   /** Anspruch − genommen − geplant; kann negativ werden */
   remaining: number;
+  /** Abwesenheiten, die den Anspruch nicht verringern */
+  others: Record<NonCountingCategory, AccountLine>;
 }
 
 export interface AbsenceReport {
@@ -132,9 +187,19 @@ export interface AbsenceReport {
   holidayServiceUnavailable: boolean;
 }
 
-function emptyValues(): CategoryValues {
-  return { vacation: 0, sick: 0, holiday: 0, unpaid: 0 };
+export function emptyCategoryValues(): CategoryValues {
+  return {
+    vacation: 0,
+    specialLeave: 0,
+    educationalLeave: 0,
+    overtimeReduction: 0,
+    sick: 0,
+    holiday: 0,
+    unpaid: 0,
+  };
 }
+
+const emptyValues = emptyCategoryValues;
 
 /** Auf zwei Nachkommastellen, damit Fließkomma-Reste nicht in die Anzeige laufen. */
 function round2(value: number): number {
@@ -192,18 +257,42 @@ export function isUnpaidLeaveReason(
   );
 }
 
-const TYPE_TO_CATEGORY: Record<AbsenceEntryType, AbsenceCategory> = {
-  VACATION: "vacation",
-  SICK: "sick",
-  HOLIDAY: "holiday",
-};
+/** Kategorie eines Eintrags aus Typ und Art der verknüpften Abwesenheit. */
+export function absenceCategoryOf(
+  entry: Pick<AbsenceEntryInput, "type" | "kind">,
+): AbsenceCategory | null {
+  switch (entry.type) {
+    case "HOLIDAY":
+      return "holiday";
+    case "SICK":
+      return "sick";
+    case "OVERTIME_REDUCTION":
+      return "overtimeReduction";
+    case "UNPAID_LEAVE":
+      return "unpaid";
+    case "VACATION":
+      if (entry.kind === "SPECIAL_LEAVE") return "specialLeave";
+      if (entry.kind === "EDUCATIONAL_LEAVE") return "educationalLeave";
+      return "vacation";
+    default:
+      return null;
+  }
+}
 
 /** Vorrang bei der Verteilung des einen Tages. */
-const PRECEDENCE: readonly AbsenceCategory[] = ["holiday", "sick", "vacation"];
+const PRECEDENCE: readonly AbsenceCategory[] = [
+  "holiday",
+  "sick",
+  "vacation",
+  "specialLeave",
+  "educationalLeave",
+  "unpaid",
+  "overtimeReduction",
+];
 
 function primaryOf(day: { hours: CategoryValues; days: CategoryValues }) {
   // Bevorzugt die Kategorie mit den meisten gezählten Tagen, sonst mit Stunden
-  const ordered: AbsenceCategory[] = [...PRECEDENCE, "unpaid"];
+  const ordered = PRECEDENCE;
   let best: AbsenceCategory = ordered[0];
   let bestScore = -1;
   for (const category of ordered) {
@@ -230,7 +319,7 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
   for (const entry of input.entries) {
     if (!entry.dateKey.startsWith(yearPrefix)) continue;
     if (!Number.isFinite(entry.hours) || entry.hours <= 0) continue;
-    const category = TYPE_TO_CATEGORY[entry.type];
+    const category = absenceCategoryOf(entry);
     if (!category) continue;
     let values = hoursByDay.get(entry.dateKey);
     if (!values) {
@@ -339,6 +428,12 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
   const totals = { days: emptyValues(), hours: emptyValues() };
   let taken = 0;
   let planned = 0;
+  const others = Object.fromEntries(
+    NON_COUNTING_CATEGORIES.map((category) => [
+      category,
+      { taken: 0, planned: 0 },
+    ]),
+  ) as Record<NonCountingCategory, AccountLine>;
 
   for (const day of days) {
     const month = months[Number(day.dateKey.slice(5, 7)) - 1];
@@ -357,6 +452,10 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
       planned += day.days.vacation;
     } else {
       taken += day.days.vacation;
+    }
+    for (const category of NON_COUNTING_CATEGORIES) {
+      others[category][day.isFuture ? "planned" : "taken"] +=
+        day.days[category];
     }
   }
 
@@ -377,6 +476,7 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
       taken,
       planned,
       remaining: entitlement - taken - planned,
+      others,
     },
     nonWorkDayAbsences,
     holidayServiceUnavailable: input.holidayServiceUnavailable ?? false,

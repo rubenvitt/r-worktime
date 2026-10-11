@@ -64,3 +64,41 @@ describe("AbsencesTable", () => {
     expect(html).toContain("Unbezahlt");
   });
 });
+
+describe("AbsencesTable mit Sonderurlaub und Überstundenabbau", () => {
+  it("zeigt die zusätzlichen Spalten und zählt sie in die Summe", () => {
+    const withKinds = buildAbsenceReport({
+      year: 2026,
+      todayKey: "2026-10-10",
+      settings: {
+        weeklyWorkHours: 40,
+        workDays: [1, 2, 3, 4, 5],
+        annualVacationDays: 30,
+      },
+      entries: [
+        {
+          dateKey: "2026-03-02",
+          type: "VACATION",
+          hours: 8,
+          kind: "SPECIAL_LEAVE",
+        },
+        { dateKey: "2026-03-03", type: "OVERTIME_REDUCTION", hours: 8 },
+      ],
+      reviewedDays: [],
+    });
+    const html = renderToStaticMarkup(
+      createElement(AbsencesTable, {
+        months: withKinds.months,
+        totals: withKinds.totals.days,
+        showUnpaid: false,
+        showSpecial: true,
+        showOvertimeReduction: true,
+      }),
+    );
+    expect(html).toContain("Sonder-/Bildungsurlaub");
+    expect(html).toContain("Überstundenabbau");
+    expect(html).not.toContain("Unbezahlt");
+    // März: 1 + 1 = 2 Tage Summe
+    expect(html).toMatch(/März<\/th>.*?>2<\/td><\/tr>/);
+  });
+});

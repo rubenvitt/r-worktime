@@ -10,7 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatMonth } from "@/lib/format";
-import type { AbsenceMonth } from "@/lib/reports/absences";
+import { ABSENCE_CATEGORIES, type AbsenceMonth } from "@/lib/reports/absences";
 import {
   CATEGORY_COLOR,
   formatDays,
@@ -23,6 +23,8 @@ interface ChartRow {
   label: string;
   vacationTaken: number;
   vacationPlanned: number;
+  special: number;
+  overtimeReduction: number;
   sick: number;
   holiday: number;
   unpaid: number;
@@ -91,11 +93,10 @@ function ChartTooltip({
   const row = payload?.[0]?.payload;
   if (!active || !row) return null;
   const { source } = row;
-  const total =
-    source.days.vacation +
-    source.days.sick +
-    source.days.holiday +
-    source.days.unpaid;
+  const total = ABSENCE_CATEGORIES.reduce(
+    (sum, category) => sum + source.days[category],
+    0,
+  );
   return (
     <div className="min-w-48 space-y-0.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-overlay">
       <div className="mb-1 font-medium">{formatMonth(row.month)}</div>
@@ -120,6 +121,24 @@ function ChartTooltip({
         </div>
       ) : null}
       <TooltipLine
+        color={CATEGORY_COLOR.specialLeave}
+        label="Sonderurlaub"
+        days={source.days.specialLeave}
+        hours={source.hours.specialLeave}
+      />
+      <TooltipLine
+        color={CATEGORY_COLOR.educationalLeave}
+        label="Bildungsurlaub"
+        days={source.days.educationalLeave}
+        hours={source.hours.educationalLeave}
+      />
+      <TooltipLine
+        color={CATEGORY_COLOR.overtimeReduction}
+        label="Überstundenabbau"
+        days={source.days.overtimeReduction}
+        hours={source.hours.overtimeReduction}
+      />
+      <TooltipLine
         color={CATEGORY_COLOR.sick}
         label="Krankheit"
         days={source.days.sick}
@@ -135,6 +154,7 @@ function ChartTooltip({
         color={CATEGORY_COLOR.unpaid}
         label="Unbezahlt"
         days={source.days.unpaid}
+        hours={source.hours.unpaid}
       />
     </div>
   );
@@ -147,6 +167,16 @@ const LEGEND = [
     color: CATEGORY_COLOR.vacation,
     opacity: PLANNED_OPACITY,
   },
+  {
+    label: "Sonder-/Bildungsurlaub",
+    color: CATEGORY_COLOR.specialLeave,
+    opacity: 1,
+  },
+  {
+    label: "Überstundenabbau",
+    color: CATEGORY_COLOR.overtimeReduction,
+    opacity: 1,
+  },
   { label: "Krankheit", color: CATEGORY_COLOR.sick, opacity: 1 },
   { label: "Feiertag", color: CATEGORY_COLOR.holiday, opacity: 1 },
   { label: "Unbezahlt", color: CATEGORY_COLOR.unpaid, opacity: 1 },
@@ -156,23 +186,32 @@ const LEGEND = [
 export function AbsencesChart({
   months,
   showUnpaid,
+  showSpecial = false,
+  showOvertimeReduction = false,
 }: {
   months: AbsenceMonth[];
   showUnpaid: boolean;
+  showSpecial?: boolean;
+  showOvertimeReduction?: boolean;
 }) {
   const rows: ChartRow[] = months.map((month, index) => ({
     month: month.month,
     label: SHORT_MONTHS[index] ?? month.month,
     vacationTaken: month.days.vacation - month.plannedVacationDays,
     vacationPlanned: month.plannedVacationDays,
+    special: month.days.specialLeave + month.days.educationalLeave,
+    overtimeReduction: month.days.overtimeReduction,
     sick: month.days.sick,
     holiday: month.days.holiday,
     unpaid: month.days.unpaid,
     source: month,
   }));
-  const legend = showUnpaid
-    ? LEGEND
-    : LEGEND.filter((item) => item.label !== "Unbezahlt");
+  const hidden = new Set([
+    ...(showUnpaid ? [] : ["Unbezahlt"]),
+    ...(showSpecial ? [] : ["Sonder-/Bildungsurlaub"]),
+    ...(showOvertimeReduction ? [] : ["Überstundenabbau"]),
+  ]);
+  const legend = LEGEND.filter((item) => !hidden.has(item.label));
 
   return (
     <figure className="min-w-0">
@@ -230,6 +269,24 @@ export function AbsencesChart({
               maxBarSize={32}
               isAnimationActive={false}
             />
+            {showSpecial ? (
+              <Bar
+                dataKey="special"
+                stackId="days"
+                fill={CATEGORY_COLOR.specialLeave}
+                maxBarSize={32}
+                isAnimationActive={false}
+              />
+            ) : null}
+            {showOvertimeReduction ? (
+              <Bar
+                dataKey="overtimeReduction"
+                stackId="days"
+                fill={CATEGORY_COLOR.overtimeReduction}
+                maxBarSize={32}
+                isAnimationActive={false}
+              />
+            ) : null}
             {showUnpaid ? (
               <Bar
                 dataKey="unpaid"

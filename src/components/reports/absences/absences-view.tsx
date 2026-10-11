@@ -129,6 +129,14 @@ function AbsencesContent({ report }: { report: AbsenceReport }) {
   const { account, totals } = report;
   const isPastYear = report.year < Number(report.todayKey.slice(0, 4));
   const showUnpaid = totals.days.unpaid > 0;
+  const showSpecial =
+    totals.days.specialLeave + totals.days.educationalLeave > 0;
+  const showOvertimeReduction = totals.days.overtimeReduction > 0;
+  const others = account.others;
+  const otherHint = (line: { taken: number; planned: number }) =>
+    line.planned > 0
+      ? `davon ${formatDays(line.planned)} geplant · ohne Anspruch`
+      : "verringert den Anspruch nicht";
   const hasAbsences = report.days.length > 0;
 
   return (
@@ -165,6 +173,55 @@ function AbsencesContent({ report }: { report: AbsenceReport }) {
             hint={isPastYear ? "Jahr ist vorbei" : "Urlaub nach heute"}
           />
         </StatStrip>
+        {showSpecial || showOvertimeReduction || showUnpaid ? (
+          <StatStrip>
+            {others.specialLeave.taken + others.specialLeave.planned > 0 ? (
+              <Stat
+                label="Sonderurlaub"
+                value={formatDays(
+                  others.specialLeave.taken + others.specialLeave.planned,
+                )}
+                hint={otherHint(others.specialLeave)}
+              />
+            ) : null}
+            {others.educationalLeave.taken + others.educationalLeave.planned >
+            0 ? (
+              <Stat
+                label="Bildungsurlaub"
+                value={formatDays(
+                  others.educationalLeave.taken +
+                    others.educationalLeave.planned,
+                )}
+                hint={otherHint(others.educationalLeave)}
+              />
+            ) : null}
+            {showOvertimeReduction ? (
+              <Stat
+                label="Überstundenabbau"
+                value={formatDays(
+                  others.overtimeReduction.taken +
+                    others.overtimeReduction.planned,
+                )}
+                hint={
+                  others.overtimeReduction.planned > 0
+                    ? `davon ${formatDays(others.overtimeReduction.planned)} geplant · aus dem Saldo`
+                    : "aus dem Saldo, nicht vom Urlaub"
+                }
+              />
+            ) : null}
+            {showUnpaid ? (
+              <Stat
+                label="Unbezahlt"
+                value={formatDays(others.unpaid.taken + others.unpaid.planned)}
+                hint={
+                  others.unpaid.planned > 0
+                    ? `davon ${formatDays(others.unpaid.planned)} geplant · ohne Soll`
+                    : "ohne Soll, verringert den Anspruch nicht"
+                }
+              />
+            ) : null}
+          </StatStrip>
+        ) : null}
       </section>
 
       <section aria-label="Weitere Abwesenheiten">
@@ -183,13 +240,6 @@ function AbsencesContent({ report }: { report: AbsenceReport }) {
             value={formatDays(totals.days.holiday)}
             hint="an Arbeitstagen"
           />
-          {showUnpaid ? (
-            <Stat
-              label="Unbezahlter Urlaub"
-              value={formatDays(totals.days.unpaid)}
-              hint="aus geprüften Tagen"
-            />
-          ) : null}
         </StatStrip>
       </section>
 
@@ -210,13 +260,20 @@ function AbsencesContent({ report }: { report: AbsenceReport }) {
           <Panel>
             <PanelHeader title="Je Monat" meta="in Tagen" />
             <PanelBody>
-              <AbsencesChart months={report.months} showUnpaid={showUnpaid} />
+              <AbsencesChart
+                months={report.months}
+                showUnpaid={showUnpaid}
+                showSpecial={showSpecial}
+                showOvertimeReduction={showOvertimeReduction}
+              />
             </PanelBody>
             <div className="border-t">
               <AbsencesTable
                 months={report.months}
                 totals={totals.days}
                 showUnpaid={showUnpaid}
+                showSpecial={showSpecial}
+                showOvertimeReduction={showOvertimeReduction}
               />
             </div>
           </Panel>
@@ -244,9 +301,13 @@ function CountingRules({ report }: { report: AbsenceReport }) {
         {formatHoursLabel(report.dailyTargetHours)} und auf halbe Tage gerundet;
         jede erfasste Abwesenheit zählt mindestens einen halben Tag. Feiertage
         (Niedersachsen, aus dem Feiertags-Dienst und dem Import) verbrauchen
-        keinen Urlaub, Krankheit geht vor Urlaub. Unbezahlter Urlaub kommt aus
-        Tagen, die unter Probleme mit diesem Grund als geprüft markiert sind und
-        keine Arbeitseinträge haben; er verringert den Anspruch nicht.
+        keinen Urlaub, Krankheit geht vor Urlaub. Den Anspruch verringern nur
+        Urlaub und Resturlaub (auch Urlaubseinträge ohne verknüpfte Abwesenheit,
+        etwa aus Timing); Sonder- und Bildungsurlaub, Überstundenabbau und
+        unbezahlte Abwesenheit stehen getrennt. Unbezahlt zählt Einträge dieser
+        Art (unbezahlter Urlaub, Elternzeit, Mutterschutz, Sabbatical) und Tage,
+        die unter Probleme mit dem Grund „Unbezahlter Urlaub“ als geprüft
+        markiert sind und keine Arbeitseinträge haben.
       </p>
       {report.holidayServiceUnavailable ? (
         <p className="text-warning">
