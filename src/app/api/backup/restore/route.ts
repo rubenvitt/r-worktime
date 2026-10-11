@@ -2,8 +2,11 @@ import type { EntrySource } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import {
+  absencesFromBackup,
   keepMissingSyncFields,
+  type RestoredAbsence,
   resolveRestoreSource,
+  restoreAbsenceId,
   settingsFromBackup,
   travelDaysFromBackup,
 } from "@/lib/backup-restore";
@@ -56,12 +59,34 @@ interface BackupData {
       externalId?: string | null;
       source?: EntrySource | null;
       billingStatus?: string | null;
+      /** Verknüpfte Abwesenheit (ID im Backup); fehlt in älteren Backups */
+      absenceId?: string | null;
       createdAt?: string;
       updatedAt?: string;
     }>;
     /** Reisetag-Festlegungen; fehlt in älteren Backups */
     travelDays?: Array<{ date: string; isTravel: boolean }>;
+    /** Abwesenheiten; fehlt in älteren Backups */
+    absences?: unknown[];
   };
+}
+
+/** Abwesenheit liegt (teilweise) im gewählten Zeitraum */
+function absenceInRange(
+  absence: RestoredAbsence,
+  dateRange: { from?: string; to?: string } | undefined,
+): boolean {
+  if (
+    dateRange?.to &&
+    berlinDayStart(absence.startDate) > new Date(dateRange.to)
+  )
+    return false;
+  if (
+    dateRange?.from &&
+    berlinDayStart(absence.endDate) < new Date(dateRange.from)
+  )
+    return false;
+  return true;
 }
 
 // POST - Restore backup
@@ -113,10 +138,14 @@ export async function POST(request: NextRequest) {
       settingsRestored: false,
       travelDaysRestored: 0,
       travelDaysSkipped: 0,
+      absencesRestored: 0,
+      absencesSkipped: 0,
       errors: [] as string[],
     };
     // null = Backup ohne Reisetage (älteres Format) → nichts anfassen
     const travelDays = travelDaysFromBackup(backupData.userData);
+    // null = Backup ohne Abwesenheiten (älteres Format) → nichts anfassen
+    const absences = absencesFromBackup(backupData.userData);
 
     // Start transaction
     await prisma.$transaction(async (tx) => {
@@ -125,6 +154,13 @@ export async function POST(request: NextRequest) {
         await tx.timeEntry.deleteMany({
           where: { userId: session.user.id },
         });
+
+        // Abwesenheiten nur ersetzen, wenn das Backup welche mitbringt
+        if (absences !== null) {
+          await tx.absence.deleteMany({
+            where: { userId: session.user.id },
+          });
+        }
 
         // Festlegungen nur ersetzen, wenn das Backup welche mitbringt
         if (travelDays !== null) {
@@ -152,6 +188,69 @@ export async function POST(request: NextRequest) {
           results.settingsRestored = true;
         } catch (error) {
           results.errors.push(`Failed to restore settings: ${error}`);
+        }
+      }
+
+      // Abwesenheiten vor den Einträgen: die neuen IDs ersetzen die alten
+      // absenceId-Verweise. Timewarp-Abwesenheiten über ihre UID abgleichen,
+      // manuelle über Art und Zeitraum, damit ein zweiter Restore nichts
+      // verdoppelt.
+      const restoredAbsenceIds = new Map<string, string>();
+      for (const absence of absences ?? []) {
+        if (!absenceInRange(absence, dateRange)) {
+          results.absencesSkipped++;
+          continue;
+        }
+        try {
+          const data = {
+            userId: session.user.id,
+            source: absence.source,
+            externalUid: absence.externalUid,
+            kind: absence.kind,
+            rawType: absence.rawType,
+            startDate: berlinDayStart(absence.startDate),
+            endDate: berlinDayStart(absence.endDate),
+            halfDay: absence.halfDay,
+            status: absence.status,
+            sequence: absence.sequence,
+            lastSeenAt: absence.lastSeenAt
+              ? new Date(absence.lastSeenAt)
+              : null,
+          };
+          const existing = absence.externalUid
+            ? await tx.absence.findUnique({
+                where: {
+                  userId_externalUid: {
+                    userId: session.user.id,
+                    externalUid: absence.externalUid,
+                  },
+                },
+                select: { id: true },
+              })
+            : await tx.absence.findFirst({
+                where: {
+                  userId: session.user.id,
+                  source: absence.source,
+                  externalUid: null,
+                  kind: absence.kind,
+                  startDate: data.startDate,
+                  endDate: data.endDate,
+                  halfDay: absence.halfDay,
+                },
+                select: { id: true },
+              });
+          const saved = existing
+            ? await tx.absence.update({
+                where: { id: existing.id },
+                data,
+                select: { id: true },
+              })
+            : await tx.absence.create({ data, select: { id: true } });
+          restoredAbsenceIds.set(absence.id, saved.id);
+          results.absencesRestored++;
+        } catch (error) {
+          results.absencesSkipped++;
+          results.errors.push(`Failed to restore absence: ${error}`);
         }
       }
 
@@ -211,6 +310,8 @@ export async function POST(request: NextRequest) {
             externalId,
             source,
             billingStatus: entry.billingStatus || null,
+            // undefined (älteres Backup) lässt eine vorhandene Verknüpfung stehen
+            absenceId: restoreAbsenceId(entry, restoredAbsenceIds),
           };
 
           // Gleiche externe ID → vorhandenen Eintrag aktualisieren (Unique-Key)
@@ -372,6 +473,7 @@ export async function PUT(request: NextRequest) {
         invalidEntries: entries.length - validEntries.length,
         hasSettings: !!backupData.userData.settings,
         travelDays: travelDaysFromBackup(backupData.userData)?.length ?? 0,
+        absences: absencesFromBackup(backupData.userData)?.length ?? 0,
         dateRange,
         entryTypes,
         warnings:

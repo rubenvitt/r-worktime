@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import {
+  absencesFromBackup,
   keepMissingSyncFields,
   resolveRestoreSource,
+  restoreAbsenceId,
   settingsFromBackup,
   travelDaysFromBackup,
 } from "./backup-restore";
@@ -165,5 +167,102 @@ describe("travelDaysFromBackup", () => {
 
   it("liefert für ein leeres Feld eine leere Liste", () => {
     expect(travelDaysFromBackup({ travelDays: [] })).toEqual([]);
+  });
+});
+
+describe("absencesFromBackup", () => {
+  const valid = {
+    id: "old-1",
+    source: "TIMEWARP",
+    externalUid: "uid-1@timewarp",
+    kind: "SPECIAL_LEAVE",
+    rawType: "SONDERURLAUB",
+    startDate: "2026-11-02",
+    endDate: "2026-11-03",
+    halfDay: false,
+    status: "ACTIVE",
+    sequence: 2,
+    lastSeenAt: "2026-10-11T08:00:00.000Z",
+  };
+
+  it("liefert null für Backups ohne Abwesenheiten (älteres Format)", () => {
+    expect(absencesFromBackup({ entries: [] })).toBeNull();
+    expect(absencesFromBackup(null)).toBeNull();
+  });
+
+  it("übernimmt gültige Abwesenheiten, Datum auch als ISO-Zeitstempel", () => {
+    const result = absencesFromBackup({
+      absences: [
+        valid,
+        {
+          id: "old-2",
+          source: "MANUAL",
+          kind: "VACATION",
+          startDate: "2026-08-03T00:00:00.000Z",
+          endDate: "2026-08-07T00:00:00.000Z",
+          status: "ACTIVE",
+        },
+      ],
+    });
+    expect(result).toEqual([
+      {
+        id: "old-1",
+        source: "TIMEWARP",
+        externalUid: "uid-1@timewarp",
+        kind: "SPECIAL_LEAVE",
+        rawType: "SONDERURLAUB",
+        startDate: "2026-11-02",
+        endDate: "2026-11-03",
+        halfDay: false,
+        status: "ACTIVE",
+        sequence: 2,
+        lastSeenAt: "2026-10-11T08:00:00.000Z",
+      },
+      {
+        id: "old-2",
+        source: "MANUAL",
+        externalUid: null,
+        kind: "VACATION",
+        rawType: null,
+        startDate: "2026-08-03",
+        endDate: "2026-08-07",
+        halfDay: false,
+        status: "ACTIVE",
+        sequence: null,
+        lastSeenAt: null,
+      },
+    ]);
+  });
+
+  it("verwirft ungültige Zeilen", () => {
+    const result = absencesFromBackup({
+      absences: [
+        { ...valid, kind: "SICK" },
+        { ...valid, source: "OUTLOOK" },
+        { ...valid, status: "DONE" },
+        { ...valid, startDate: "2026-13-01" },
+        { ...valid, startDate: "2026-11-05", endDate: "2026-11-04" },
+        { ...valid, id: undefined },
+        "kaputt",
+      ],
+    });
+    expect(result).toEqual([]);
+  });
+});
+
+describe("restoreAbsenceId", () => {
+  const ids = new Map([["old-1", "new-1"]]);
+
+  it("übersetzt die alte ID auf die wiederhergestellte Abwesenheit", () => {
+    expect(restoreAbsenceId({ absenceId: "old-1" }, ids)).toBe("new-1");
+  });
+
+  it("entkoppelt Einträge, deren Abwesenheit nicht im Backup ist", () => {
+    expect(restoreAbsenceId({ absenceId: "fehlt" }, ids)).toBeNull();
+    expect(restoreAbsenceId({ absenceId: null }, ids)).toBeNull();
+  });
+
+  it("lässt das Feld bei älteren Backups unangetastet (undefined)", () => {
+    expect(restoreAbsenceId({}, ids)).toBeUndefined();
   });
 });

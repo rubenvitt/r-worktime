@@ -14,32 +14,39 @@ export async function POST(request: NextRequest) {
     const { includeSettings = true } = body;
 
     // Get all user data
-    const [user, userSettings, timeEntries, travelDays] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          createdAt: true,
-        },
-      }),
-      includeSettings
-        ? prisma.userSettings.findUnique({
-            where: { userId: session.user.id },
-          })
-        : null,
-      prisma.timeEntry.findMany({
-        where: { userId: session.user.id },
-        orderBy: { date: "asc" },
-      }),
-      prisma.travelDay.findMany({
-        where: { userId: session.user.id },
-        orderBy: { date: "asc" },
-        select: { date: true, isTravel: true },
-      }),
-    ]);
+    const [user, userSettings, timeEntries, travelDays, absences] =
+      await Promise.all([
+        prisma.user.findUnique({
+          where: { id: session.user.id },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            createdAt: true,
+          },
+        }),
+        includeSettings
+          ? prisma.userSettings.findUnique({
+              where: { userId: session.user.id },
+            })
+          : null,
+        prisma.timeEntry.findMany({
+          where: { userId: session.user.id },
+          orderBy: { date: "asc" },
+        }),
+        prisma.travelDay.findMany({
+          where: { userId: session.user.id },
+          orderBy: { date: "asc" },
+          select: { date: true, isTravel: true },
+        }),
+        // Abwesenheiten (Timewarp und Dialog); Kalender-Integration und
+        // Abgleichsprotokoll bleiben bewusst draußen (geheime Feed-URL)
+        prisma.absence.findMany({
+          where: { userId: session.user.id },
+          orderBy: { startDate: "asc" },
+        }),
+      ]);
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -67,6 +74,7 @@ export async function POST(request: NextRequest) {
         0,
       ),
       travelDays: travelDays.length,
+      absences: absences.length,
     };
 
     // Create backup data structure
@@ -95,6 +103,7 @@ export async function POST(request: NextRequest) {
           externalId: entry.externalId,
           source: entry.source,
           billingStatus: entry.billingStatus,
+          absenceId: entry.absenceId,
           createdAt: entry.createdAt.toISOString(),
           updatedAt: entry.updatedAt.toISOString(),
         })),
@@ -102,6 +111,20 @@ export async function POST(request: NextRequest) {
         travelDays: travelDays.map((day) => ({
           date: dateKeyFromDbDate(day.date),
           isTravel: day.isTravel,
+        })),
+        // Abwesenheiten; ältere Backups haben dieses Feld nicht
+        absences: absences.map((absence) => ({
+          id: absence.id,
+          source: absence.source,
+          externalUid: absence.externalUid,
+          kind: absence.kind,
+          rawType: absence.rawType,
+          startDate: dateKeyFromDbDate(absence.startDate),
+          endDate: dateKeyFromDbDate(absence.endDate),
+          halfDay: absence.halfDay,
+          status: absence.status,
+          sequence: absence.sequence,
+          lastSeenAt: absence.lastSeenAt?.toISOString() ?? null,
         })),
       },
     };

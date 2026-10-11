@@ -71,6 +71,7 @@ interface BackupPreview {
     invalidEntries: number;
     hasSettings: boolean;
     travelDays?: number;
+    absences?: number;
     dateRange: { from: string; to: string } | null;
     entryTypes: Record<string, number>;
     warnings: string[];
@@ -482,6 +483,10 @@ export function BackupManager() {
                     <div>
                       <strong>Reisetage:</strong>{" "}
                       {backupPreview.preview.travelDays ?? 0}
+                    </div>
+                    <div>
+                      <strong>Abwesenheiten:</strong>{" "}
+                      {backupPreview.preview.absences ?? 0}
                     </div>
                   </div>
 
