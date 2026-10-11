@@ -89,6 +89,10 @@ stündlich). Er läuft im App-Prozess, ein externes Job-System ist nicht nötig.
 `TIMING_SYNC_SCHEDULER=off` bleibt nur der manuelle Sync. Pro Nutzer läuft immer nur ein
 Sync gleichzeitig.
 
+Derselbe Scheduler startet auch den stündlichen Kalender-Abgleich (Timewarp-Feed,
+Einstellungen › Kalender). `TIMING_SYNC_SCHEDULER=off` schaltet ihn mit ab; dann gleicht
+nur noch „Jetzt abgleichen“ in den Einstellungen ab.
+
 **Sicherheit**
 
 Der API-Key wird mit AES-256-GCM verschlüsselt in der Tabelle `timing_integrations`
