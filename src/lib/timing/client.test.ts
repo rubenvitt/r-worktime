@@ -273,3 +273,148 @@ describe("createTimingClient", () => {
     );
   });
 });
+
+describe("createTimingClient – Schreiben und Projekte", () => {
+  function clientWith(fetchImpl: ReturnType<typeof vi.fn>) {
+    return createTimingClient({
+      token: "t",
+      baseUrl: BASE,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+  }
+
+  it("listTimeEntries filtert nach Projekt samt Unterprojekten, auch in der Zukunft", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ data: [apiEntry("1")], links: { next: null } }),
+    );
+    await clientWith(fetchImpl).listTimeEntries(
+      { from: "2027-01-04", to: "2027-01-05" },
+      { projects: ["/projects/42"], includeChildProjects: true },
+    );
+    const url = new URL((fetchImpl.mock.calls[0] as unknown as [string])[0]);
+    expect(url.searchParams.getAll("projects[]")).toEqual(["/projects/42"]);
+    expect(url.searchParams.get("include_child_projects")).toBe("1");
+    expect(url.searchParams.get("start_date_min")).toBe("2027-01-04");
+    expect(url.searchParams.get("start_date_max")).toBe("2027-01-05");
+  });
+
+  it("createTimeEntry schickt Ortszeit mit Offset und nicht abrechenbar", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ data: apiEntry("99") }, 201),
+    );
+    const created = await clientWith(fetchImpl).createTimeEntry({
+      start: new Date("2026-12-21T07:00:00.000Z"),
+      end: new Date("2026-12-21T15:00:00.000Z"),
+      projectRef: "/projects/42",
+      title: "Urlaub",
+      notes: "Aus Timewarp",
+    });
+    expect(created.self).toBe("/time-entries/99");
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe(`${BASE}/time-entries`);
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
+      "application/json",
+    );
+    expect(JSON.parse(init.body as string)).toEqual({
+      start_date: "2026-12-21T08:00:00+01:00",
+      end_date: "2026-12-21T16:00:00+01:00",
+      project: "/projects/42",
+      title: "Urlaub",
+      notes: "Aus Timewarp",
+      billing_status: "not_billable",
+      replace_existing: false,
+    });
+  });
+
+  it("createTimeEntry akzeptiert die Antwort auch ohne data-Hülle", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(apiEntry("7"), 201));
+    const created = await clientWith(fetchImpl).createTimeEntry({
+      start: new Date("2026-12-21T07:00:00.000Z"),
+      end: new Date("2026-12-21T15:00:00.000Z"),
+      projectRef: "/projects/42",
+      title: "Urlaub",
+    });
+    expect(created.self).toBe("/time-entries/7");
+  });
+
+  it("createTimeEntry wirft bei Fehlern und Antworten ohne ID", async () => {
+    const failing = vi.fn(async () => jsonResponse({ message: "nope" }, 422));
+    const error = await clientWith(failing)
+      .createTimeEntry({
+        start: new Date(),
+        end: new Date(),
+        projectRef: "/projects/42",
+        title: "Urlaub",
+      })
+      .catch((e: unknown) => e);
+    expect((error as TimingApiError).status).toBe(422);
+
+    const noId = vi.fn(async () => jsonResponse({ data: {} }, 201));
+    await expect(
+      clientWith(noId).createTimeEntry({
+        start: new Date(),
+        end: new Date(),
+        projectRef: "/projects/42",
+        title: "Urlaub",
+      }),
+    ).rejects.toThrow(/keine ID/);
+
+    const neverCalled = vi.fn();
+    await expect(
+      clientWith(neverCalled).createTimeEntry({
+        start: new Date(),
+        end: new Date(),
+        projectRef: "https://evil.example.test/projects/1",
+        title: "Urlaub",
+      }),
+    ).rejects.toThrow(TimingApiError);
+    expect(neverCalled).not.toHaveBeenCalled();
+  });
+
+  it("deleteTimeEntry: 204 und 404 gelten als gelöscht, sonst Fehler", async () => {
+    const ok = vi.fn(async () => new Response(null, { status: 204 }));
+    await clientWith(ok).deleteTimeEntry("/time-entries/5");
+    const [url, init] = ok.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`${BASE}/time-entries/5`);
+    expect(init.method).toBe("DELETE");
+
+    const gone = vi.fn(async () => new Response(null, { status: 404 }));
+    await expect(
+      clientWith(gone).deleteTimeEntry("/time-entries/5"),
+    ).resolves.toBeUndefined();
+
+    const broken = vi.fn(async () => new Response(null, { status: 500 }));
+    await expect(
+      clientWith(broken).deleteTimeEntry("/time-entries/5"),
+    ).rejects.toThrow(TimingApiError);
+  });
+
+  it("deleteTimeEntry lehnt fremde Referenzen ab, ohne anzufragen", async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      clientWith(fetchImpl).deleteTimeEntry("//evil.example.test/x"),
+    ).rejects.toThrow(TimingApiError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("listProjects liefert Referenz und Pfad, sortiert", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        data: [
+          { self: "/projects/2", title_chain: ["Work", "INNOQ", "Urlaub"] },
+          { self: "/projects/1", title: "Privat" },
+          { self: "kaputt" },
+        ],
+      }),
+    );
+    await expect(clientWith(fetchImpl).listProjects()).resolves.toEqual([
+      { self: "/projects/1", path: "Privat" },
+      { self: "/projects/2", path: "Work ▸ INNOQ ▸ Urlaub" },
+    ]);
+  });
+});

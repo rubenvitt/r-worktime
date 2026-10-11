@@ -259,3 +259,42 @@ export function yearsOfRange(from: string, to: string): number[] {
   }
   return years;
 }
+
+const berlinPartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: BERLIN_TIME_ZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/**
+ * ISO-Zeitstempel in Berliner Ortszeit mit Offset, sekundengenau,
+ * z. B. 2026-12-21T08:00:00+01:00 (für APIs, die die Ortszeit erwarten).
+ */
+export function berlinIsoString(date: Date): string {
+  if (Number.isNaN(date.getTime())) {
+    throw new RangeError("Ungültiges Datum");
+  }
+  const parts = berlinPartsFormatter.formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "00";
+  const wallClock = Date.UTC(
+    Number(get("year")),
+    Number(get("month")) - 1,
+    Number(get("day")),
+    Number(get("hour")),
+    Number(get("minute")),
+    Number(get("second")),
+  );
+  const offsetMinutes = Math.round(
+    (wallClock - Math.floor(date.getTime() / 1000) * 1000) / 60_000,
+  );
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const abs = Math.abs(offsetMinutes);
+  const offset = `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}${offset}`;
+}

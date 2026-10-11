@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   berlinDateKey,
   berlinDayStart,
+  berlinIsoString,
   dateKeyFromDbDate,
   dateKeyFromIsoTimestamp,
   isDateKey,
@@ -200,5 +201,20 @@ describe("ISO-8601-Kalenderwochen", () => {
     expect(weekdayOfKey("2026-12-28")).toBe(1); // Montag
     expect(weekdayOfKey("2027-01-03")).toBe(0); // Sonntag
     expect(weekdayOfKey("2026-10-10")).toBe(6); // Samstag
+  });
+});
+
+describe("berlinIsoString", () => {
+  it("schreibt Berliner Ortszeit mit Offset, Winter und Sommer", () => {
+    expect(berlinIsoString(new Date("2026-12-21T07:00:00.000Z"))).toBe(
+      "2026-12-21T08:00:00+01:00",
+    );
+    expect(berlinIsoString(new Date("2026-07-01T06:00:00.000Z"))).toBe(
+      "2026-07-01T08:00:00+02:00",
+    );
+  });
+
+  it("wirft bei ungültigem Datum", () => {
+    expect(() => berlinIsoString(new Date("kaputt"))).toThrow(RangeError);
   });
 });
