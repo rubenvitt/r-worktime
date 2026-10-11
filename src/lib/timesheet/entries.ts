@@ -26,7 +26,13 @@ export interface TimesheetSourceEntry {
 }
 
 export const WORK_TYPES = ["WORK", "OVERTIME"] as const;
-export const ABSENCE_TYPES = ["VACATION", "SICK", "HOLIDAY"] as const;
+export const ABSENCE_TYPES = [
+  "VACATION",
+  "SICK",
+  "HOLIDAY",
+  "OVERTIME_REDUCTION",
+  "UNPAID_LEAVE",
+] as const;
 
 export interface TimesheetFilter {
   /** "YYYY-MM" */
