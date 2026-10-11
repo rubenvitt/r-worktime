@@ -9,6 +9,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { invalidateEntryDependentQueries } from "@/components/app/query-invalidation";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -40,17 +41,6 @@ import { formatDateShort, formatHours, plural } from "@/lib/format";
 /** So viele übersprungene Tage werden einzeln genannt, der Rest gezählt. */
 const MAX_LISTED_SKIPS = 6;
 const PREVIEW_DEBOUNCE_MS = 300;
-
-/** Nach dem Eintragen veraltete Abfragen: Berichte, Saldo, Probleme, Woche, Monat, Übersicht. */
-const AFFECTED_QUERY_KEYS = [
-  ["reports"],
-  ["overtime"],
-  ["problems"],
-  ["timesheet"],
-  ["week-data"],
-  ["weekly-stats"],
-  ["dashboard"],
-] as const;
 
 interface RangeRequest {
   from: string;
@@ -164,9 +154,7 @@ export function AbsenceRangeDialog({
         dryRun: false,
       }),
     onSuccess: (result) => {
-      for (const queryKey of AFFECTED_QUERY_KEYS) {
-        queryClient.invalidateQueries({ queryKey: [...queryKey] });
-      }
+      invalidateEntryDependentQueries(queryClient);
       const title = ABSENCE_TITLE[type];
       toast.success(`${title} eingetragen`, {
         description:

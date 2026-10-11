@@ -3,8 +3,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CalendarPlus } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-import { EmptyState } from "@/components/app/empty-state";
+import { type ReactNode, useState } from "react";
 import { ErrorState } from "@/components/app/error-state";
 import { Panel, PanelBody, PanelHeader } from "@/components/app/panel";
 import {
@@ -21,6 +20,7 @@ import { useReportYear } from "@/components/reports/use-report-params";
 import { Button } from "@/components/ui/button";
 import type { AbsenceReport } from "@/lib/reports/absences";
 import { cn } from "@/lib/utils";
+import { AbsenceBlocksPanel } from "./absence-blocks-panel";
 import {
   formatDays,
   formatHoursLabel,
@@ -50,6 +50,8 @@ export function AbsencesView() {
 
   const report = query.data;
   const isStale = Boolean(report && report.year !== year);
+  // Eigener Abruf: erscheint auch, wenn der Bericht lädt oder scheitert
+  const blocksPanel = <AbsenceBlocksPanel year={year} />;
 
   return (
     <>
@@ -90,15 +92,19 @@ export function AbsencesView() {
         <div className="space-y-6" aria-busy="true">
           <SkeletonStatStrip tiles={4} />
           <SkeletonStatStrip tiles={3} />
+          {blocksPanel}
           <SkeletonPanel lines={6} />
           <SkeletonPanel lines={8} />
         </div>
       ) : query.isError && !report ? (
-        <ErrorState
-          title="Abwesenheiten konnten nicht geladen werden"
-          error={query.error}
-          onRetry={() => query.refetch()}
-        />
+        <div className="space-y-6">
+          <ErrorState
+            title="Abwesenheiten konnten nicht geladen werden"
+            error={query.error}
+            onRetry={() => query.refetch()}
+          />
+          {blocksPanel}
+        </div>
       ) : report ? (
         <div className="space-y-6">
           <RefetchBar active={query.isFetching && isStale} />
@@ -117,7 +123,7 @@ export function AbsencesView() {
             )}
             aria-busy={isStale}
           >
-            <AbsencesContent report={report} />
+            <AbsencesContent report={report} blocksPanel={blocksPanel} />
           </div>
         </div>
       ) : null}
@@ -125,7 +131,13 @@ export function AbsencesView() {
   );
 }
 
-function AbsencesContent({ report }: { report: AbsenceReport }) {
+function AbsencesContent({
+  report,
+  blocksPanel,
+}: {
+  report: AbsenceReport;
+  blocksPanel: ReactNode;
+}) {
   const { account, totals } = report;
   const isPastYear = report.year < Number(report.todayKey.slice(0, 4));
   const showUnpaid = totals.days.unpaid > 0;
@@ -243,6 +255,9 @@ function AbsencesContent({ report }: { report: AbsenceReport }) {
         </StatStrip>
       </section>
 
+      {blocksPanel}
+
+      {/* Ohne Abwesenheitstage zeigt die Liste oben den Leerzustand */}
       {hasAbsences ? (
         <>
           <Panel>
@@ -278,14 +293,7 @@ function AbsencesContent({ report }: { report: AbsenceReport }) {
             </div>
           </Panel>
         </>
-      ) : (
-        <Panel>
-          <EmptyState
-            title={`Keine Abwesenheiten in ${report.year}`}
-            description="Urlaub, Krankheit und Feiertage erscheinen hier, sobald Einträge dieser Art vorhanden sind – etwa aus dem Timing-Sync oder dem Feiertagsimport in den Einstellungen."
-          />
-        </Panel>
-      )}
+      ) : null}
 
       <CountingRules report={report} />
     </>
