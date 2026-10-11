@@ -7,6 +7,7 @@ import {
   formatFeedTest,
   kindLabel,
   maskedFeedUrl,
+  projectOutsideRoots,
   sortActions,
   statsRows,
   suggestVacationProject,
@@ -100,7 +101,7 @@ describe("Feed", () => {
         unknownTypes: [],
       }),
     ).toBe(
-      "3 Abwesenheiten (davon 1 storniert), 21 Events, 0 unbekannte Typen",
+      "3 Abwesenheiten (dazu 1 stornierte), 21 Events, 0 unbekannte Typen",
     );
     expect(
       formatFeedTest({
@@ -184,5 +185,14 @@ describe("statsRows", () => {
     ]);
     expect(statsRows(null)).toEqual([]);
     expect(statsRows([1, 2])).toEqual([]);
+  });
+});
+
+describe("projectOutsideRoots", () => {
+  it("meldet ein Urlaubsprojekt außerhalb der Wurzeln des Timing-Syncs", () => {
+    expect(projectOutsideRoots("Work ▸ INNOQ ▸ Urlaub", ["Work"])).toBe(false);
+    expect(projectOutsideRoots("Privat ▸ Urlaub", ["Work"])).toBe(true);
+    expect(projectOutsideRoots("Workshop ▸ Urlaub", ["Work"])).toBe(true);
+    expect(projectOutsideRoots("Work ▸ INNOQ ▸ Urlaub", [])).toBe(true);
   });
 });
