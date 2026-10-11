@@ -1,11 +1,23 @@
 // Kalender-Abgleich: Timewarp-Feed → Abwesenheiten → Tage → Timing → Protokoll.
 // Regeln: docs/superpowers/specs/2026-10-11-timewarp-absences-design.md, „Abgleich“.
 //
-// Ein Lauf hält die Abwesenheits-Sperre des Nutzers (dieselbe wie Dialog und
-// DELETE /api/absences/[id]) für die ganze Transaktion, also auch während der
-// Timing-Aufrufe. Timing-Fehler je Tag werden abgefangen (Aktion „failed“,
-// der nächste Lauf sucht erst in Timing und legt dann an → keine Duplikate).
-// DB-Fehler brechen den Lauf ab; Postgres verwirft dann die ganze Transaktion.
+// Ablauf eines Laufs (pro Nutzer höchstens einer, Laufschutz im Prozess):
+// 1. Feed laden und auswerten – ohne Transaktion; scheitert das, bleibt alles.
+// 2. Kurze Transaktion unter der Abwesenheits-Sperre (dieselbe wie Dialog,
+//    DELETE /api/absences/[id] und Löschen von Einträgen): Absence-Zeilen
+//    an den Feed angleichen.
+// 3. Tage planen und alle Timing-Aufrufe (suchen, anlegen, löschen) ohne
+//    Transaktion und ohne Sperre – der Dialog muss nicht auf Timing warten.
+// 4. Kurze Transaktion unter der Sperre: Tage neu lesen, neu planen und nur
+//    anwenden, was der frische Plan noch will. In Timing angelegte Einträge,
+//    die der frische Plan nicht mehr braucht (z. B. Tag inzwischen per Dialog
+//    belegt), werden danach in Timing wieder gelöscht.
+//
+// Eigene Timing-Einträge erkennt der Abgleich an der Notiz „Aus Timewarp“.
+// Fremde Urlaubseinträge in Timing werden nur verknüpft (lokal wie vom
+// Timing-Sync angelegt) und nie gelöscht. Timing-Fehler je Tag werden
+// abgefangen (Aktion „failed“, der nächste Lauf sucht erst in Timing und legt
+// dann an → keine Duplikate). DB-Fehler brechen den Lauf ab.
 
 import {
   AbsenceSource,
@@ -29,9 +41,12 @@ import {
 import {
   type DayPlan,
   type DayPlanAbsence,
+  type DayPlanEntry,
   isHalfDayEntry,
+  isOwnTimingNote,
   type PlannedCreate,
   planDays,
+  TIMEWARP_NOTE,
 } from "@/lib/calendar/plan-days";
 import {
   parseTimewarpFeed,
@@ -57,24 +72,28 @@ import {
 } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { dailyTargetHours } from "@/lib/reports/absences";
+import type { TimingApiTimeEntry, TimingClient } from "@/lib/timing/client";
 import {
-  createTimingClient,
-  type TimingApiTimeEntry,
-  type TimingClient,
-} from "@/lib/timing/client";
+  mapApiEntry,
+  type SyncEntryData,
+  toSyncEntryRow,
+} from "@/lib/timing/mapping";
 import { joinTitleChain } from "@/lib/timing/project-path";
 import { loadOfficialHolidays } from "@/services/holiday.service";
 import { overtimeService } from "@/services/overtime.service";
 import { getUserSettings } from "@/services/settings.service";
+import { timingClientForUser } from "@/services/timing-entries.service";
 
-/** Notiz an Einträgen, die der Abgleich anlegt */
-export const TIMEWARP_NOTE = "Aus Timewarp";
+export { TIMEWARP_NOTE };
 
-const TRANSACTION_TIMEOUT_MS = 5 * 60_000;
+// Die Transaktionen enthalten nur DB-Zugriffe; die Werte gelten für viele
+// Zeilen beim ersten Lauf, nicht für Wartezeiten auf Timing
+const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 30_000 };
 const MAX_ERROR_LENGTH = 500;
 const RELEVANT_ENTRY_TYPES = [
   EntryType.HOLIDAY,
   EntryType.VACATION,
+  EntryType.SICK,
   EntryType.OVERTIME_REDUCTION,
   EntryType.UNPAID_LEAVE,
 ];
@@ -86,7 +105,7 @@ export interface CalendarSyncOptions {
   now?: Date;
   /** Nur für Tests: fetch für den Feed */
   feedFetchImpl?: typeof fetch;
-  /** Nur für Tests: Timing-Client statt createTimingClient */
+  /** Nur für Tests: Timing-Client statt des Clients aus dem Nutzer-Token */
   timingClient?: TimingClient;
 }
 
@@ -112,8 +131,8 @@ class CalendarSyncError extends Error {
   }
 }
 
-// Lock auf globalThis wie beim Timing-Sync: Route und Scheduler können in
-// getrennten Bundles laufen, teilen sich aber den Prozess.
+// Laufschutz auf globalThis wie beim Timing-Sync: Route und Scheduler können
+// in getrennten Bundles laufen, teilen sich aber den Prozess.
 const globalForSync = globalThis as unknown as {
   __calendarSyncLocks?: Set<string>;
 };
@@ -141,6 +160,16 @@ export function sanitizeCalendarError(
   }
   return message.slice(0, MAX_ERROR_LENGTH);
 }
+
+const DAY_COUNTERS = [
+  "created",
+  "linked",
+  "timingCreated",
+  "timingAdopted",
+  "deleted",
+  "unlinked",
+  "failed",
+] as const;
 
 function emptyStats(trigger: CalendarSyncTrigger): CalendarSyncStats {
   return {
@@ -205,22 +234,9 @@ async function prepareTiming(
   let client: TimingClient | null = injected ?? null;
   let tokenProblem: string | null = null;
   if (!client) {
-    const timing = await prisma.timingIntegration.findUnique({
-      where: { userId },
-      select: { apiTokenEnc: true },
-    });
-    if (!timing?.apiTokenEnc) {
-      tokenProblem = "Kein Timing-Token hinterlegt.";
-    } else {
-      try {
-        client = createTimingClient({
-          token: decryptSecret(timing.apiTokenEnc),
-          timeoutMs: 15_000,
-        });
-      } catch {
-        tokenProblem = "Timing-Token nicht lesbar, bitte neu hinterlegen.";
-      }
-    }
+    const timing = await timingClientForUser(userId);
+    client = timing.client;
+    tokenProblem = timing.problem;
   }
 
   if (!integration.writeToTiming) {
@@ -249,9 +265,9 @@ async function prepareTiming(
 }
 
 type Tx = Prisma.TransactionClient;
+type Db = Pick<Tx, "absence" | "timeEntry">;
 
 interface RunContext {
-  tx: Tx;
   userId: string;
   now: Date;
   timing: TimingSetup;
@@ -272,13 +288,13 @@ function addAction(
 
 /** Schritt 3: Absence-Zeilen an den Feed angleichen. */
 async function applyAbsencePlan(
+  tx: Tx,
   ctx: RunContext,
   plan: AbsencePlan,
-): Promise<string[]> {
-  const { tx, userId, now } = ctx;
-  const createdIds: string[] = [];
+): Promise<void> {
+  const { userId, now } = ctx;
   for (const data of plan.create) {
-    const created = await tx.absence.create({
+    await tx.absence.create({
       data: {
         userId,
         source: AbsenceSource.TIMEWARP,
@@ -294,7 +310,6 @@ async function applyAbsencePlan(
       },
       select: { id: true },
     });
-    createdIds.push(created.id);
   }
   for (const { id, data } of plan.update) {
     await tx.absence.update({
@@ -322,12 +337,174 @@ async function applyAbsencePlan(
       data: { status: AbsenceStatus.CANCELLED },
     });
   }
-  ctx.stats.absencesCreated = plan.create.length;
-  ctx.stats.absencesUpdated = plan.update.length;
-  ctx.stats.absencesCancelled =
-    plan.cancelMissing.length +
-    plan.update.filter((u) => u.data.status === "CANCELLED").length;
-  return createdIds;
+}
+
+/** Transaktion 1: Sicherheitsprüfung und Absence-Zeilen. */
+async function syncAbsences(
+  tx: Tx,
+  ctx: RunContext,
+  feed: TimewarpFeedResult,
+): Promise<AbsencePlan> {
+  const { userId, now } = ctx;
+  await withUserAbsenceLock(tx, userId);
+
+  const today = berlinTodayKey(now);
+  const storedRows = await tx.absence.findMany({
+    where: { userId, source: AbsenceSource.TIMEWARP },
+    select: {
+      id: true,
+      externalUid: true,
+      kind: true,
+      rawType: true,
+      startDate: true,
+      endDate: true,
+      halfDay: true,
+      status: true,
+      sequence: true,
+    },
+  });
+  const stored = storedRows.map(toStoredAbsence);
+
+  // Schutz: Ein Feed ganz ohne Termine (Störung bei Timewarp?) würde alle
+  // künftigen Abwesenheiten stornieren und ihre Timing-Einträge löschen.
+  if (
+    feed.totalEvents === 0 &&
+    stored.some((a) => a.status === "ACTIVE" && a.startDate > today)
+  ) {
+    throw new CalendarSyncError(
+      "Der Feed enthält keine Termine, obwohl künftige Abwesenheiten gespeichert sind – Abgleich zur Sicherheit abgebrochen.",
+    );
+  }
+
+  const plan = planAbsences(stored, feed.absences, today);
+  await applyAbsencePlan(tx, ctx, plan);
+  return plan;
+}
+
+interface Holidays {
+  names: Record<string, string>;
+  unavailableYears: ReadonlySet<number>;
+}
+
+interface DayState {
+  absences: DayPlanAbsence[];
+  entries: DayPlanEntry[];
+}
+
+/**
+ * Abwesenheiten, deren Tage abgeglichen werden (aus dem Feed und stornierte
+ * zum Aufräumen; vergangene, aus dem Feed gefallene bleiben unangetastet),
+ * und die Einträge dazu.
+ */
+async function loadDayState(
+  db: Db,
+  userId: string,
+  feedUids: readonly string[],
+): Promise<DayState> {
+  const rows = await db.absence.findMany({
+    where: {
+      userId,
+      source: AbsenceSource.TIMEWARP,
+      OR: [
+        { externalUid: { in: [...feedUids] } },
+        { status: AbsenceStatus.CANCELLED },
+      ],
+    },
+    select: {
+      id: true,
+      kind: true,
+      startDate: true,
+      endDate: true,
+      halfDay: true,
+      status: true,
+      suppressedDates: true,
+    },
+  });
+  const absences: DayPlanAbsence[] = rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    startDate: dateKeyFromDbDate(row.startDate),
+    endDate: dateKeyFromDbDate(row.endDate),
+    halfDay: row.halfDay,
+    status: row.status,
+    suppressedDates: row.suppressedDates,
+  }));
+  if (absences.length === 0) return { absences, entries: [] };
+
+  const active = absences.filter((a) => a.status === "ACTIVE");
+  const rangeWhere: Prisma.TimeEntryWhereInput[] =
+    active.length > 0
+      ? [
+          {
+            date: {
+              gte: berlinDayStart(active.map((a) => a.startDate).sort()[0]),
+              lte: berlinDayStart(
+                active.map((a) => a.endDate).sort()[active.length - 1],
+              ),
+            },
+            type: { in: RELEVANT_ENTRY_TYPES },
+          },
+        ]
+      : [];
+
+  const entryRows = await db.timeEntry.findMany({
+    where: {
+      userId,
+      OR: [{ absenceId: { in: absences.map((a) => a.id) } }, ...rangeWhere],
+    },
+    select: {
+      id: true,
+      date: true,
+      type: true,
+      source: true,
+      absenceId: true,
+      externalId: true,
+      duration: true,
+    },
+  });
+  return {
+    absences,
+    entries: entryRows.map((row) => ({
+      id: row.id,
+      date: dateKeyFromDbDate(row.date),
+      type: row.type,
+      source: row.source,
+      absenceId: row.absenceId,
+      externalId: row.externalId,
+      duration: Number(row.duration),
+    })),
+  };
+}
+
+async function loadHolidaysFor(
+  absences: readonly DayPlanAbsence[],
+  now: Date,
+): Promise<Holidays> {
+  const active = absences.filter((a) => a.status === "ACTIVE");
+  if (active.length === 0) return { names: {}, unavailableYears: new Set() };
+  const from = active.map((a) => a.startDate).sort()[0];
+  const to = active.map((a) => a.endDate).sort()[active.length - 1];
+  const holidays = await loadOfficialHolidays(yearsOfRange(from, to), now);
+  return {
+    names: holidays.names,
+    unavailableYears: new Set(holidays.unavailableYears),
+  };
+}
+
+function planFor(
+  state: DayState,
+  holidays: Holidays,
+  schedule: { workDays: number[]; dailyHours: number },
+  timing: TimingSetup,
+): DayPlan {
+  return planDays({
+    absences: state.absences,
+    entries: state.entries,
+    workDays: schedule.workDays,
+    dailyHours: schedule.dailyHours,
+    officialHolidays: holidays.names,
+    timingEnabled: timing.projectRef !== null,
+  });
 }
 
 /** Dauer eines Timing-Eintrags in Stunden (0, wenn unbekannt). */
@@ -346,7 +523,13 @@ function label(kind: AbsenceKind): string {
   return KIND_LABELS[kind];
 }
 
-function localEntryData(
+/** Schlüssel eines geplanten Tages über beide Pläne hinweg */
+function createKey(create: PlannedCreate): string {
+  return `${create.absenceId}|${create.date}|${create.entryType}|${create.halfDay}`;
+}
+
+/** Lokaler Eintrag des Abgleichs (source TIMEWARP). */
+function ownEntryData(
   userId: string,
   create: PlannedCreate,
   timing: {
@@ -365,7 +548,7 @@ function localEntryData(
     ? joinTitleChain(chain) || null
     : null;
 
-  // Übernommener Timing-Eintrag: dessen Zeiten und Texte, wie der Timing-Sync
+  // Übernommener eigener Timing-Eintrag: dessen Zeiten und Texte
   if (timing?.adopted && timing.entry?.end_date) {
     const start = new Date(timing.entry.start_date);
     const end = new Date(timing.entry.end_date);
@@ -401,14 +584,208 @@ function localEntryData(
   };
 }
 
-/** Schritt 4 ausführen: entkoppeln, löschen, verknüpfen, anlegen. */
-async function applyDayPlan(
+/** Timing-Eintrag so aufbereitet, wie ihn der Timing-Sync speichern würde. */
+function foreignEntryData(entry: TimingApiTimeEntry): SyncEntryData | null {
+  const chain = entry.project?.title_chain;
+  const path = Array.isArray(chain) ? joinTitleChain(chain) : "";
+  if (!path) return null;
+  const mapped = mapApiEntry(entry, [path]);
+  return mapped.kept ? mapped.entry : null;
+}
+
+type TimingOutcome =
+  /** Eigener Eintrag (Notiz „Aus Timewarp“) gefunden: übernehmen */
+  | { type: "adoptOwn"; entry: TimingApiTimeEntry }
+  /** Fremder Urlaubseintrag: nur verknüpfen, nie löschen */
+  | { type: "linkForeign"; entry: TimingApiTimeEntry; data: SyncEntryData }
+  /** In Timing belegt, aber nicht nutzbar: nur lokal eintragen */
+  | { type: "occupied" }
+  /** In Timing neu angelegt */
+  | { type: "created"; entry: TimingApiTimeEntry }
+  | { type: "failed"; detail: string };
+
+interface TimingWork {
+  /** Lokale Eintrags-IDs, deren Timing-Eintrag gelöscht ist (auch 404) */
+  deleted: Set<string>;
+  /** Lokale Eintrags-ID → Fehlertext */
+  deleteFailed: Map<string, string>;
+  outcomes: Map<string, TimingOutcome>;
+}
+
+/** Lässt sich der geplante Tag überhaupt anlegen (Feiertage bekannt)? */
+function creatable(
+  create: PlannedCreate,
+  holidays: Holidays,
+  failedRemovals: ReadonlySet<string>,
+): "ok" | "holidaysUnavailable" | "removalFailed" {
+  if (create.replaces && failedRemovals.has(create.replaces)) {
+    return "removalFailed";
+  }
+  if (holidays.unavailableYears.has(Number(create.date.slice(0, 4)))) {
+    return "holidaysUnavailable";
+  }
+  return "ok";
+}
+
+/**
+ * Schritt 3: alle Timing-Aufrufe für den Plan, ohne Transaktion. Schreibt
+ * nichts lokal; das Ergebnis wendet Transaktion 2 an.
+ */
+async function runTimingCalls(
   ctx: RunContext,
   plan: DayPlan,
-  unavailableYears: ReadonlySet<number>,
+  holidays: Holidays,
   dailyHours: number,
-): Promise<void> {
-  const { tx, userId, timing } = ctx;
+): Promise<TimingWork> {
+  const { timing, userId } = ctx;
+  const work: TimingWork = {
+    deleted: new Set(),
+    deleteFailed: new Map(),
+    outcomes: new Map(),
+  };
+  const client = timing.client;
+  if (!client) return work;
+
+  for (const remove of plan.remove) {
+    if (!remove.externalId) continue;
+    try {
+      await client.deleteTimeEntry(remove.externalId);
+      work.deleted.add(remove.entryId);
+    } catch (error) {
+      work.deleteFailed.set(remove.entryId, timingErrorText(error));
+    }
+  }
+
+  const projectRef = timing.projectRef;
+  if (!projectRef) return work;
+  const failedRemovals = new Set(work.deleteFailed.keys());
+  const toTiming = plan.create.filter(
+    (create) =>
+      create.toTiming && creatable(create, holidays, failedRemovals) === "ok",
+  );
+  if (toTiming.length === 0) return work;
+
+  // Vorhandene Einträge im Projekt einmal für den ganzen Zeitraum suchen
+  const candidatesByDate = new Map<string, TimingApiTimeEntry[]>();
+  // Tage mit einem Timing-Eintrag im Projekt, der lokal schon zugeordnet ist:
+  // nicht nutzbar, aber auch kein zweiter Eintrag in Timing
+  const occupiedInTiming = new Set<string>();
+  const dates = toTiming.map((create) => create.date).sort();
+  try {
+    const found = await client.listTimeEntries(
+      { from: dates[0], to: dates[dates.length - 1] },
+      { projects: [projectRef], includeChildProjects: true },
+    );
+    const selves = found.map((entry) => entry.self);
+    const usedLocally = new Set(
+      selves.length > 0
+        ? (
+            await prisma.timeEntry.findMany({
+              where: { userId, externalId: { in: selves } },
+              select: { externalId: true },
+            })
+          ).map((row) => row.externalId)
+        : [],
+    );
+    for (const entry of found) {
+      if (entry.is_running) continue;
+      const start = new Date(entry.start_date);
+      if (Number.isNaN(start.getTime())) continue;
+      const key = berlinDateKey(start);
+      if (usedLocally.has(entry.self)) {
+        occupiedInTiming.add(key);
+        continue;
+      }
+      const list = candidatesByDate.get(key) ?? [];
+      list.push(entry);
+      candidatesByDate.set(key, list);
+    }
+  } catch (error) {
+    const detail = `Suche in Timing fehlgeschlagen: ${timingErrorText(error)}`;
+    for (const create of toTiming) {
+      work.outcomes.set(createKey(create), { type: "failed", detail });
+    }
+    return work;
+  }
+
+  const take = (list: TimingApiTimeEntry[], entry: TimingApiTimeEntry) => {
+    list.splice(list.indexOf(entry), 1);
+    return entry;
+  };
+
+  for (const create of toTiming) {
+    const key = createKey(create);
+    const sameDay = candidatesByDate.get(create.date) ?? [];
+    const own = sameDay.filter((entry) => isOwnTimingNote(entry.notes));
+    // Eigener Eintrag: bevorzugt der passende (ganz/halb); ein unpassender
+    // eigener wird trotzdem übernommen und beim nächsten Lauf ersetzt
+    const ownMatch =
+      own.find(
+        (entry) =>
+          isHalfDayEntry(timingEntryHours(entry), dailyHours) ===
+          create.halfDay,
+      ) ?? own[0];
+    if (ownMatch) {
+      work.outcomes.set(key, {
+        type: "adoptOwn",
+        entry: take(sameDay, ownMatch),
+      });
+      continue;
+    }
+    // Fremder Eintrag desselben Typs: verknüpfen, ganz/halb egal
+    const foreign = sameDay
+      .map((entry) => ({ entry, data: foreignEntryData(entry) }))
+      .find(({ data }) => data?.type === create.entryType);
+    if (foreign?.data) {
+      work.outcomes.set(key, {
+        type: "linkForeign",
+        entry: take(sameDay, foreign.entry),
+        data: foreign.data,
+      });
+      continue;
+    }
+    if (sameDay.length > 0 || occupiedInTiming.has(create.date)) {
+      work.outcomes.set(key, { type: "occupied" });
+      continue;
+    }
+    try {
+      const created = await client.createTimeEntry({
+        start: create.startTime,
+        end: create.endTime,
+        projectRef,
+        title: label(create.kind),
+        notes: TIMEWARP_NOTE,
+        billingStatus: "not_billable",
+      });
+      work.outcomes.set(key, { type: "created", entry: created });
+    } catch (error) {
+      work.outcomes.set(key, {
+        type: "failed",
+        detail: `Anlegen in Timing fehlgeschlagen: ${timingErrorText(error)}`,
+      });
+    }
+  }
+  return work;
+}
+
+/**
+ * Transaktion 2: Tage frisch planen und anwenden. Gibt die in Timing
+ * angelegten Einträge zurück, die der frische Plan nicht mehr braucht.
+ */
+async function applyDays(
+  tx: Tx,
+  ctx: RunContext,
+  feedUids: readonly string[],
+  holidays: Holidays,
+  schedule: { workDays: number[]; dailyHours: number },
+  work: TimingWork,
+): Promise<TimingApiTimeEntry[]> {
+  const { userId, timing } = ctx;
+  await withUserAbsenceLock(tx, userId);
+
+  const state = await loadDayState(tx, userId, feedUids);
+  const plan = planFor(state, holidays, schedule, timing);
+  const consumed = new Set<string>();
 
   for (const unlink of plan.unlink) {
     await tx.timeEntry.updateMany({
@@ -436,25 +813,31 @@ async function applyDayPlan(
             : "Tag gehört nicht mehr zur Abwesenheit.";
     if (remove.externalId) {
       if (timing.client) {
-        try {
-          await timing.client.deleteTimeEntry(remove.externalId);
-          detail += " Auch in Timing gelöscht.";
-        } catch (error) {
+        const error = work.deleteFailed.get(remove.entryId);
+        if (error) {
           failedRemovals.add(remove.entryId);
           addAction(
             ctx,
             "failed",
             remove.date,
             remove.kind,
-            `Löschen in Timing fehlgeschlagen: ${timingErrorText(error)}`,
+            `Löschen in Timing fehlgeschlagen: ${error}`,
           );
           continue;
         }
+        if (!work.deleted.has(remove.entryId)) {
+          // Erst während des Laufs hinzugekommen: der nächste Lauf löscht
+          failedRemovals.add(remove.entryId);
+          continue;
+        }
+        detail += " Auch in Timing gelöscht.";
       } else {
         detail += " In Timing bitte von Hand löschen (kein Timing-Token).";
       }
     }
-    await tx.timeEntry.deleteMany({ where: { id: remove.entryId, userId } });
+    await tx.timeEntry.deleteMany({
+      where: { id: remove.entryId, userId, source: EntrySource.TIMEWARP },
+    });
     addAction(ctx, "deleted", remove.date, remove.kind, detail);
   }
 
@@ -472,10 +855,29 @@ async function applyDayPlan(
     );
   }
 
-  const creates: PlannedCreate[] = [];
+  const externalIdInUse = async (externalId: string) =>
+    (await tx.timeEntry.findFirst({
+      where: { userId, externalId },
+      select: { id: true },
+    })) !== null;
+
+  const createLocalOnly = async (create: PlannedCreate, hint: string) => {
+    await tx.timeEntry.create({ data: ownEntryData(userId, create, null) });
+    addAction(
+      ctx,
+      "created",
+      create.date,
+      create.kind,
+      `${label(create.kind)}${create.halfDay ? " (halber Tag)" : ""} eingetragen.${hint}`,
+    );
+  };
+  const occupiedHint =
+    " Nicht in Timing: dort gibt es an dem Tag schon einen Eintrag im Urlaubsprojekt.";
+
   for (const create of plan.create) {
-    if (create.replaces && failedRemovals.has(create.replaces)) continue;
-    if (unavailableYears.has(Number(create.date.slice(0, 4)))) {
+    const availability = creatable(create, holidays, failedRemovals);
+    if (availability === "removalFailed") continue;
+    if (availability === "holidaysUnavailable") {
       addAction(
         ctx,
         "failed",
@@ -485,302 +887,128 @@ async function applyDayPlan(
       );
       continue;
     }
-    creates.push(create);
-  }
 
-  // Timing: vorhandene Einträge im Projekt einmal für den ganzen Zeitraum suchen
-  const toTiming =
-    timing.client && timing.projectRef
-      ? creates.filter((create) => create.toTiming)
-      : [];
-  const candidatesByDate = new Map<string, TimingApiTimeEntry[]>();
-  // Tage mit einem Timing-Eintrag im Projekt, der lokal schon zugeordnet ist:
-  // nicht übernehmbar, aber auch kein zweiter Eintrag in Timing
-  const occupiedInTiming = new Set<string>();
-  let searchError: string | null = null;
-  if (toTiming.length > 0 && timing.client && timing.projectRef) {
-    const dates = toTiming.map((create) => create.date).sort();
-    try {
-      const found = await timing.client.listTimeEntries(
-        { from: dates[0], to: dates[dates.length - 1] },
-        { projects: [timing.projectRef], includeChildProjects: true },
-      );
-      const selves = found.map((entry) => entry.self);
-      const usedLocally = new Set(
-        selves.length > 0
-          ? (
-              await tx.timeEntry.findMany({
-                where: { userId, externalId: { in: selves } },
-                select: { externalId: true },
-              })
-            ).map((row) => row.externalId)
-          : [],
-      );
-      for (const entry of found) {
-        if (entry.is_running) continue;
-        const start = new Date(entry.start_date);
-        if (Number.isNaN(start.getTime())) continue;
-        const key = berlinDateKey(start);
-        if (usedLocally.has(entry.self)) {
-          occupiedInTiming.add(key);
-          continue;
-        }
-        const list = candidatesByDate.get(key) ?? [];
-        list.push(entry);
-        candidatesByDate.set(key, list);
-      }
-    } catch (error) {
-      searchError = timingErrorText(error);
-    }
-  }
-
-  for (const create of creates) {
     const writeTiming =
       create.toTiming && timing.client !== null && timing.projectRef !== null;
     if (!writeTiming) {
-      await tx.timeEntry.create({ data: localEntryData(userId, create, null) });
       // Hinweis, wenn der Tag eigentlich nach Timing gehört hätte
       const hint =
         writesToTiming(create.kind) && timing.skippedReason
           ? ` Nicht in Timing: ${timing.skippedReason}`
           : "";
-      addAction(
-        ctx,
-        "created",
-        create.date,
-        create.kind,
-        `${label(create.kind)}${create.halfDay ? " (halber Tag)" : ""} eingetragen.${hint}`,
-      );
+      await createLocalOnly(create, hint);
       continue;
     }
-    if (searchError) {
+
+    const key = createKey(create);
+    const outcome = work.outcomes.get(key);
+    if (!outcome) {
       addAction(
         ctx,
         "failed",
         create.date,
         create.kind,
-        `Suche in Timing fehlgeschlagen: ${searchError}`,
+        "Tag erst während des Abgleichs hinzugekommen – wird beim nächsten Lauf eingetragen.",
       );
       continue;
     }
+    if (outcome.type === "failed") {
+      addAction(ctx, "failed", create.date, create.kind, outcome.detail);
+      continue;
+    }
+    if (outcome.type === "occupied") {
+      await createLocalOnly(create, occupiedHint);
+      continue;
+    }
+    if (await externalIdInUse(outcome.entry.self)) {
+      // Inzwischen lokal zugeordnet (z. B. Timing-Sync): nicht doppelt
+      // speichern; ein eben angelegter Eintrag wird danach wieder gelöscht
+      await createLocalOnly(create, occupiedHint);
+      continue;
+    }
+    consumed.add(key);
 
-    // Übernommen wird nur ein Eintrag, der zu ganz/halb passt – sonst hielte
-    // der nächste Lauf ihn für geändert und löschte ihn in Timing
-    const sameDay = candidatesByDate.get(create.date) ?? [];
-    const index = sameDay.findIndex(
-      (entry) =>
-        isHalfDayEntry(timingEntryHours(entry), dailyHours) === create.halfDay,
-    );
-    const candidate = index >= 0 ? sameDay.splice(index, 1)[0] : null;
-    if (
-      !candidate &&
-      (sameDay.length > 0 || occupiedInTiming.has(create.date))
-    ) {
-      await tx.timeEntry.create({ data: localEntryData(userId, create, null) });
-      addAction(
-        ctx,
-        "created",
-        create.date,
-        create.kind,
-        `${label(create.kind)} eingetragen. Nicht in Timing: dort gibt es an dem Tag schon einen Eintrag im Urlaubsprojekt.`,
-      );
-      continue;
-    }
-    if (candidate) {
+    if (outcome.type === "linkForeign") {
       await tx.timeEntry.create({
-        data: localEntryData(userId, create, {
-          externalId: candidate.self,
-          entry: candidate,
-          adopted: true,
-        }),
+        data: {
+          userId,
+          ...toSyncEntryRow(outcome.data),
+          // Typ wie geplant (der Timing-Sync ermittelt denselben)
+          type: create.entryType,
+          absenceId: create.absenceId,
+        },
       });
       addAction(
         ctx,
-        "timingAdopted",
+        "linked",
         create.date,
         create.kind,
-        "Vorhandenen Timing-Eintrag übernommen.",
+        "Vorhandenen Timing-Eintrag verknüpft – er bleibt in Timing unangetastet.",
       );
       continue;
     }
 
-    let created: TimingApiTimeEntry;
-    try {
-      created = await (timing.client as TimingClient).createTimeEntry({
-        start: create.startTime,
-        end: create.endTime,
-        projectRef: timing.projectRef as string,
-        title: label(create.kind),
-        notes: TIMEWARP_NOTE,
-        billingStatus: "not_billable",
-      });
-    } catch (error) {
-      addAction(
-        ctx,
-        "failed",
-        create.date,
-        create.kind,
-        `Anlegen in Timing fehlgeschlagen: ${timingErrorText(error)}`,
-      );
-      continue;
-    }
-    const clash = await tx.timeEntry.findFirst({
-      where: { userId, externalId: created.self },
-      select: { id: true },
-    });
-    if (clash) {
-      // Sollte nie passieren; ohne Prüfung bräche der Unique-Key den ganzen Lauf ab
-      addAction(
-        ctx,
-        "failed",
-        create.date,
-        create.kind,
-        "Timing-ID ist schon vergeben – Eintrag nicht gespeichert.",
-      );
-      continue;
-    }
+    const adopted = outcome.type === "adoptOwn";
     await tx.timeEntry.create({
-      data: localEntryData(userId, create, {
-        externalId: created.self,
-        entry: created,
-        adopted: false,
+      data: ownEntryData(userId, create, {
+        externalId: outcome.entry.self,
+        entry: outcome.entry,
+        adopted,
       }),
     });
     addAction(
       ctx,
-      "timingCreated",
+      adopted ? "timingAdopted" : "timingCreated",
       create.date,
       create.kind,
-      `${label(create.kind)}${create.halfDay ? " (halber Tag)" : ""} in Timing eingetragen.`,
+      adopted
+        ? "Eigenen Timing-Eintrag übernommen."
+        : `${label(create.kind)}${create.halfDay ? " (halber Tag)" : ""} in Timing eingetragen.`,
     );
   }
+
+  const orphans: TimingApiTimeEntry[] = [];
+  for (const [key, outcome] of work.outcomes) {
+    if (outcome.type === "created" && !consumed.has(key)) {
+      orphans.push(outcome.entry);
+    }
+  }
+  return orphans;
 }
 
-async function runInTransaction(
-  tx: Tx,
-  ctx: Omit<RunContext, "tx">,
-  feed: TimewarpFeedResult,
-  schedule: { workDays: number[]; dailyHours: number },
+/**
+ * In Timing angelegte Einträge, die nach Transaktion 2 niemand braucht (Tag
+ * inzwischen anders belegt), wieder löschen – sonst kämen sie später über
+ * den Timing-Sync als Duplikat zurück.
+ */
+async function removeOrphans(
+  ctx: RunContext,
+  orphans: readonly TimingApiTimeEntry[],
 ): Promise<void> {
-  const runCtx: RunContext = { ...ctx, tx };
-  const { userId, now } = ctx;
-  await withUserAbsenceLock(tx, userId);
-
-  const today = berlinTodayKey(now);
-  const storedRows = await tx.absence.findMany({
-    where: { userId, source: AbsenceSource.TIMEWARP },
-    select: {
-      id: true,
-      externalUid: true,
-      kind: true,
-      rawType: true,
-      startDate: true,
-      endDate: true,
-      halfDay: true,
-      status: true,
-      sequence: true,
-    },
-  });
-  const stored = storedRows.map(toStoredAbsence);
-
-  // Schutz: Ein Feed ganz ohne Termine (Störung bei Timewarp?) würde alle
-  // künftigen Abwesenheiten stornieren und ihre Timing-Einträge löschen.
-  if (
-    feed.totalEvents === 0 &&
-    stored.some((a) => a.status === "ACTIVE" && a.startDate > today)
-  ) {
-    throw new CalendarSyncError(
-      "Der Feed enthält keine Termine, obwohl künftige Abwesenheiten gespeichert sind – Abgleich zur Sicherheit abgebrochen.",
-    );
+  const client = ctx.timing.client;
+  if (!client) return;
+  for (const entry of orphans) {
+    const date = berlinDateKey(new Date(entry.start_date));
+    const kind = entry.title?.trim() || "Timing";
+    try {
+      await client.deleteTimeEntry(entry.self);
+      addAction(
+        ctx,
+        "deleted",
+        date,
+        kind,
+        "In Timing angelegten Eintrag wieder entfernt – der Tag ist inzwischen anders belegt.",
+      );
+    } catch (error) {
+      addAction(
+        ctx,
+        "failed",
+        date,
+        kind,
+        `Überzähligen Timing-Eintrag nicht gelöscht (${timingErrorText(error)}) – bitte in Timing von Hand löschen.`,
+      );
+    }
   }
-
-  const absencePlan = planAbsences(stored, feed.absences, today);
-  await applyAbsencePlan(runCtx, absencePlan);
-
-  // Tage abgleichen: Abwesenheiten aus dem Feed und stornierte (Aufräumen).
-  // Vergangene, aus dem Feed gefallene bleiben unangetastet.
-  const feedUids = new Set(feed.absences.map((a) => a.uid));
-  const current = await tx.absence.findMany({
-    where: {
-      userId,
-      source: AbsenceSource.TIMEWARP,
-      OR: [
-        { externalUid: { in: Array.from(feedUids) } },
-        { status: AbsenceStatus.CANCELLED },
-      ],
-    },
-    select: {
-      id: true,
-      kind: true,
-      startDate: true,
-      endDate: true,
-      halfDay: true,
-      status: true,
-      suppressedDates: true,
-    },
-  });
-  const absences: DayPlanAbsence[] = current.map((row) => ({
-    id: row.id,
-    kind: row.kind,
-    startDate: dateKeyFromDbDate(row.startDate),
-    endDate: dateKeyFromDbDate(row.endDate),
-    halfDay: row.halfDay,
-    status: row.status,
-    suppressedDates: row.suppressedDates,
-  }));
-  const active = absences.filter((a) => a.status === "ACTIVE");
-  if (absences.length === 0) return;
-
-  let rangeWhere: Prisma.TimeEntryWhereInput[] = [];
-  let officialHolidays: Record<string, string> = {};
-  let unavailableYears = new Set<number>();
-  if (active.length > 0) {
-    const from = active.map((a) => a.startDate).sort()[0];
-    const to = active.map((a) => a.endDate).sort()[active.length - 1];
-    const holidays = await loadOfficialHolidays(yearsOfRange(from, to), now);
-    officialHolidays = holidays.names;
-    unavailableYears = new Set(holidays.unavailableYears);
-    rangeWhere = [
-      {
-        date: { gte: berlinDayStart(from), lte: berlinDayStart(to) },
-        type: { in: RELEVANT_ENTRY_TYPES },
-      },
-    ];
-  }
-
-  const entryRows = await tx.timeEntry.findMany({
-    where: {
-      userId,
-      OR: [{ absenceId: { in: absences.map((a) => a.id) } }, ...rangeWhere],
-    },
-    select: {
-      id: true,
-      date: true,
-      type: true,
-      source: true,
-      absenceId: true,
-      externalId: true,
-      duration: true,
-    },
-  });
-
-  const dayPlan = planDays({
-    absences,
-    entries: entryRows.map((row) => ({
-      id: row.id,
-      date: dateKeyFromDbDate(row.date),
-      type: row.type,
-      source: row.source,
-      absenceId: row.absenceId,
-      externalId: row.externalId,
-      duration: Number(row.duration),
-    })),
-    workDays: schedule.workDays,
-    dailyHours: schedule.dailyHours,
-    officialHolidays,
-    timingEnabled: ctx.timing.projectRef !== null,
-  });
-  await applyDayPlan(runCtx, dayPlan, unavailableYears, schedule.dailyHours);
 }
 
 async function writeLogAndStatus(
@@ -858,8 +1086,10 @@ export async function syncCalendarForUser(
     const now = options.now ?? new Date();
     const startedAt = new Date();
     const stats = emptyStats(options.trigger);
-    const actions: CalendarSyncAction[] = [];
+    const feedActions: CalendarSyncAction[] = [];
+    const dayActions: CalendarSyncAction[] = [];
     let feedUrl: string | undefined;
+    let absencesSynced = false;
     let result: CalendarSyncResult;
 
     try {
@@ -871,13 +1101,13 @@ export async function syncCalendarForUser(
         );
       }
 
-      // Erst laden und auswerten – scheitert das, wird nichts geändert
+      // 1. Erst laden und auswerten – scheitert das, wird nichts geändert
       const feed = parseTimewarpFeed(
         await fetchCalendarFeed(feedUrl, { fetchImpl: options.feedFetchImpl }),
       );
       Object.assign(stats, summarizeFeed(feed));
       for (const unknown of feed.unknown) {
-        actions.push({
+        feedActions.push({
           date: unknown.startDate,
           kind: unknown.rawType,
           action: "skippedUnknownType",
@@ -897,20 +1127,50 @@ export async function syncCalendarForUser(
           settings.workDays,
         ),
       };
+      const ctx: RunContext = {
+        userId,
+        now,
+        timing,
+        actions: dayActions,
+        stats,
+      };
 
-      const dayActions: CalendarSyncAction[] = [];
-      await prisma.$transaction(
-        (tx) =>
-          runInTransaction(
-            tx,
-            { userId, now, timing, actions: dayActions, stats },
-            feed,
-            schedule,
-          ),
-        { timeout: TRANSACTION_TIMEOUT_MS, maxWait: 10_000 },
+      // 2. Absence-Zeilen (kurze Transaktion unter der Sperre)
+      const absencePlan = await prisma.$transaction(
+        (tx) => syncAbsences(tx, ctx, feed),
+        TRANSACTION_OPTIONS,
       );
-      actions.push(...dayActions);
-      result = { status: CALENDAR_SYNC_STATUS_SUCCESS, stats, actions };
+      absencesSynced = true;
+      stats.absencesCreated = absencePlan.create.length;
+      stats.absencesUpdated = absencePlan.update.length;
+      stats.absencesCancelled =
+        absencePlan.cancelMissing.length +
+        absencePlan.update.filter((u) => u.data.status === "CANCELLED").length;
+
+      // 3. Planen und Timing – ohne Transaktion
+      const feedUids = feed.absences.map((a) => a.uid);
+      const state = await loadDayState(prisma, userId, feedUids);
+      if (state.absences.length > 0) {
+        const holidays = await loadHolidaysFor(state.absences, now);
+        const work = await runTimingCalls(
+          ctx,
+          planFor(state, holidays, schedule, timing),
+          holidays,
+          schedule.dailyHours,
+        );
+
+        // 4. Frisch planen und anwenden (kurze Transaktion unter der Sperre)
+        const orphans = await prisma.$transaction(
+          (tx) => applyDays(tx, ctx, feedUids, holidays, schedule, work),
+          TRANSACTION_OPTIONS,
+        );
+        await removeOrphans(ctx, orphans);
+      }
+      result = {
+        status: CALENDAR_SYNC_STATUS_SUCCESS,
+        stats,
+        actions: [...feedActions, ...dayActions],
+      };
     } catch (error) {
       if (
         !(error instanceof CalendarFeedError) &&
@@ -927,30 +1187,25 @@ export async function syncCalendarForUser(
           ),
         );
       }
-      // Tagesaktionen der abgebrochenen Transaktion sind verworfen; nur die
-      // Feed-Meldungen (unbekannte Typen) bleiben im Protokoll
+      // Die Tage sind verworfen (Transaktion 2 zurückgerollt oder nie
+      // gelaufen); die Absence-Zeilen aus Transaktion 1 bleiben, wenn sie
+      // schon gespeichert waren. Im Protokoll stehen nur die Feed-Meldungen.
+      for (const counter of DAY_COUNTERS) stats[counter] = 0;
+      if (!absencesSynced) {
+        stats.absencesCreated = 0;
+        stats.absencesUpdated = 0;
+        stats.absencesCancelled = 0;
+      }
       result = {
         status: CALENDAR_SYNC_STATUS_ERROR,
         error: sanitizeCalendarError(error, [feedUrl]),
-        stats: {
-          ...stats,
-          absencesCreated: 0,
-          absencesUpdated: 0,
-          absencesCancelled: 0,
-          created: 0,
-          linked: 0,
-          timingCreated: 0,
-          timingAdopted: 0,
-          deleted: 0,
-          unlinked: 0,
-          failed: 0,
-        },
-        actions: actions.filter((a) => a.action === "skippedUnknownType"),
+        stats,
+        actions: feedActions,
       };
     }
 
     result.stats.durationMs = Date.now() - startedAt.getTime();
-    if (result.status === CALENDAR_SYNC_STATUS_SUCCESS) {
+    if (result.status === CALENDAR_SYNC_STATUS_SUCCESS || absencesSynced) {
       overtimeService.invalidateCache(userId);
     }
     await writeLogAndStatus(userId, result, startedAt);

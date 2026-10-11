@@ -13,6 +13,17 @@ import {
 /** Timewarp-Einträge beginnen um 08:00 Berliner Zeit (wie die Urlaube in Timing). */
 export const TIMEWARP_START_HOUR = 8;
 
+/**
+ * Notiz an Einträgen, die der Abgleich in Timing anlegt. Nur ein Timing-
+ * Eintrag mit dieser Notiz gilt als eigener (übernehmen, später löschen);
+ * alle anderen werden höchstens verknüpft und nie gelöscht.
+ */
+export const TIMEWARP_NOTE = "Aus Timewarp";
+
+export function isOwnTimingNote(notes: string | null | undefined): boolean {
+  return typeof notes === "string" && notes.includes(TIMEWARP_NOTE);
+}
+
 /** Unter drei Vierteln des Tagessolls gilt ein eigener Eintrag als halber Tag. */
 const HALF_DAY_THRESHOLD = 0.75;
 
@@ -47,7 +58,8 @@ export interface DayPlanInput {
   absences: readonly DayPlanAbsence[];
   /**
    * Alle mit diesen Abwesenheiten verknüpften Einträge sowie die Einträge im
-   * Zeitraum vom Typ HOLIDAY, VACATION, OVERTIME_REDUCTION und UNPAID_LEAVE
+   * Zeitraum vom Typ HOLIDAY, VACATION, SICK, OVERTIME_REDUCTION und
+   * UNPAID_LEAVE
    */
   entries: readonly DayPlanEntry[];
   /** 0 = Sonntag … 6 = Samstag */
@@ -104,6 +116,13 @@ export interface DayPlan {
 const OWN_SOURCE = "TIMEWARP";
 /** Diese Herkünfte werden nie mit einer Abwesenheit verknüpft. */
 const NEVER_LINK_SOURCES = new Set(["ADJUSTMENT", "HOLIDAY"]);
+/** Abwesenheitstypen, die einen Tag belegen (wie im Dialog „Abwesenheit eintragen“) */
+const OCCUPYING_TYPES = new Set([
+  "VACATION",
+  "SICK",
+  "OVERTIME_REDUCTION",
+  "UNPAID_LEAVE",
+]);
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
@@ -194,6 +213,21 @@ export function planDays(input: DayPlanInput): DayPlan {
     }
   }
 
+  // Tage, die schon anderweitig belegt sind: Eintrag einer anderen (z. B.
+  // im Dialog angelegten) Abwesenheit oder Krankheit. Dort wird weder
+  // angelegt noch verknüpft – sonst entstünde der Tag doppelt.
+  const occupiedDates = new Set(
+    input.entries
+      .filter(
+        (entry) =>
+          entry.source !== "ADJUSTMENT" &&
+          OCCUPYING_TYPES.has(entry.type) &&
+          ((entry.absenceId !== null && !absenceIds.has(entry.absenceId)) ||
+            (entry.type === "SICK" && entry.absenceId === null)),
+      )
+      .map((entry) => entry.date),
+  );
+
   // Freie Einträge (ohne Abwesenheit) je Tag und Typ, zum Verknüpfen
   const usedEntryIds = new Set<string>();
   const freeEntry = (date: string, type: string) =>
@@ -270,6 +304,7 @@ export function planDays(input: DayPlanInput): DayPlan {
 
     for (const date of targets.get(absence.id) ?? []) {
       if (owner.get(date) !== absence.id || covered.has(date)) continue;
+      if (occupiedDates.has(date)) continue;
       const free = freeEntry(date, entryType);
       if (free) {
         usedEntryIds.add(free.id);

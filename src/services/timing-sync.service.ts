@@ -18,7 +18,7 @@ import { MAX_SYNC_WINDOW_DAYS } from "@/lib/timing/constants";
 import {
   type FilterStats,
   filterAndMapEntries,
-  type SyncEntryData,
+  toSyncEntryRow,
 } from "@/lib/timing/mapping";
 import { type ExistingEntry, planSync } from "@/lib/timing/plan-sync";
 import { overtimeService } from "@/services/overtime.service";
@@ -147,24 +147,6 @@ function toExistingEntry(row: {
   };
 }
 
-function toEntryData(entry: SyncEntryData) {
-  return {
-    date: berlinDayStart(entry.dateKey),
-    startTime: entry.startTime,
-    endTime: entry.endTime,
-    duration: entry.duration,
-    type: entry.type,
-    description: entry.description,
-    title: entry.title,
-    notes: entry.notes,
-    projectPath: entry.projectPath,
-    externalId: entry.externalId,
-    billingStatus: entry.billingStatus,
-    source: EntrySource.TIMING_SYNC,
-    importLogId: null,
-  };
-}
-
 async function runSync(
   userId: string,
   integration: TimingIntegration,
@@ -245,13 +227,16 @@ async function runSync(
         });
       }
       for (const { id, data } of result.update) {
-        await tx.timeEntry.update({ where: { id }, data: toEntryData(data) });
+        await tx.timeEntry.update({
+          where: { id },
+          data: toSyncEntryRow(data),
+        });
       }
       if (result.create.length > 0) {
         await tx.timeEntry.createMany({
           data: result.create.map((entry) => ({
             userId,
-            ...toEntryData(entry),
+            ...toSyncEntryRow(entry),
           })),
         });
       }
