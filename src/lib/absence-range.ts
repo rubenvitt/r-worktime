@@ -28,6 +28,21 @@ export const ABSENCE_TITLE: Record<AbsenceRangeType, string> = {
   SICK: "Krankheit",
 };
 
+/** Vorhandene Einträge dieser Typen belegen einen Tag schon („existing“). */
+const OCCUPYING_TITLE: Readonly<Record<string, string>> = {
+  ...ABSENCE_TITLE,
+  OVERTIME_REDUCTION: "Überstundenabbau",
+  UNPAID_LEAVE: "Unbezahlter Urlaub",
+};
+
+/** Eintragstypen, die das Abfragen vorhandener Tage braucht (plus HOLIDAY). */
+export const OCCUPYING_ENTRY_TYPES = [
+  "VACATION",
+  "SICK",
+  "OVERTIME_REDUCTION",
+  "UNPAID_LEAVE",
+] as const;
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MS_PER_HOUR = 60 * 60 * 1000;
 
@@ -128,7 +143,10 @@ export interface AbsencePlanInput {
   dailyHours: number;
   /** Offizielle Feiertage, Datum → Name */
   officialHolidays: Record<string, string>;
-  /** Einträge im Zeitraum; HOLIDAY, VACATION und SICK führen zum Überspringen */
+  /**
+   * Einträge im Zeitraum; HOLIDAY, VACATION, SICK, OVERTIME_REDUCTION und
+   * UNPAID_LEAVE führen zum Überspringen
+   */
   existingEntries: readonly ExistingDayEntry[];
 }
 
@@ -171,13 +189,10 @@ export function planAbsenceRange(input: AbsencePlanInput): AbsencePlan {
     if (entry.type === "HOLIDAY" && !importedHolidays.has(entry.date)) {
       importedHolidays.set(entry.date, entry.description?.trim() || "Feiertag");
     } else if (
-      (entry.type === "VACATION" || entry.type === "SICK") &&
+      OCCUPYING_TITLE[entry.type] !== undefined &&
       !existingAbsences.has(entry.date)
     ) {
-      existingAbsences.set(
-        entry.date,
-        ABSENCE_TITLE[entry.type as AbsenceRangeType],
-      );
+      existingAbsences.set(entry.date, OCCUPYING_TITLE[entry.type]);
     }
   }
 
@@ -225,6 +240,8 @@ export interface AbsenceRangeResponse {
   dryRun: boolean;
   /** Angelegte (bei dryRun: anzulegende) Tage */
   created: number;
+  /** Angelegte manuelle Abwesenheit (nur Urlaub, nicht bei dryRun), sonst null */
+  absenceId: string | null;
   days: { date: string; hours: number }[];
   skipped: SkippedAbsenceDay[];
   nonWorkDays: number;
@@ -241,4 +258,40 @@ export function absenceDescription(
 ): string {
   const trimmed = note?.trim();
   return trimmed ? `${ABSENCE_TITLE[type]} - ${trimmed}` : ABSENCE_TITLE[type];
+}
+
+/** Abwesenheit (Absence-Zeile), die der Dialog zu seinen Einträgen anlegt. */
+export interface ManualAbsenceData {
+  source: "MANUAL";
+  kind: "VACATION";
+  /** Kalendertage "YYYY-MM-DD", beide inklusive */
+  startDate: string;
+  endDate: string;
+  halfDay: boolean;
+  status: "ACTIVE";
+}
+
+/**
+ * Abwesenheit zum Dialog: Urlaub bekommt eine manuelle Abwesenheit über den
+ * angefragten Zeitraum, mit der die angelegten Tage verknüpft werden – so lässt
+ * sich der Block später als Ganzes löschen (DELETE /api/absences/[id]).
+ *
+ * Krankheit bekommt bewusst keine: SICK ist keine Abwesenheitsart
+ * (AbsenceKind), Krankheitstage bleiben einzelne Einträge wie bisher.
+ * Ohne angelegte Tage (alles übersprungen) entsteht ebenfalls keine.
+ */
+export function manualAbsenceFor(
+  type: AbsenceRangeType,
+  range: { from: string; to: string; halfDay: boolean },
+  createdDays: number,
+): ManualAbsenceData | null {
+  if (type !== "VACATION" || createdDays <= 0) return null;
+  return {
+    source: "MANUAL",
+    kind: "VACATION",
+    startDate: range.from,
+    endDate: range.to,
+    halfDay: range.halfDay,
+    status: "ACTIVE",
+  };
 }
