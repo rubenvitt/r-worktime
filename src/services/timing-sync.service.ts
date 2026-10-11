@@ -166,6 +166,10 @@ async function runSync(
     integration.projectRoots,
   );
   const incomingIds = entries.map((entry) => entry.externalId);
+  // Alle IDs, die Timing im Zeitraum noch kennt (auch außerhalb der Wurzeln)
+  const stillInTiming = new Set(
+    raw.map((entry) => entry.self).filter((self) => typeof self === "string"),
+  );
 
   const plan = await prisma.$transaction(
     async (tx) => {
@@ -212,12 +216,19 @@ async function runSync(
       );
 
       // In Timing gelöschte Tage einer Timewarp-Abwesenheit: als unterdrückt
-      // vermerken, sonst legt der Kalender-Abgleich sie neu an
+      // vermerken, sonst legt der Kalender-Abgleich sie neu an. Liefert
+      // Timing den Eintrag noch (nur vom Wurzel-Filter verworfen), wurde er
+      // nicht gelöscht – dann bleibt der Tag offen für den Abgleich.
       const deletedIds = new Set(result.delete);
       await suppressAbsenceDays(
         tx,
         userId,
-        rows.filter((row) => deletedIds.has(row.id) && row.absenceId),
+        rows.filter(
+          (row) =>
+            deletedIds.has(row.id) &&
+            row.absenceId &&
+            !(row.externalId && stillInTiming.has(row.externalId)),
+        ),
       );
 
       const idsToDelete = [...result.delete, ...result.replaceFileImports];

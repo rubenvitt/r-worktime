@@ -15,13 +15,14 @@ export const TIMEWARP_START_HOUR = 8;
 
 /**
  * Notiz an Einträgen, die der Abgleich in Timing anlegt. Nur ein Timing-
- * Eintrag mit dieser Notiz gilt als eigener (übernehmen, später löschen);
- * alle anderen werden höchstens verknüpft und nie gelöscht.
+ * Eintrag mit genau dieser Notiz gilt als eigener (übernehmen, später
+ * löschen); alle anderen – auch mit ergänzter Notiz – werden höchstens
+ * verknüpft und nie gelöscht.
  */
 export const TIMEWARP_NOTE = "Aus Timewarp";
 
 export function isOwnTimingNote(notes: string | null | undefined): boolean {
-  return typeof notes === "string" && notes.includes(TIMEWARP_NOTE);
+  return typeof notes === "string" && notes.trim() === TIMEWARP_NOTE;
 }
 
 /** Unter drei Vierteln des Tagessolls gilt ein eigener Eintrag als halber Tag. */
@@ -91,6 +92,11 @@ export interface PlannedCreate extends DayRef {
   toTiming: boolean;
   /** Ersetzt einen eben entfernten eigenen Eintrag (ganz ↔ halb) */
   replaces: string | null;
+  /**
+   * Eigener lokaler Eintrag ohne Timing-ID (angelegt, als Timing noch nicht
+   * eingerichtet war): nur in Timing nachtragen, lokal keinen neuen anlegen
+   */
+  upgrades: string | null;
 }
 
 export interface PlannedRemove extends DayRef {
@@ -300,6 +306,26 @@ export function planDays(input: DayPlanInput): DayPlan {
         continue;
       }
       covered.add(entry.date);
+      // Nur lokal eingetragen, Timing inzwischen eingerichtet: nachtragen
+      // (der Abgleich sucht vorher in Timing, also kein Duplikat)
+      if (
+        own &&
+        entry.externalId === null &&
+        input.timingEnabled &&
+        writesToTiming(absence.kind)
+      ) {
+        const hours = timewarpDayHours(absence.halfDay, input.dailyHours);
+        plan.create.push({
+          ...ref(entry.date),
+          entryType,
+          halfDay: absence.halfDay,
+          hours,
+          ...timewarpDayTimes(entry.date, hours),
+          toTiming: true,
+          replaces: null,
+          upgrades: entry.id,
+        });
+      }
     }
 
     for (const date of targets.get(absence.id) ?? []) {
@@ -320,6 +346,7 @@ export function planDays(input: DayPlanInput): DayPlan {
         ...timewarpDayTimes(date, hours),
         toTiming: input.timingEnabled && writesToTiming(absence.kind),
         replaces: replaced.get(date) ?? null,
+        upgrades: null,
       });
     }
   }

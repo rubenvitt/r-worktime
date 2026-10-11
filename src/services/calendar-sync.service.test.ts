@@ -1025,3 +1025,144 @@ describe("syncCalendarForUser – Storno, Timing aus, unterdrückte Tage", () =>
     expect(db.logs.some((l) => l.id === "old-0")).toBe(false);
   });
 });
+
+describe("syncCalendarForUser – Prüfung vor dem PR", () => {
+  function foreign(self: string, day: string, notes: string | null) {
+    return {
+      self,
+      start_date: `${day}T07:00:00.000Z`,
+      end_date: `${day}T15:00:00.000Z`,
+      duration: 28_800,
+      project: { self: PROJECT, title_chain: ["Work", "INNOQ", "Urlaub"] },
+      title: "Weihnachtsurlaub",
+      notes,
+      is_running: false,
+    } satisfies TimingApiTimeEntry;
+  }
+
+  it("verknüpft keinen fremden Timing-Eintrag außerhalb der Projekt-Wurzeln des Timing-Syncs", async () => {
+    // Der Timing-Sync würde einen solchen TIMING_SYNC-Eintrag sonst als
+    // „in Timing gelöscht“ entfernen und den Tag unterdrücken
+    db.timingIntegration = { projectRoots: ["Kunden"] };
+    const timing = fakeTiming();
+    timing.entries.push(foreign("/time-entries/77", "2026-12-21", null));
+    const result = await run(feed(VACATION), timing);
+
+    expect(result.status).toBe("success");
+    expect(db.entries.some((e) => e.externalId === "/time-entries/77")).toBe(
+      false,
+    );
+    const on21 = db.entries.filter(
+      (e) => (e.date as Date).toISOString().slice(0, 10) === "2026-12-21",
+    );
+    expect(on21).toHaveLength(1);
+    expect(on21[0]).toMatchObject({ source: "TIMEWARP", externalId: null });
+    // Fremder Eintrag bleibt, kein zweiter am 21.
+    expect(
+      timing.entries.filter((e) => e.start_date.startsWith("2026-12-21")),
+    ).toEqual([expect.objectContaining({ self: "/time-entries/77" })]);
+
+    const second = await run(feed(VACATION), timing);
+    expect(second.actions).toEqual([]);
+  });
+
+  it("übernimmt nur die Notiz „Aus Timewarp“ als eigene, nicht einen Text, der sie enthält", async () => {
+    const timing = fakeTiming();
+    timing.entries.push(
+      foreign(
+        "/time-entries/79",
+        "2026-12-21",
+        "Aus Timewarp übernommen – Weihnachten",
+      ),
+    );
+    await run(feed(VACATION), timing);
+    expect(
+      db.entries.find((e) => e.externalId === "/time-entries/79"),
+    ).toMatchObject({ source: "TIMING_SYNC" });
+
+    // Storno: fremder Eintrag bleibt in Timing
+    await run(feed(VACATION_CANCELLED), timing);
+    expect(timing.entries.map((e) => e.self)).toEqual(["/time-entries/79"]);
+  });
+
+  it("löscht einen eben angelegten Timing-Eintrag nicht, wenn der Timing-Sync ihn inzwischen importiert hat", async () => {
+    const timing = fakeTiming();
+    const create = vi.mocked(timing.createTimeEntry);
+    const impl = create.getMockImplementation();
+    create.mockImplementation(async (input) => {
+      const result = await (impl as NonNullable<typeof impl>)(input);
+      if (input.start.toISOString().startsWith("2026-12-22")) {
+        // Parallel: der Timing-Sync importiert den neuen Eintrag
+        db.entries.push({
+          id: "synced-22",
+          userId: USER,
+          date: new Date("2026-12-22T00:00:00.000Z"),
+          type: "VACATION",
+          source: "TIMING_SYNC",
+          externalId: result.self,
+          absenceId: null,
+          duration: 8,
+        });
+      }
+      return result;
+    });
+
+    const result = await run(feed(VACATION), timing);
+    expect(result.status).toBe("success");
+    // Der importierte Eintrag ist verknüpft und bleibt in Timing
+    expect(db.entries.find((e) => e.id === "synced-22")).toMatchObject({
+      absenceId: db.absences[0].id,
+    });
+    expect(timing.entries).toHaveLength(3);
+    expect(result.stats.deleted).toBe(0);
+  });
+  it("trägt lokal angelegte Urlaubstage nach Timing nach, sobald das Projekt gewählt ist", async () => {
+    // Erster Lauf vor dem Speichern des Urlaubsprojekts: nur lokal
+    db.integration = { ...db.integration, timingProjectId: null };
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    expect(timing.entries).toHaveLength(0);
+    const localIds = timewarpEntries().map((e) => e.id);
+
+    // Fremder Urlaub am 21. in Timing: verknüpfen statt doppelt anlegen
+    timing.entries.push(foreign("/time-entries/90", "2026-12-21", null));
+    db.integration = { ...db.integration, timingProjectId: PROJECT };
+    const result = await run(feed(VACATION), timing);
+
+    expect(result.status).toBe("success");
+    expect(result.stats).toMatchObject({ timingCreated: 2, linked: 1 });
+    expect(timing.entries).toHaveLength(3);
+    expect(
+      timing.entries.filter((e) => e.start_date.startsWith("2026-12-21")),
+    ).toHaveLength(1);
+    // 22. und 23.: dieselben lokalen Einträge, jetzt mit Timing-ID
+    const own = timewarpEntries();
+    expect(own).toHaveLength(2);
+    expect(own.every((e) => localIds.includes(e.id as string))).toBe(true);
+    expect(own.every((e) => typeof e.externalId === "string")).toBe(true);
+    expect(
+      db.entries.find((e) => e.externalId === "/time-entries/90"),
+    ).toMatchObject({ source: "TIMING_SYNC", absenceId: db.absences[0].id });
+
+    const third = await run(feed(VACATION), timing);
+    expect(third.actions).toEqual([]);
+    expect(timing.entries).toHaveLength(3);
+  });
+
+  it("lässt einen lokalen Tag in Ruhe, wenn Timing dort schon einen anderen Eintrag im Projekt hat", async () => {
+    db.integration = { ...db.integration, timingProjectId: null };
+    const timing = fakeTiming();
+    await run(feed(VACATION), timing);
+    timing.entries.push({
+      ...foreign("/time-entries/91", "2026-12-21", null),
+      project: { self: PROJECT, title_chain: ["Work", "INNOQ", "Kunde"] },
+    });
+    db.integration = { ...db.integration, timingProjectId: PROJECT };
+    await run(feed(VACATION), timing);
+    const again = await run(feed(VACATION), timing);
+    expect(again.actions).toEqual([]);
+    expect(
+      timing.entries.filter((e) => e.start_date.startsWith("2026-12-21")),
+    ).toHaveLength(1);
+  });
+});

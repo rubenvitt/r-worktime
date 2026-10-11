@@ -73,6 +73,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { dailyTargetHours } from "@/lib/reports/absences";
 import type { TimingApiTimeEntry, TimingClient } from "@/lib/timing/client";
+import { DEFAULT_PROJECT_ROOTS } from "@/lib/timing/constants";
 import {
   mapApiEntry,
   type SyncEntryData,
@@ -224,6 +225,12 @@ interface TimingSetup {
   /** Projekt für neue Einträge, wenn das Schreiben aktiv ist */
   projectRef: string | null;
   skippedReason: string | null;
+  /**
+   * Projekt-Wurzeln des Timing-Syncs: Nur fremde Einträge darin werden
+   * verknüpft – alles andere würde der Timing-Sync als „in Timing gelöscht“
+   * entfernen und den Tag unterdrücken
+   */
+  projectRoots: string[];
 }
 
 async function prepareTiming(
@@ -238,9 +245,15 @@ async function prepareTiming(
     client = timing.client;
     tokenProblem = timing.problem;
   }
+  const timingSettings = await prisma.timingIntegration.findUnique({
+    where: { userId },
+    select: { projectRoots: true },
+  });
+  // Wie der Timing-Sync (getPublicTimingSettings): ohne Zeile die Standard-Wurzeln
+  const projectRoots = timingSettings?.projectRoots ?? DEFAULT_PROJECT_ROOTS;
 
   if (!integration.writeToTiming) {
-    return { client, projectRef: null, skippedReason: null };
+    return { client, projectRef: null, skippedReason: null, projectRoots };
   }
   if (!integration.timingProjectId) {
     return {
@@ -248,6 +261,7 @@ async function prepareTiming(
       projectRef: null,
       skippedReason:
         "Kein Timing-Projekt gewählt – Urlaube nur in R-Worktime eingetragen.",
+      projectRoots,
     };
   }
   if (!client) {
@@ -255,12 +269,14 @@ async function prepareTiming(
       client,
       projectRef: null,
       skippedReason: `${tokenProblem} Urlaube nur in R-Worktime eingetragen.`,
+      projectRoots,
     };
   }
   return {
     client,
     projectRef: integration.timingProjectId,
     skippedReason: null,
+    projectRoots,
   };
 }
 
@@ -584,12 +600,16 @@ function ownEntryData(
   };
 }
 
-/** Timing-Eintrag so aufbereitet, wie ihn der Timing-Sync speichern würde. */
-function foreignEntryData(entry: TimingApiTimeEntry): SyncEntryData | null {
-  const chain = entry.project?.title_chain;
-  const path = Array.isArray(chain) ? joinTitleChain(chain) : "";
-  if (!path) return null;
-  const mapped = mapApiEntry(entry, [path]);
+/**
+ * Timing-Eintrag so aufbereitet, wie ihn der Timing-Sync speichern würde;
+ * null, wenn der Timing-Sync ihn nicht übernähme (z. B. außerhalb seiner
+ * Projekt-Wurzeln) – dann darf er auch nicht als TIMING_SYNC verknüpft werden.
+ */
+function foreignEntryData(
+  entry: TimingApiTimeEntry,
+  projectRoots: string[],
+): SyncEntryData | null {
+  const mapped = mapApiEntry(entry, projectRoots);
   return mapped.kept ? mapped.entry : null;
 }
 
@@ -740,7 +760,10 @@ async function runTimingCalls(
     }
     // Fremder Eintrag desselben Typs: verknüpfen, ganz/halb egal
     const foreign = sameDay
-      .map((entry) => ({ entry, data: foreignEntryData(entry) }))
+      .map((entry) => ({
+        entry,
+        data: foreignEntryData(entry, timing.projectRoots),
+      }))
       .find(({ data }) => data?.type === create.entryType);
     if (foreign?.data) {
       work.outcomes.set(key, {
@@ -880,7 +903,93 @@ async function applyDays(
   const occupiedHint =
     " Nicht in Timing: dort gibt es an dem Tag schon einen Eintrag im Urlaubsprojekt.";
 
+  /**
+   * Eigenen, bisher nur lokalen Eintrag nach Timing nachtragen. Belegt Timing
+   * den Tag schon anders oder ist der Eintrag inzwischen weg, bleibt alles,
+   * wie es ist – ohne Aktion, damit ein Lauf ohne Änderung leer bleibt.
+   */
+  const upgradeLocalOnly = async (create: PlannedCreate, entryId: string) => {
+    if (creatable(create, holidays, failedRemovals) !== "ok") return;
+    if (!create.toTiming || !timing.client || !timing.projectRef) return;
+    const key = createKey(create);
+    const outcome = work.outcomes.get(key);
+    if (!outcome || outcome.type === "occupied") return;
+    if (outcome.type === "failed") {
+      addAction(ctx, "failed", create.date, create.kind, outcome.detail);
+      return;
+    }
+    if (await externalIdInUse(outcome.entry.self)) return;
+    const current = await tx.timeEntry.findFirst({
+      where: {
+        id: entryId,
+        userId,
+        source: EntrySource.TIMEWARP,
+        externalId: null,
+        absenceId: create.absenceId,
+      },
+      select: { id: true },
+    });
+    if (!current) return;
+    consumed.add(key);
+
+    if (outcome.type === "linkForeign") {
+      await tx.timeEntry.deleteMany({
+        where: { id: current.id, userId, source: EntrySource.TIMEWARP },
+      });
+      await tx.timeEntry.create({
+        data: {
+          userId,
+          ...toSyncEntryRow(outcome.data),
+          type: create.entryType,
+          absenceId: create.absenceId,
+        },
+      });
+      addAction(
+        ctx,
+        "linked",
+        create.date,
+        create.kind,
+        "Vorhandenen Timing-Eintrag verknüpft – er bleibt in Timing unangetastet.",
+      );
+      return;
+    }
+
+    const adopted = outcome.type === "adoptOwn";
+    const data = ownEntryData(userId, create, {
+      externalId: outcome.entry.self,
+      entry: outcome.entry,
+      adopted,
+    });
+    await tx.timeEntry.update({
+      where: { id: current.id },
+      data: {
+        startTime: data.startTime,
+        endTime: data.endTime,
+        duration: data.duration,
+        title: data.title,
+        notes: data.notes,
+        description: data.description,
+        projectPath: data.projectPath,
+        externalId: data.externalId,
+        billingStatus: data.billingStatus,
+      },
+    });
+    addAction(
+      ctx,
+      adopted ? "timingAdopted" : "timingCreated",
+      create.date,
+      create.kind,
+      adopted
+        ? "Eigenen Timing-Eintrag übernommen."
+        : `${label(create.kind)}${create.halfDay ? " (halber Tag)" : ""} in Timing nachgetragen.`,
+    );
+  };
+
   for (const create of plan.create) {
+    if (create.upgrades) {
+      await upgradeLocalOnly(create, create.upgrades);
+      continue;
+    }
     const availability = creatable(create, holidays, failedRemovals);
     if (availability === "removalFailed") continue;
     if (availability === "holidaysUnavailable") {
@@ -975,9 +1084,11 @@ async function applyDays(
 
   const orphans: Orphan[] = [];
   for (const [key, outcome] of work.outcomes) {
-    if (outcome.type === "created" && !consumed.has(key)) {
-      orphans.push({ entry: outcome.entry, create: outcome.create });
-    }
+    if (outcome.type !== "created" || consumed.has(key)) continue;
+    // Inzwischen lokal zugeordnet (z. B. vom Timing-Sync importiert und eben
+    // verknüpft): nicht in Timing löschen
+    if (await externalIdInUse(outcome.entry.self)) continue;
+    orphans.push({ entry: outcome.entry, create: outcome.create });
   }
   return orphans;
 }
