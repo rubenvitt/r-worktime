@@ -1,4 +1,10 @@
-import { BERLIN_TIME_ZONE, isDateKey, shiftDateKey } from "@/lib/dates";
+import {
+  BERLIN_TIME_ZONE,
+  berlinIsoString,
+  isDateKey,
+  shiftDateKey,
+} from "@/lib/dates";
+import { joinTitleChain } from "./project-path";
 
 // Client für die Timing Web REST API (https://web.timingapp.com/docs/).
 // IDs ("self") bleiben immer Strings – sie sind größer als MAX_SAFE_INTEGER.
@@ -63,9 +69,50 @@ export interface TimingClientOptions {
   timeoutMs?: number;
 }
 
+export interface TimeEntryFilter {
+  /** Projekt-Referenzen ("/projects/123") */
+  projects?: string[];
+  /** Unterprojekte einschließen */
+  includeChildProjects?: boolean;
+}
+
+export interface CreateTimeEntryInput {
+  start: Date;
+  end: Date;
+  /** Projekt-Referenz, z. B. "/projects/123" */
+  projectRef: string;
+  title: string;
+  notes?: string | null;
+  billingStatus?: "billable" | "not_billable" | "billed";
+}
+
+/** Projekt für die Auswahl: Referenz und Pfad ("Work ▸ INNOQ ▸ Urlaub"). */
+export interface TimingProjectOption {
+  self: string;
+  path: string;
+}
+
 export interface TimingClient {
-  listTimeEntries(range: DateRange): Promise<TimingApiTimeEntry[]>;
+  listTimeEntries(
+    range: DateRange,
+    filter?: TimeEntryFilter,
+  ): Promise<TimingApiTimeEntry[]>;
+  createTimeEntry(input: CreateTimeEntryInput): Promise<TimingApiTimeEntry>;
+  /** Löscht einen Eintrag; 404 gilt als schon gelöscht. */
+  deleteTimeEntry(self: string): Promise<void>;
+  listProjects(): Promise<TimingProjectOption[]>;
   testConnection(): Promise<{ projectCount: number }>;
+}
+
+const TIME_ENTRY_REF = /^\/time-entries\/\d+$/;
+const PROJECT_REF = /^\/projects\/\d+$/;
+
+export function isTimeEntryRef(value: unknown): value is string {
+  return typeof value === "string" && TIME_ENTRY_REF.test(value);
+}
+
+export function isProjectRef(value: unknown): value is string {
+  return typeof value === "string" && PROJECT_REF.test(value);
 }
 
 export function resolveBaseUrl(
@@ -132,7 +179,11 @@ export function createTimingClient(options: TimingClientOptions): TimingClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
 
-  async function getJson<T>(url: string): Promise<T> {
+  async function send(
+    method: "GET" | "POST" | "DELETE",
+    url: string,
+    body?: unknown,
+  ): Promise<Response> {
     // Token nur an den konfigurierten Host schicken
     if (new URL(url).origin !== baseOrigin) {
       throw new TimingApiError(
@@ -141,15 +192,16 @@ export function createTimingClient(options: TimingClientOptions): TimingClient {
       );
     }
 
-    let response: Response;
     try {
-      response = await fetchImpl(url, {
-        method: "GET",
+      return await fetchImpl(url, {
+        method,
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/json",
           "X-Time-Zone": BERLIN_TIME_ZONE,
+          ...(body !== undefined && { "Content-Type": "application/json" }),
         },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(timeoutMs),
         cache: "no-store",
       });
@@ -164,11 +216,9 @@ export function createTimingClient(options: TimingClientOptions): TimingClient {
           : "Timing-API nicht erreichbar.",
       );
     }
+  }
 
-    if (!response.ok) {
-      throw errorForStatus(response.status);
-    }
-
+  async function parseJson<T>(response: Response): Promise<T> {
     try {
       return (await response.json()) as T;
     } catch {
@@ -180,6 +230,12 @@ export function createTimingClient(options: TimingClientOptions): TimingClient {
     }
   }
 
+  async function getJson<T>(url: string): Promise<T> {
+    const response = await send("GET", url);
+    if (!response.ok) throw errorForStatus(response.status);
+    return parseJson<T>(response);
+  }
+
   // next-Links immer auf den konfigurierten Host umbiegen (Pfad und Query bleiben),
   // damit der Token nie an einen anderen Host geht.
   function resolveNextUrl(next: string): string {
@@ -188,12 +244,21 @@ export function createTimingClient(options: TimingClientOptions): TimingClient {
     return `${baseOrigin}${resolved.pathname}${resolved.search}`;
   }
 
-  async function listChunk(chunk: DateRange): Promise<TimingApiTimeEntry[]> {
+  async function listChunk(
+    chunk: DateRange,
+    filter: TimeEntryFilter,
+  ): Promise<TimingApiTimeEntry[]> {
     const params = new URLSearchParams({
       start_date_min: chunk.from,
       start_date_max: chunk.to,
       include_project_data: "1",
     });
+    for (const project of filter.projects ?? []) {
+      params.append("projects[]", project);
+    }
+    if (filter.includeChildProjects) {
+      params.set("include_child_projects", "1");
+    }
     let url: string | null = `${baseUrl}/time-entries?${params.toString()}`;
     const visited = new Set<string>();
     const entries: TimingApiTimeEntry[] = [];
@@ -223,10 +288,10 @@ export function createTimingClient(options: TimingClientOptions): TimingClient {
   }
 
   return {
-    async listTimeEntries(range) {
+    async listTimeEntries(range, filter = {}) {
       const byId = new Map<string, TimingApiTimeEntry>();
       for (const chunk of splitIntoMonthChunks(range)) {
-        for (const entry of await listChunk(chunk)) {
+        for (const entry of await listChunk(chunk, filter)) {
           // Seiten können sich während der Abfrage verschieben → nach self deduplizieren
           if (typeof entry?.self === "string") {
             byId.set(entry.self, entry);
@@ -234,6 +299,78 @@ export function createTimingClient(options: TimingClientOptions): TimingClient {
         }
       }
       return Array.from(byId.values());
+    },
+
+    async createTimeEntry(input) {
+      if (!isProjectRef(input.projectRef)) {
+        throw new TimingApiError(
+          "INVALID_RESPONSE",
+          "Ungültige Timing-Projekt-Referenz.",
+        );
+      }
+      const response = await send("POST", `${baseUrl}/time-entries`, {
+        start_date: berlinIsoString(input.start),
+        end_date: berlinIsoString(input.end),
+        project: input.projectRef,
+        title: input.title,
+        notes: input.notes ?? null,
+        billing_status: input.billingStatus ?? "not_billable",
+        replace_existing: false,
+      });
+      if (!response.ok) throw errorForStatus(response.status);
+      const body = await parseJson<
+        { data?: TimingApiTimeEntry } | TimingApiTimeEntry
+      >(response);
+      // Antwort laut Doku {data: {...}}; zur Sicherheit auch ohne Hülle
+      const created =
+        body && typeof body === "object" && "data" in body && body.data
+          ? body.data
+          : (body as TimingApiTimeEntry);
+      if (!isTimeEntryRef(created?.self)) {
+        throw new TimingApiError(
+          "INVALID_RESPONSE",
+          "Timing-API liefert für den neuen Eintrag keine ID.",
+          response.status,
+        );
+      }
+      return created;
+    },
+
+    async deleteTimeEntry(self) {
+      if (!isTimeEntryRef(self)) {
+        throw new TimingApiError(
+          "INVALID_RESPONSE",
+          "Ungültige Timing-Eintrags-Referenz.",
+        );
+      }
+      const response = await send("DELETE", `${baseUrl}${self}`);
+      // 404: schon gelöscht (z. B. von Hand in Timing) – Ziel erreicht
+      if (response.ok || response.status === 404) return;
+      throw errorForStatus(response.status);
+    },
+
+    async listProjects() {
+      const response = await getJson<TimingListResponse<TimingApiProject>>(
+        `${baseUrl}/projects?hide_archived=1`,
+      );
+      if (!Array.isArray(response?.data)) {
+        throw new TimingApiError(
+          "INVALID_RESPONSE",
+          "Unerwartetes Antwortformat der Timing-API.",
+        );
+      }
+      return response.data
+        .filter((project) => isProjectRef(project?.self))
+        .map((project) => ({
+          self: project.self,
+          path:
+            (Array.isArray(project.title_chain)
+              ? joinTitleChain(project.title_chain)
+              : "") ||
+            project.title ||
+            project.self,
+        }))
+        .sort((a, b) => a.path.localeCompare(b.path, "de"));
     },
 
     async testConnection() {
