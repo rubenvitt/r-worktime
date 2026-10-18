@@ -166,6 +166,22 @@ describe("planSync", () => {
     expect(plan.delete).toEqual([]);
   });
 
+  it("verknüpft Feiertage mit ihrem Timing-Eintrag statt Konflikt oder Duplikat", () => {
+    const holiday = existing("ft", "HOLIDAY", {
+      type: "HOLIDAY",
+      description: "Tag der Arbeit",
+    });
+    const plan = planSync(
+      [holiday],
+      [{ ...incoming("ft"), projectPath: "Work ▸ INNOQ ▸ Feiertag" }],
+      WINDOW,
+    );
+    expect(plan.linked).toEqual(["/time-entries/ft"]);
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.create).toEqual([]);
+    expect(plan.update).toEqual([]);
+  });
+
   it("löscht TIMEWARP-Einträge im Fenster nicht, wenn Timing sie nicht mehr liefert", () => {
     const plan = planSync(
       [existing("tw", "TIMEWARP"), existing("gone", "TIMING_SYNC")],

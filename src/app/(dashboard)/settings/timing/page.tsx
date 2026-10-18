@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { SettingsNav } from "@/components/app/settings-nav";
 import { SkeletonPanel } from "@/components/app/skeletons";
 import { TimingConnectionCard } from "@/components/timing/timing-connection-card";
+import { TimingHolidaysCard } from "@/components/timing/timing-holidays-card";
 import { TimingSyncSettingsCard } from "@/components/timing/timing-sync-settings-card";
 import {
   TimingSyncNowButton,
@@ -68,6 +69,10 @@ export default function TimingSettingsPage() {
           <TimingSyncSettingsCard
             // Neu mounten, wenn sich die gespeicherten Werte ändern
             key={`${settings.hasToken}-${settings.syncEnabled}`}
+            settings={settings}
+          />
+          <TimingHolidaysCard
+            key={`${settings.writeHolidays}-${settings.holidayProjectId}`}
             settings={settings}
           />
           <TimingConnectionCard settings={settings} />

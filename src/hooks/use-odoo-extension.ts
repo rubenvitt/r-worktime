@@ -5,8 +5,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TimesheetEntry } from "@/lib/timesheet/aggregate";
 import {
+  ABSENCE_FEATURE,
+  type AbsenceMessagePayload,
   ACK_TIMEOUT_MS,
   type ExtensionMessage,
+  extensionFeatures,
   PAGE_SOURCE,
   type PageMessage,
   PING_TIMEOUT_MS,
@@ -40,6 +43,7 @@ function post(message: PageMessage) {
 export function useOdooExtension() {
   const [status, setStatus] = useState<OdooExtensionStatus>("unknown");
   const [version, setVersion] = useState<string | null>(null);
+  const [features, setFeatures] = useState<string[]>([]);
   const pending = useRef(new Map<string, PendingAck>());
   const pingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -71,6 +75,7 @@ export function useOdooExtension() {
         // auch ein verspätetes PONG/READY zählt
         setStatus("present");
         if (message.version) setVersion(message.version);
+        setFeatures(extensionFeatures(message));
         return;
       }
 
@@ -102,9 +107,9 @@ export function useOdooExtension() {
     };
   }, [ping]);
 
-  /** Schickt einen Monat an die Extension und wartet auf das ACK. */
-  const send = useCallback(
-    (month: string, entries: TimesheetEntry[]): Promise<OdooSendResult> => {
+  /** Schickt eine Nachricht und wartet auf das ACK mit derselben requestId. */
+  const request = useCallback(
+    (build: (requestId: string) => PageMessage): Promise<OdooSendResult> => {
       const requestId = createRequestId();
       return new Promise<OdooSendResult>((resolve) => {
         const timer = setTimeout(() => {
@@ -112,26 +117,54 @@ export function useOdooExtension() {
           resolve({ ok: false, error: "TIMEOUT" });
         }, ACK_TIMEOUT_MS);
         pending.current.set(requestId, { resolve, timer });
-        post({
-          source: PAGE_SOURCE,
-          type: "RWT_TIMESHEET",
-          requestId,
-          protocol: PROTOCOL_VERSION,
-          payload: {
-            month,
-            generatedAt: new Date().toISOString(),
-            entries: entries.map(({ date, hours, text, travelFee }) => ({
-              date,
-              hours,
-              text,
-              travelFee,
-            })),
-          },
-        });
+        post(build(requestId));
       });
     },
     [],
   );
 
-  return { status, version, send, recheck: ping };
+  /** Schickt einen Monat an die Extension und wartet auf das ACK. */
+  const send = useCallback(
+    (month: string, entries: TimesheetEntry[]): Promise<OdooSendResult> =>
+      request((requestId) => ({
+        source: PAGE_SOURCE,
+        type: "RWT_TIMESHEET",
+        requestId,
+        protocol: PROTOCOL_VERSION,
+        payload: {
+          month,
+          generatedAt: new Date().toISOString(),
+          entries: entries.map(({ date, hours, text, travelFee }) => ({
+            date,
+            hours,
+            text,
+            travelFee,
+          })),
+        },
+      })),
+    [request],
+  );
+
+  /** Schickt eine geplante Abwesenheit für Timewarp an die Extension. */
+  const sendAbsence = useCallback(
+    (payload: AbsenceMessagePayload): Promise<OdooSendResult> =>
+      request((requestId) => ({
+        source: PAGE_SOURCE,
+        type: "RWT_ABSENCE",
+        requestId,
+        protocol: PROTOCOL_VERSION,
+        payload,
+      })),
+    [request],
+  );
+
+  return {
+    status,
+    version,
+    send,
+    sendAbsence,
+    /** Extension kann Abwesenheiten nach Timewarp übernehmen */
+    supportsAbsence: status === "present" && features.includes(ABSENCE_FEATURE),
+    recheck: ping,
+  };
 }

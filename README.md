@@ -81,6 +81,18 @@ Statt JSON-Dateien zu exportieren, kann r-worktime deine Zeiteinträge direkt ü
 - Schlägt ein Lauf fehl (Token ungültig, Rate-Limit, Netzwerk), wird nichts geschrieben;
   der Fehler steht auf der Einstellungsseite.
 
+**Feiertage in Timing**
+
+Unter Einstellungen › Timing-Sync › „Feiertage in Timing“ wählst du ein Timing-Projekt
+(z. B. `Work ▸ INNOQ ▸ Feiertag`) und schaltest den Eintrag ein. Jeder Sync trägt dann
+importierte Feiertage (Einstellungen › Arbeitszeit, laufendes und nächstes Jahr) in
+Timing ein, sobald der Feiertag begonnen hat – 08:00 plus Tagessoll, nicht abrechenbar.
+Timing nimmt keine Einträge in der Zukunft an. Es gelten nur Feiertage ab dem Tag des
+Einschaltens. Ein vorhandener Eintrag im Projekt am selben Tag wird übernommen statt
+verdoppelt; die Timing-ID hängt danach am Feiertag, und der Sync lässt ihn in Ruhe.
+Der Projektname sollte „Feiertag“ enthalten, damit fremde Einträge darin nicht als
+Arbeitszeit zählen.
+
 **Hintergrund-Sync**
 
 `src/instrumentation.ts` startet im Node-Server einen Scheduler, der alle 5 Minuten
@@ -126,6 +138,25 @@ Korrekturen ersetzt der nächste Sync oder Import dieses Tages.
   Alt-Backup einen vorhandenen Eintrag, bleiben dessen Quelle und Timing-ID erhalten.
 - **Stundenzettel:** Bei manuellen, Bulk-Fill- und Feiertags-Einträgen zählt die
   eingetragene Dauer, nicht die Spanne zwischen Start und Ende.
+
+## Urlaubsplaner
+
+Unter **Urlaubsplaner** (`/vacation`, Tastenkürzel `g l`) planst du Urlaub für das laufende
+und das nächste Jahr. Gebucht wird weiterhin in Timewarp; der Planer rechnet voraus:
+
+- **Jahreskalender** mit Wochenenden, Feiertagen, gebuchtem Urlaub und deinen Entwürfen.
+  Zeitraum per Klick auf ersten und letzten Tag oder durch Ziehen wählen, Pfeiltasten und Esc
+  funktionieren auch.
+- **Sofortrechnung:** Urlaubstage, freie Tage am Stück (inklusive angrenzender Wochenenden,
+  Feiertage und gebuchtem Urlaub) und was danach vom Anspruch übrig bleibt.
+  Heiligabend und Silvester kosten an Arbeitstagen nur einen halben Urlaubstag.
+- **Brückentage:** Vorschläge mit höchstens vier Urlaubstagen und mindestens doppeltem
+  Gewinn, z. B. „Fr 07.05. · 1 Urlaubstag → 4 Tage frei“. Ein Klick übernimmt sie als Auswahl.
+- **Entwürfe:** mit Notiz merken, ändern, löschen. Sobald der Kalender-Abgleich die Tage aus
+  Timewarp kennt, steht der Entwurf auf „In Timewarp gebucht“.
+- **Beantragen:** „In Timewarp beantragen“ kopiert den Zeitraum und öffnet Timewarp. Mit einer
+  Extension, die Abwesenheiten kann, schickt „An Extension senden“ den Entwurf direkt an sie –
+  siehe [docs/extension-timewarp.md](docs/extension-timewarp.md).
 
 ## Projekt-Struktur
 

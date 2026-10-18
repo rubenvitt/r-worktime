@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { EncryptionKeyError, encryptSecret } from "@/lib/crypto";
+import { berlinDayStart, berlinTodayKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import {
   timingSettingsUpdateSchema,
@@ -96,6 +97,29 @@ export async function PUT(request: NextRequest) {
   // Ohne Token kein Auto-Sync
   const syncEnabled = tokenAfterUpdate ? input.syncEnabled : false;
 
+  // Feiertage nach Timing: braucht Token und Projekt. Beim Einschalten gilt
+  // der heutige Tag als erster – frühere Feiertage bleiben nur lokal.
+  const holidayProjectAfterUpdate =
+    input.holidayProjectId === undefined
+      ? (existing?.holidayProjectId ?? null)
+      : input.holidayProjectId;
+  if (
+    input.writeHolidays === true &&
+    (!tokenAfterUpdate || !holidayProjectAfterUpdate)
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: tokenAfterUpdate
+          ? "Wähle zuerst ein Timing-Projekt für die Feiertage."
+          : "Hinterlege zuerst einen API-Token, bevor du Feiertage nach Timing einträgst.",
+      },
+      { status: 400 },
+    );
+  }
+  const turnsHolidaysOn =
+    input.writeHolidays === true && !existing?.writeHolidays;
+
   const data = {
     ...(apiTokenEnc !== undefined && { apiTokenEnc }),
     ...(input.projectRoots && { projectRoots: input.projectRoots }),
@@ -105,6 +129,15 @@ export async function PUT(request: NextRequest) {
     }),
     ...(input.syncWindowDays !== undefined && {
       syncWindowDays: input.syncWindowDays,
+    }),
+    ...(input.writeHolidays !== undefined && {
+      writeHolidays: input.writeHolidays,
+    }),
+    ...(input.holidayProjectId !== undefined && {
+      holidayProjectId: input.holidayProjectId,
+    }),
+    ...(turnsHolidaysOn && {
+      holidaysSince: berlinDayStart(berlinTodayKey()),
     }),
   };
 

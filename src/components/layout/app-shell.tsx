@@ -28,6 +28,7 @@ export function AppShell({
     "g p": () => router.push("/problems"),
     "g u": () => router.push("/overtime"),
     "g b": () => router.push("/reports"),
+    "g l": () => router.push("/vacation"),
     "g e": () => router.push("/entries"),
     "g t": () => router.push("/settings/timing"),
     "g ,": () => router.push("/settings"),

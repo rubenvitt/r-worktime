@@ -16,6 +16,7 @@ const { prismaMock, txMock, invalidateCache } = vi.hoisted(() => {
   };
   const prismaMock = {
     timingIntegration: { findUnique: vi.fn(), update: vi.fn() },
+    timeEntry: { findMany: vi.fn(), updateMany: vi.fn() },
     $transaction: vi.fn(async (fn: (tx: typeof txMock) => unknown) =>
       fn(txMock),
     ),
@@ -91,6 +92,8 @@ beforeEach(() => {
   prismaMock.timingIntegration.findUnique.mockResolvedValue(integration());
   prismaMock.timingIntegration.update.mockResolvedValue({});
   txMock.timeEntry.findMany.mockResolvedValue([]);
+  prismaMock.timeEntry.findMany.mockResolvedValue([]);
+  prismaMock.timeEntry.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe("getSyncWindow / validateSyncRange", () => {
@@ -358,6 +361,139 @@ describe("syncTimingForUser", () => {
     });
 
     expect(txMock.absence.update).not.toHaveBeenCalled();
+  });
+
+  it("trägt begonnene Feiertage vor dem Abruf in Timing ein und verknüpft sie", async () => {
+    prismaMock.timingIntegration.findUnique.mockResolvedValue(
+      integration({
+        writeHolidays: true,
+        holidayProjectId: "/projects/9",
+        holidaysSince: new Date("2026-03-01T00:00:00.000Z"),
+      }),
+    );
+    prismaMock.timeEntry.findMany.mockResolvedValueOnce([
+      {
+        id: "db-holiday",
+        date: new Date("2026-03-20T00:00:00.000Z"),
+        duration: new Prisma.Decimal(8),
+        description: "Testfeiertag",
+      },
+    ]);
+    const calls: Array<{ method: string; url: string; body: unknown }> = [];
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      calls.push({
+        method,
+        url: String(url),
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      if (method === "POST") {
+        return new Response(
+          JSON.stringify({
+            data: apiEntry(
+              "77",
+              ["Work", "INNOQ", "Feiertag"],
+              "2026-03-20T08:00:00.000000+01:00",
+              "2026-03-20T16:00:00.000000+01:00",
+            ),
+          }),
+          { status: 201 },
+        );
+      }
+      return new Response(JSON.stringify({ data: [], links: { next: null } }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    const stats = await syncTimingForUser("user-1", {
+      trigger: "manual",
+      fetchImpl,
+      now: NOW,
+    });
+
+    expect(stats.holidays).toEqual({
+      pending: 1,
+      created: 1,
+      adopted: 0,
+      failed: 0,
+    });
+    // Suche im Feiertagsprojekt, Anlegen, danach der eigentliche Abruf (je Monat)
+    expect(calls.map((c) => c.method)).toEqual(["GET", "POST", "GET", "GET"]);
+    expect(calls[0].url).toContain("projects%5B%5D=%2Fprojects%2F9");
+    expect(calls[1].body).toMatchObject({
+      project: "/projects/9",
+      title: "Testfeiertag",
+      notes: "Feiertag aus R-Worktime",
+      billing_status: "not_billable",
+    });
+    expect(prismaMock.timeEntry.updateMany).toHaveBeenCalledWith({
+      where: { id: "db-holiday", userId: "user-1", externalId: null },
+      data: { externalId: "/time-entries/77" },
+    });
+    expect(prismaMock.timeEntry.findMany.mock.calls[0][0].where).toMatchObject({
+      type: "HOLIDAY",
+      source: "HOLIDAY",
+      externalId: null,
+      date: {
+        gte: new Date("2026-03-01T00:00:00.000Z"),
+        lte: new Date("2026-03-20T00:00:00.000Z"),
+      },
+    });
+  });
+
+  it("bricht den Sync nicht ab, wenn Feiertage nicht nach Timing gehen", async () => {
+    prismaMock.timingIntegration.findUnique.mockResolvedValue(
+      integration({
+        writeHolidays: true,
+        holidayProjectId: "/projects/9",
+        holidaysSince: new Date("2026-03-01T00:00:00.000Z"),
+      }),
+    );
+    prismaMock.timeEntry.findMany.mockResolvedValueOnce([
+      {
+        id: "db-holiday",
+        date: new Date("2026-03-20T00:00:00.000Z"),
+        duration: new Prisma.Decimal(8),
+        description: null,
+      },
+    ]);
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? new Response(JSON.stringify({ message: "nope" }), { status: 422 })
+        : new Response(JSON.stringify({ data: [], links: { next: null } }), {
+            status: 200,
+          }),
+    ) as unknown as typeof fetch;
+
+    const stats = await syncTimingForUser("user-1", {
+      trigger: "manual",
+      fetchImpl,
+      now: NOW,
+    });
+
+    expect(stats.holidays).toMatchObject({ created: 0, failed: 1 });
+    expect(stats.holidays?.error).toMatch(/2026-03-20.*422/);
+    expect(prismaMock.timeEntry.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.timingIntegration.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lastSyncStatus: "SUCCESS" }),
+      }),
+    );
+  });
+
+  it("fragt ohne eingeschaltete Feiertage weder DB noch Timing danach", async () => {
+    const fetchImpl = fetchReturning([]);
+    const stats = await syncTimingForUser("user-1", {
+      trigger: "manual",
+      fetchImpl,
+      now: NOW,
+    });
+    expect(stats.holidays).toBeNull();
+    expect(prismaMock.timeEntry.findMany).not.toHaveBeenCalled();
+    // Nur der eigentliche Abruf, je Monat ein Abschnitt
+    const urls = vi.mocked(fetchImpl).mock.calls.map(([url]) => String(url));
+    expect(urls).toHaveLength(2);
+    expect(urls.some((url) => url.includes("projects"))).toBe(false);
   });
 
   it("meldet fehlende Konfiguration", async () => {
