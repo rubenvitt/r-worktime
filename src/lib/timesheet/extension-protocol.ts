@@ -18,6 +18,30 @@ const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const HOURS_PATTERN = /^\d{1,2}([:.,]\d{1,2})?$/;
 
+/** Fähigkeit in PONG/READY: die Extension nimmt RWT_ABSENCE an (Timewarp) */
+export const ABSENCE_FEATURE = "absence";
+
+/**
+ * Abwesenheit für Timewarp (Urlaubsplaner). Die Extension merkt sie sich und
+ * füllt damit den Antrag in Timewarp aus; abschicken muss Ruben selbst.
+ * Beschreibung: docs/extension-timewarp.md.
+ */
+export interface AbsenceMessagePayload {
+  /** ID des Entwurfs in r-worktime */
+  draftId: string;
+  /** Art wie in Timewarp, vorerst nur Urlaub */
+  kind: "URLAUB";
+  /** "YYYY-MM-DD", inklusive */
+  from: string;
+  /** "YYYY-MM-DD", inklusive */
+  to: string;
+  halfDay: boolean;
+  /** Urlaubstage laut r-worktime (Arbeitstage ohne Feiertage) */
+  workDays: number;
+  note: string | null;
+  generatedAt: string;
+}
+
 export interface TimesheetMessagePayload {
   month: string;
   generatedAt: string;
@@ -38,6 +62,13 @@ export type PageMessage =
       requestId: string;
       protocol: typeof PROTOCOL_VERSION;
       payload: TimesheetMessagePayload;
+    }
+  | {
+      source: typeof PAGE_SOURCE;
+      type: "RWT_ABSENCE";
+      requestId: string;
+      protocol: typeof PROTOCOL_VERSION;
+      payload: AbsenceMessagePayload;
     };
 
 export type AckError = "VALIDATION" | "TOO_LARGE" | "ORIGIN";
@@ -49,16 +80,19 @@ export type ExtensionMessage =
       requestId?: string;
       version?: string;
       protocol: typeof PROTOCOL_VERSION;
+      /** Zusätzliche Fähigkeiten, z. B. ["absence"]; fehlt bei alten Versionen */
+      features?: string[];
     }
   | {
       source: typeof EXTENSION_SOURCE;
       type: "RWT_READY";
       version?: string;
       protocol: typeof PROTOCOL_VERSION;
+      features?: string[];
     }
   | {
       source: typeof EXTENSION_SOURCE;
-      type: "RWT_TIMESHEET_ACK";
+      type: "RWT_TIMESHEET_ACK" | "RWT_ABSENCE_ACK";
       requestId: string;
       ok: boolean;
       count?: number;
@@ -95,6 +129,7 @@ export function parseExtensionMessage(
         ? (msg as unknown as ExtensionMessage)
         : null;
     case "RWT_TIMESHEET_ACK":
+    case "RWT_ABSENCE_ACK":
       if (typeof msg.requestId !== "string" || typeof msg.ok !== "boolean") {
         return null;
       }
@@ -105,6 +140,16 @@ export function parseExtensionMessage(
     default:
       return null;
   }
+}
+
+/** Fähigkeiten aus PONG/READY; unbekannte Formate zählen als keine. */
+export function extensionFeatures(message: ExtensionMessage): string[] {
+  if (message.type !== "RWT_PONG" && message.type !== "RWT_READY") return [];
+  return Array.isArray(message.features)
+    ? message.features.filter(
+        (feature): feature is string => typeof feature === "string",
+      )
+    : [];
 }
 
 export interface PayloadIssue {

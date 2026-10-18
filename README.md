@@ -139,6 +139,24 @@ Korrekturen ersetzt der nächste Sync oder Import dieses Tages.
 - **Stundenzettel:** Bei manuellen, Bulk-Fill- und Feiertags-Einträgen zählt die
   eingetragene Dauer, nicht die Spanne zwischen Start und Ende.
 
+## Urlaubsplaner
+
+Unter **Urlaubsplaner** (`/vacation`, Tastenkürzel `g l`) planst du Urlaub für das laufende
+und das nächste Jahr. Gebucht wird weiterhin in Timewarp; der Planer rechnet voraus:
+
+- **Jahreskalender** mit Wochenenden, Feiertagen, gebuchtem Urlaub und deinen Entwürfen.
+  Zeitraum per Klick auf ersten und letzten Tag oder durch Ziehen wählen, Pfeiltasten und Esc
+  funktionieren auch.
+- **Sofortrechnung:** Urlaubstage, freie Tage am Stück (inklusive angrenzender Wochenenden,
+  Feiertage und gebuchtem Urlaub) und was danach vom Anspruch übrig bleibt.
+- **Brückentage:** Vorschläge mit höchstens vier Urlaubstagen und mindestens doppeltem
+  Gewinn, z. B. „Fr 07.05. · 1 Urlaubstag → 4 Tage frei“. Ein Klick übernimmt sie als Auswahl.
+- **Entwürfe:** mit Notiz merken, ändern, löschen. Sobald der Kalender-Abgleich die Tage aus
+  Timewarp kennt, steht der Entwurf auf „In Timewarp gebucht“.
+- **Beantragen:** „In Timewarp beantragen“ kopiert den Zeitraum und öffnet Timewarp. Mit einer
+  Extension, die Abwesenheiten kann, schickt „An Extension senden“ den Entwurf direkt an sie –
+  siehe [docs/extension-timewarp.md](docs/extension-timewarp.md).
+
 ## Projekt-Struktur
 
 ```

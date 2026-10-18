@@ -16,6 +16,7 @@ export function PeriodNav({
   prevLabel,
   nextLabel,
   todayLabel = "Heute",
+  prevDisabled,
   nextDisabled,
   hotkeys = true,
   children,
@@ -29,6 +30,7 @@ export function PeriodNav({
   prevLabel: string;
   nextLabel: string;
   todayLabel?: string;
+  prevDisabled?: boolean;
   nextDisabled?: boolean;
   hotkeys?: boolean;
   children?: React.ReactNode;
@@ -37,7 +39,9 @@ export function PeriodNav({
 
   useHotkeys(
     {
-      "[": onPrev,
+      "[": () => {
+        if (!prevDisabled) onPrev();
+      },
       "]": () => {
         if (!nextDisabled) onNext();
       },
@@ -56,6 +60,7 @@ export function PeriodNav({
         size="icon"
         className="size-11 md:size-8"
         onClick={onPrev}
+        disabled={prevDisabled}
         aria-label={prevLabel}
       >
         <ChevronLeft />

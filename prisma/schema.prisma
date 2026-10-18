@@ -30,6 +30,7 @@ model User {
   calendarIntegration CalendarIntegration?
   absences      Absence[]
   absenceSyncLogs AbsenceSyncLog[]
+  vacationDrafts VacationDraft[]
 
   @@index([email])
   @@map("users")
@@ -219,6 +220,23 @@ model Absence {
 }
 
 // Absence Sync Log - Protokoll der Kalender-Abgleiche (letzte 50 je Nutzer)
+// Entwurf im Urlaubsplaner: nur eine Planung, gebucht wird in Timewarp
+model VacationDraft {
+  id        String   @id @default(cuid())
+  userId    String
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date // inklusiv
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startDate])
+  @@map("vacation_drafts")
+}
+
 model AbsenceSyncLog {
   id         String    @id @default(cuid())
   userId     String

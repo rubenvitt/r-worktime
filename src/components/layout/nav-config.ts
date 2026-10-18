@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   List,
   type LucideIcon,
+  Palmtree,
   Scale,
   Settings,
 } from "lucide-react";
@@ -18,6 +19,7 @@ export type NavKey =
   | "problems"
   | "overtime"
   | "reports"
+  | "vacation"
   | "entries"
   | "settings";
 
@@ -28,6 +30,7 @@ export const ACTIVE_RULES: ReadonlyArray<readonly [RegExp, NavKey]> = [
   [/^\/problems(\/|$)/, "problems"],
   [/^\/overtime(\/|$)/, "overtime"],
   [/^\/reports(\/|$)/, "reports"],
+  [/^\/vacation(\/|$)/, "vacation"],
   [/^\/entries(\/|$)/, "entries"],
   [/^\/(settings|upload)(\/|$)/, "settings"],
 ];
@@ -103,6 +106,15 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/reports",
     icon: ChartColumn,
     shortcut: "g b",
+    group: "Auswertung",
+  },
+  {
+    key: "vacation",
+    label: "Urlaubsplaner",
+    shortLabel: "Urlaub",
+    href: "/vacation",
+    icon: Palmtree,
+    shortcut: "g l",
     group: "Auswertung",
   },
   {
