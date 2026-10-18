@@ -17,6 +17,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "R-Worktime",
   description: "Arbeitszeit, Überstunden und Stundenzettel aus Timing.",
+  appleWebApp: {
+    capable: true,
+    title: "Worktime",
+    statusBarStyle: "default",
+  },
 };
 
 export const viewport: Viewport = {
@@ -24,6 +29,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   // nötig, damit env(safe-area-inset-bottom) für die Tab-Leiste greift
   viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8f9fb" },
+    { media: "(prefers-color-scheme: dark)", color: "#0e1012" },
+  ],
 };
 
 export default function RootLayout({
