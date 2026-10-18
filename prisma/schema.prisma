@@ -150,6 +150,9 @@ model TimingIntegration {
   syncEnabled         Boolean   @default(false)
   syncIntervalMinutes Int       @default(60)
   syncWindowDays      Int       @default(35)
+  writeHolidays       Boolean   @default(false) // Feiertags-Einträge in Timing eintragen
+  holidayProjectId    String?   // Timing-Projekt-Referenz für Feiertage
+  holidaysSince       DateTime? @db.Date // erster Tag, der nach Timing geht (Einschalten)
   lastSyncAt          DateTime?
   lastSyncStatus      String?
   lastSyncError       String?

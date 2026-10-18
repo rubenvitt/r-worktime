@@ -17,6 +17,8 @@ export type TimingSettingsInput = Partial<{
   syncEnabled: boolean;
   syncIntervalMinutes: number;
   syncWindowDays: number;
+  writeHolidays: boolean;
+  holidayProjectId: string | null;
 }>;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

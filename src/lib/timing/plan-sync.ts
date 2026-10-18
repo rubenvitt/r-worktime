@@ -33,7 +33,8 @@ export interface SyncPlan {
   conflicts: string[];
   /**
    * Eingehende IDs, die an einem vom Timewarp-Abgleich angelegten Eintrag
-   * hängen: verknüpft, weder Update noch Konflikt noch Löschen
+   * oder an einem Feiertag hängen: verknüpft, weder Update noch Konflikt
+   * noch Löschen
    */
   linked: string[];
 }
@@ -99,8 +100,8 @@ export function planSync(
     const match = existingById.get(externalId);
     if (!match) {
       plan.create.push(data);
-    } else if (match.source === "TIMEWARP") {
-      // Den Eintrag verwaltet der Timewarp-Abgleich
+    } else if (match.source === "TIMEWARP" || match.source === "HOLIDAY") {
+      // Den Eintrag verwalten der Timewarp-Abgleich bzw. der Feiertags-Eintrag
       plan.linked.push(externalId);
     } else if (!SYNC_OWNED.has(match.source)) {
       // Manuelle Einträge, Feiertage, Bulk-Fill, Saldo nie anfassen

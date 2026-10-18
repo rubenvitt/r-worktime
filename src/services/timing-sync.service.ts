@@ -21,6 +21,10 @@ import {
   toSyncEntryRow,
 } from "@/lib/timing/mapping";
 import { type ExistingEntry, planSync } from "@/lib/timing/plan-sync";
+import {
+  type HolidayPushStats,
+  pushHolidaysToTiming,
+} from "@/services/holiday-timing.service";
 import { overtimeService } from "@/services/overtime.service";
 
 export const SYNC_STATUS_SUCCESS = "SUCCESS";
@@ -47,6 +51,8 @@ export interface SyncStats {
   deleted: number;
   replacedFileImports: number;
   conflicts: number;
+  /** Feiertage nach Timing; null, wenn ausgeschaltet */
+  holidays: HolidayPushStats | null;
   durationMs: number;
 }
 
@@ -160,6 +166,27 @@ async function runSync(
 
   // Erst vollständig laden – bricht ein Abschnitt ab, wird nichts geschrieben.
   const client = createTimingClient({ token, fetchImpl: options.fetchImpl });
+
+  // Vor dem Abruf: neue Feiertags-Einträge in Timing gelten im selben Lauf
+  // schon als verknüpft. Fehler hier brechen den Sync nicht ab.
+  let holidays: HolidayPushStats | null;
+  try {
+    holidays = await pushHolidaysToTiming(
+      userId,
+      integration,
+      client,
+      options.now,
+    );
+  } catch (error) {
+    holidays = {
+      pending: 0,
+      created: 0,
+      adopted: 0,
+      failed: 0,
+      error: sanitizeSyncError(error, token),
+    };
+  }
+
   const raw = await client.listTimeEntries(range);
   const { entries, stats: filterStats } = filterAndMapEntries(
     raw,
@@ -269,6 +296,7 @@ async function runSync(
     deleted: plan.delete.length,
     replacedFileImports: plan.replaceFileImports.length,
     conflicts: plan.conflicts.length,
+    holidays,
     durationMs: Date.now() - startedAt,
   };
 }

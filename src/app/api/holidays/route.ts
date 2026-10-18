@@ -3,7 +3,10 @@ import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { weekdayOfKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
-import { HolidayService } from "@/services/holiday.service";
+import {
+  HolidayService,
+  isFetchableHolidayYear,
+} from "@/services/holiday.service";
 
 const holidayService = new HolidayService();
 
@@ -25,7 +28,7 @@ export async function GET(request: NextRequest) {
     }
 
     const yearNum = parseInt(year, 10);
-    if (Number.isNaN(yearNum) || yearNum < 2020 || yearNum > 2030) {
+    if (Number.isNaN(yearNum) || !isFetchableHolidayYear(yearNum)) {
       return NextResponse.json({ error: "Invalid year" }, { status: 400 });
     }
 
@@ -92,7 +95,7 @@ export async function POST(request: NextRequest) {
     }
 
     const yearNum = parseInt(year, 10);
-    if (Number.isNaN(yearNum) || yearNum < 2020 || yearNum > 2030) {
+    if (Number.isNaN(yearNum) || !isFetchableHolidayYear(yearNum)) {
       return NextResponse.json({ error: "Invalid year" }, { status: 400 });
     }
 

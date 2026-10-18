@@ -81,6 +81,18 @@ Statt JSON-Dateien zu exportieren, kann r-worktime deine Zeiteinträge direkt ü
 - Schlägt ein Lauf fehl (Token ungültig, Rate-Limit, Netzwerk), wird nichts geschrieben;
   der Fehler steht auf der Einstellungsseite.
 
+**Feiertage in Timing**
+
+Unter Einstellungen › Timing-Sync › „Feiertage in Timing“ wählst du ein Timing-Projekt
+(z. B. `Work ▸ INNOQ ▸ Feiertag`) und schaltest den Eintrag ein. Jeder Sync trägt dann
+importierte Feiertage (Einstellungen › Arbeitszeit, laufendes und nächstes Jahr) in
+Timing ein, sobald der Feiertag begonnen hat – 08:00 plus Tagessoll, nicht abrechenbar.
+Timing nimmt keine Einträge in der Zukunft an. Es gelten nur Feiertage ab dem Tag des
+Einschaltens. Ein vorhandener Eintrag im Projekt am selben Tag wird übernommen statt
+verdoppelt; die Timing-ID hängt danach am Feiertag, und der Sync lässt ihn in Ruhe.
+Der Projektname sollte „Feiertag“ enthalten, damit fremde Einträge darin nicht als
+Arbeitszeit zählen.
+
 **Hintergrund-Sync**
 
 `src/instrumentation.ts` startet im Node-Server einen Scheduler, der alle 5 Minuten

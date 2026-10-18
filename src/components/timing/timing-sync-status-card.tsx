@@ -17,7 +17,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatRelative, formatSeconds, formatTimestamp } from "@/lib/format";
+import {
+  formatRelative,
+  formatSeconds,
+  formatTimestamp,
+  plural,
+} from "@/lib/format";
 import type { PublicTimingSettings } from "@/lib/timing/settings";
 import type { SyncStats } from "@/services/timing-sync.service";
 import { type useRunTimingSync, useTimingStatus } from "./use-timing";
@@ -114,6 +119,32 @@ function StatsDetails({ stats }: { stats: SyncStats }) {
         ))}
       </dl>
     </details>
+  );
+}
+
+/** Feiertage nach Timing im letzten Lauf – nur, wenn etwas passiert ist. */
+function HolidayStatsLine({ stats }: { stats: SyncStats["holidays"] }) {
+  // Ältere Läufe kennen das Feld nicht
+  if (!stats) return null;
+  const done = stats.created + stats.adopted;
+  if (done === 0 && stats.failed === 0) return null;
+  return (
+    <div className="space-y-1 text-[13px]">
+      {done > 0 ? (
+        <p className="text-muted-foreground">
+          Feiertage in Timing: {stats.created} eingetragen
+          {stats.adopted > 0 ? `, ${stats.adopted} übernommen` : ""}
+        </p>
+      ) : null}
+      {stats.failed > 0 ? (
+        <p className="text-warning">
+          {plural(stats.failed, "Feiertag", "Feiertage")} nicht in Timing
+          eingetragen
+          {stats.error ? `: ${stats.error}` : "."} Der nächste Lauf versucht es
+          erneut.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -221,6 +252,7 @@ export function TimingSyncStatusCard({
               />
             </StatStrip>
             <StatsDetails stats={lastStats} />
+            <HolidayStatsLine stats={lastStats.holidays} />
           </>
         ) : null}
       </PanelBody>

@@ -5,6 +5,8 @@ import {
   isEncryptionConfigured,
   secretHint,
 } from "@/lib/crypto";
+import { dateKeyFromDbDate } from "@/lib/dates";
+import { isProjectRef } from "./client";
 import {
   DEFAULT_PROJECT_ROOTS,
   DEFAULT_SYNC_INTERVAL_MINUTES,
@@ -45,6 +47,13 @@ export const timingSettingsUpdateSchema = z.object({
     .min(1, "Fenster mindestens 1 Tag")
     .max(MAX_SYNC_WINDOW_DAYS, `Fenster höchstens ${MAX_SYNC_WINDOW_DAYS} Tage`)
     .optional(),
+  writeHolidays: z.boolean().optional(),
+  // null = kein Projekt
+  holidayProjectId: z
+    .string()
+    .refine(isProjectRef, { message: "Ungültiges Timing-Projekt" })
+    .nullable()
+    .optional(),
 });
 
 export type TimingSettingsUpdate = z.infer<typeof timingSettingsUpdateSchema>;
@@ -60,6 +69,10 @@ export interface PublicTimingSettings {
   syncEnabled: boolean;
   syncIntervalMinutes: number;
   syncWindowDays: number;
+  writeHolidays: boolean;
+  holidayProjectId: string | null;
+  /** Erster Tag, der nach Timing geht ("YYYY-MM-DD") */
+  holidaysSince: string | null;
 }
 
 export interface PublicTimingStatus {
@@ -106,6 +119,11 @@ export function toPublicSettings(
     syncIntervalMinutes:
       integration?.syncIntervalMinutes ?? DEFAULT_SYNC_INTERVAL_MINUTES,
     syncWindowDays: integration?.syncWindowDays ?? DEFAULT_SYNC_WINDOW_DAYS,
+    writeHolidays: integration?.writeHolidays ?? false,
+    holidayProjectId: integration?.holidayProjectId ?? null,
+    holidaysSince: integration?.holidaysSince
+      ? dateKeyFromDbDate(integration.holidaysSince)
+      : null,
   };
 }
 
