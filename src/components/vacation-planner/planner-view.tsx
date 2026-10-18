@@ -458,7 +458,7 @@ function PlannerContent({ data }: { data: VacationPlannerResponse }) {
         <div className="space-y-6">
           <Panel
             aria-labelledby="planner-selection-title"
-            className="hidden lg:sticky lg:top-6 lg:block"
+            className="hidden lg:sticky lg:top-6 lg:z-10 lg:block"
           >
             <PanelHeader
               title={

@@ -7,8 +7,10 @@ import { formatDateShort, formatMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   type DateSpan,
+  isHalfVacationDay,
   isPlannableDay,
   type PlannerContext,
+  vacationDayCost,
 } from "@/lib/vacation-planner";
 
 const WEEKDAY_HEADER = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -16,6 +18,12 @@ const WEEKDAY_HEADER = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 /** Schraffur für Entwürfe: noch nicht gebucht */
 const DRAFT_BACKGROUND =
   "repeating-linear-gradient(135deg, color-mix(in oklch, var(--chart-actual) 38%, transparent) 0 4px, color-mix(in oklch, var(--chart-actual) 14%, transparent) 4px 8px)";
+
+const HOLIDAY_BACKGROUND =
+  "color-mix(in oklch, var(--positive) 22%, var(--background))";
+
+/** 24./31.12.: halb Arbeitstag, halb frei */
+const HALF_DAY_BACKGROUND = `linear-gradient(135deg, var(--muted) 50%, ${HOLIDAY_BACKGROUND} 50%)`;
 
 interface MonthGrid {
   month: string;
@@ -118,7 +126,9 @@ export function PlannerCalendar({
     const holiday = ctx.holidays[key];
     const booked = ctx.booked.get(key);
     if (holiday) parts.push(holiday);
-    else if (!ctx.workDays.has(weekdayOfKey(key))) parts.push("frei");
+    else if (isHalfVacationDay(key) && isPlannableDay(key, ctx)) {
+      parts.push("halber Arbeitstag, Urlaub kostet ½ Tag");
+    } else if (!ctx.workDays.has(weekdayOfKey(key))) parts.push("frei");
     if (booked) {
       parts.push(
         `${booked.share < 1 ? "halber Tag " : ""}${booked.countsAsVacation ? "Urlaub" : "Abwesenheit"} gebucht`,
@@ -139,7 +149,7 @@ export function PlannerCalendar({
       const past = key <= todayKey;
       return {
         background:
-          booked.share < 1
+          booked.share < vacationDayCost(key, ctx)
             ? `linear-gradient(135deg, ${color} 50%, var(--muted) 50%)`
             : color,
         color: "var(--primary-foreground)",
@@ -150,11 +160,10 @@ export function PlannerCalendar({
       return { background: DRAFT_BACKGROUND };
     }
     if (key in ctx.holidays) {
-      return {
-        background:
-          "color-mix(in oklch, var(--positive) 22%, var(--background))",
-        color: "var(--positive)",
-      };
+      return { background: HOLIDAY_BACKGROUND, color: "var(--positive)" };
+    }
+    if (isHalfVacationDay(key) && isPlannableDay(key, ctx)) {
+      return { background: HALF_DAY_BACKGROUND };
     }
     return undefined;
   };
@@ -290,6 +299,10 @@ export function PlannerLegend() {
       style: { background: CATEGORY_COLOR.specialLeave },
     },
     { label: "Entwurf", style: { background: DRAFT_BACKGROUND } },
+    {
+      label: "24./31.12. (½ Urlaubstag)",
+      style: { background: HALF_DAY_BACKGROUND },
+    },
     { label: "Brückentag", style: {}, dot: true },
   ];
   return (

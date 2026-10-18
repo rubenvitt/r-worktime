@@ -6,6 +6,8 @@
 //   ein offizieller Feiertag ist oder ganz mit Abwesenheit belegt ist.
 // - Ein Entwurf kostet je Arbeitstag ohne Feiertag einen Urlaubstag, abzüglich
 //   schon gebuchter Abwesenheit an dem Tag (halber Tag gebucht → ½ Tag offen).
+// - Heiligabend und Silvester (HALF_VACATION_DAYS) kosten an Arbeitstagen
+//   nur einen halben Urlaubstag; mit ½ Tag gebucht sind sie frei.
 // - Freie Tage am Stück: der Zeitraum, verlängert um angrenzende freie Tage.
 // - Brückentage: höchstens MAX_BRIDGE_DAYS Arbeitstage zwischen zwei freien
 //   Blöcken (auch über freie Tage hinweg), und im entstehenden freien Block
@@ -18,6 +20,9 @@ import { isDateKey, shiftDateKey, weekdayOfKey } from "@/lib/dates";
 export const MAX_BRIDGE_DAYS = 4;
 /** Vorschläge erst ab doppeltem Gewinn: freie Tage ÷ Urlaubstage */
 export const MIN_BRIDGE_EFFICIENCY = 2;
+/** Tage ("MM-TT"), an denen Urlaub nur einen halben Tag kostet */
+export const HALF_VACATION_DAYS: readonly string[] = ["12-24", "12-31"];
+
 /** Längster Entwurf in Kalendertagen */
 export const MAX_DRAFT_DAYS = 62;
 
@@ -76,15 +81,28 @@ export function isPlannableDay(key: string, ctx: PlannerContext): boolean {
   return ctx.workDays.has(weekdayOfKey(key)) && !(key in ctx.holidays);
 }
 
+/** Heiligabend oder Silvester: Urlaub kostet dort ½ Tag */
+export function isHalfVacationDay(key: string): boolean {
+  return HALF_VACATION_DAYS.includes(key.slice(5));
+}
+
+/** Urlaubstage, die ein Tag kostet: 0, ½ oder 1 */
+export function vacationDayCost(key: string, ctx: PlannerContext): number {
+  if (!isPlannableDay(key, ctx)) return 0;
+  return isHalfVacationDay(key) ? 0.5 : 1;
+}
+
 export function isFreeDay(key: string, ctx: PlannerContext): boolean {
-  if (!isPlannableDay(key, ctx)) return true;
-  return (ctx.booked.get(key)?.share ?? 0) >= 1;
+  const cost = vacationDayCost(key, ctx);
+  return cost === 0 || (ctx.booked.get(key)?.share ?? 0) >= cost;
 }
 
 export interface SpanCost {
   /** Arbeitstage ohne Feiertag im Zeitraum */
   workDays: number;
-  /** davon schon gebucht (in Tagen, halbe Tage zählen ½) */
+  /** Urlaubstage für den ganzen Zeitraum (24./31.12. zählen ½) */
+  needed: number;
+  /** davon schon gebucht */
   booked: number;
   /** noch zu nehmende Urlaubstage */
   open: number;
@@ -92,13 +110,16 @@ export interface SpanCost {
 
 export function spanCost(span: DateSpan, ctx: PlannerContext): SpanCost {
   let workDays = 0;
+  let needed = 0;
   let booked = 0;
   for (const key of daysOf(span)) {
-    if (!isPlannableDay(key, ctx)) continue;
+    const cost = vacationDayCost(key, ctx);
+    if (cost === 0) continue;
     workDays++;
-    booked += Math.min(1, ctx.booked.get(key)?.share ?? 0);
+    needed += cost;
+    booked += Math.min(cost, ctx.booked.get(key)?.share ?? 0);
   }
-  return { workDays, booked, open: workDays - booked };
+  return { workDays, needed, booked, open: needed - booked };
 }
 
 /**

@@ -60,8 +60,8 @@ Gleiche Regeln wie beim Stundenzettel: `window.postMessage` nur an den eigenen O
   `TT.MM.JJJJ`).
 - `kind`: vorerst immer `"URLAUB"`. Später denkbar: `"RESTURLAUB"`, `"SONDERURLAUB"`,
   `"BILDUNGSURLAUB"`, `"UEBERSTUNDENABBAU"` (die Typen aus dem Timewarp-Feed).
-- `workDays`: Urlaubstage laut r-worktime (Arbeitstage ohne Feiertage), nur zur Anzeige und
-  zum Abgleich mit dem, was Timewarp berechnet.
+- `workDays`: Urlaubstage laut r-worktime (Arbeitstage ohne Feiertage; 24. und 31.12. zählen
+  ½), nur zur Anzeige und zum Abgleich mit dem, was Timewarp berechnet. Kann also „,5“ haben.
 - `note`: optional, höchstens 200 Zeichen.
 
 **Extension → Seite (ACK):**
@@ -98,6 +98,8 @@ Für Schritt 4 muss jemand Timewarp ansehen. Das geht nur angemeldet, also lokal
   oder Datepicker mit Textfeld, halber Tag, Kommentar)? Welche Selektoren sind stabil?
 - Welches Datumsformat erwartet das Feld, und auf welche Events reagiert das Formular
   (`input`, `change`, Framework-spezifisch)?
+- Wie bildet Timewarp den 24. und 31.12. ab (automatisch halber Tag, oder muss der Antrag
+  dort „halber Tag“ bekommen bzw. aufgeteilt werden)?
 - Rechnet Timewarp die Tage selbst aus? Dann kann der Button sie mit `workDays` vergleichen
   und bei Abweichung warnen.
 

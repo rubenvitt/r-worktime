@@ -149,6 +149,7 @@ und das nächste Jahr. Gebucht wird weiterhin in Timewarp; der Planer rechnet vo
   funktionieren auch.
 - **Sofortrechnung:** Urlaubstage, freie Tage am Stück (inklusive angrenzender Wochenenden,
   Feiertage und gebuchtem Urlaub) und was danach vom Anspruch übrig bleibt.
+  Heiligabend und Silvester kosten an Arbeitstagen nur einen halben Urlaubstag.
 - **Brückentage:** Vorschläge mit höchstens vier Urlaubstagen und mindestens doppeltem
   Gewinn, z. B. „Fr 07.05. · 1 Urlaubstag → 4 Tage frei“. Ein Klick übernimmt sie als Auswahl.
 - **Entwürfe:** mit Notiz merken, ändern, löschen. Sobald der Kalender-Abgleich die Tage aus

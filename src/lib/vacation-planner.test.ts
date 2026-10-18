@@ -41,6 +41,7 @@ describe("spanCost", () => {
     // Mo 29.03. Ostermontag bis So 04.04.
     expect(spanCost({ from: "2027-03-29", to: "2027-04-04" }, ctx())).toEqual({
       workDays: 4,
+      needed: 4,
       booked: 0,
       open: 4,
     });
@@ -51,7 +52,7 @@ describe("spanCost", () => {
       { from: "2027-07-05", to: "2027-07-09" },
       ctx([booked("2027-07-05"), booked("2027-07-06", 0.5)]),
     );
-    expect(cost).toEqual({ workDays: 5, booked: 1.5, open: 3.5 });
+    expect(cost).toEqual({ workDays: 5, needed: 5, booked: 1.5, open: 3.5 });
   });
 
   it("richtet sich nach den eingestellten Arbeitstagen", () => {
@@ -108,6 +109,48 @@ describe("summarizeDraft", () => {
   });
 });
 
+describe("Heiligabend und Silvester", () => {
+  it("kosten an Arbeitstagen nur einen halben Urlaubstag", () => {
+    // Mo 21.12.–Do 31.12.2026: Do 24. und Do 31. halb, 25./26. Feiertag
+    expect(spanCost({ from: "2026-12-21", to: "2026-12-31" }, ctx())).toEqual({
+      workDays: 8,
+      needed: 7,
+      booked: 0,
+      open: 7,
+    });
+  });
+
+  it("gilt mit halbem Tag gebucht als frei und gebucht", () => {
+    const context = ctx([booked("2026-12-24", 0.5)]);
+    expect(
+      freeStretch({ from: "2026-12-21", to: "2026-12-23" }, context),
+    ).toEqual({ from: "2026-12-19", to: "2026-12-27" });
+    expect(
+      summarizeDraft({ from: "2026-12-24", to: "2026-12-24" }, context),
+    ).toMatchObject({ status: "booked", open: 0 });
+  });
+
+  it("Wochenende bleibt frei, auch am 24.12.", () => {
+    // Fr 24.12.2027 ist ein Arbeitstag, Fr 31.12.2027 auch; Sa 24.12.2022 nicht
+    expect(spanCost({ from: "2027-12-24", to: "2027-12-24" }, ctx()).open).toBe(
+      0.5,
+    );
+    expect(spanCost({ from: "2022-12-24", to: "2022-12-24" }, ctx()).open).toBe(
+      0,
+    );
+  });
+
+  it("macht die Woche vor Weihnachten zur Brücke", () => {
+    const result = bridgeSuggestions(2026, "2026-10-18", ctx());
+    expect(result.find((s) => s.from === "2026-12-21")).toMatchObject({
+      to: "2026-12-24",
+      cost: 3.5,
+      stretch: { from: "2026-12-19", to: "2026-12-27" },
+      stretchDays: 9,
+    });
+  });
+});
+
 describe("bridgeSuggestions", () => {
   it("findet die Brückentage 2027 und rechnet den Gewinn", () => {
     const result = bridgeSuggestions(2027, "2026-10-18", ctx());
@@ -141,10 +184,11 @@ describe("bridgeSuggestions", () => {
 
   it("nimmt Brücken über den Jahreswechsel dem Jahr ihres Beginns zu", () => {
     const result = bridgeSuggestions(2026, "2026-10-18", ctx());
+    // Silvester kostet nur ½ Tag
     expect(result.at(-1)).toMatchObject({
       from: "2026-12-28",
       to: "2026-12-31",
-      cost: 4,
+      cost: 3.5,
       stretch: { from: "2026-12-25", to: "2027-01-03" },
       stretchDays: 10,
     });
