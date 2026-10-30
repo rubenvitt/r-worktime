@@ -13,25 +13,6 @@ export const SICK_REVIEW_REASON = "Krankheit";
 /** Notiz an Krank-Einträgen, die R-Worktime in Timing anlegt. */
 export const SICK_TIMING_NOTE = "Krank aus R-Worktime";
 
-/**
- * Hat R-Worktime den Eintrag als „Krank“ in Timing angelegt? Nur dann darf
- * lokales Löschen ihn auch in Timing löschen – bearbeitete Sync-Einträge
- * werden ebenfalls MANUAL und behalten ihre Timing-ID.
- */
-export function isOwnSickTimingEntry(entry: {
-  source: string;
-  type: string;
-  notes: string | null;
-  externalId: string | null;
-}): boolean {
-  return (
-    entry.source === "MANUAL" &&
-    entry.type === "SICK" &&
-    entry.notes === SICK_TIMING_NOTE &&
-    Boolean(entry.externalId)
-  );
-}
-
 /** Ohne vorhandene Einträge beginnt der Krank-Eintrag um 08:00 Berliner Zeit. */
 const SICK_START_HOUR = 8;
 

@@ -7,7 +7,7 @@ import { withUserAbsenceLock } from "@/lib/absences/lock";
 import { berlinDayStart, weekdayOfKey } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { dailyTargetHours } from "@/lib/reports/absences";
-import { TimingApiError } from "@/lib/timing/client";
+import { TimingApiError, type TimingClient } from "@/lib/timing/client";
 import { mapApiEntry, toSyncEntryRow } from "@/lib/timing/mapping";
 import {
   planSickFill,
@@ -96,6 +96,34 @@ async function createLocalSickEntry(
 }
 
 /**
+ * Nach einem Fehler beim Verknüpfen: Den Eintrag in Timing nur löschen, wenn
+ * der lokale sicher noch unverknüpft ist – unverknüpft holte ihn der nächste
+ * Sync als zweiten Krank-Eintrag. Kam das Update doch an (Fehler erst nach
+ * dem Commit) oder lässt sich das nicht prüfen, bleibt er stehen: Sonst
+ * löschte der nächste Sync den verknüpften lokalen Eintrag mit.
+ */
+async function rollBackUnlinked(
+  userId: string,
+  entryId: string,
+  self: string,
+  client: TimingClient,
+): Promise<void> {
+  try {
+    const current = await prisma.timeEntry.findFirst({
+      where: { id: entryId, userId },
+      select: { externalId: true },
+    });
+    if (current && current.externalId !== null) return;
+    await client.deleteTimeEntry(self);
+  } catch (cleanupError) {
+    console.error(
+      `[timing] Krank-Eintrag ${self} nicht zurückgenommen:`,
+      errorText(cleanupError),
+    );
+  }
+}
+
+/**
  * Trägt den Eintrag in Timing ein und verknüpft ihn. Liegt das Krank-Projekt
  * unter den Projekt-Wurzeln und erkennt der Sync es als Krankheit, gehört der
  * Eintrag danach dem Timing-Sync (wie ein abgerufener Eintrag) – Änderungen in
@@ -134,12 +162,12 @@ async function pushSickEntry(
   }
 
   const mapped = mapApiEntry(created, integration.projectRoots);
+  // createdInTiming übersteht Bearbeiten (Notiz, Typ, Quelle): Löschen in
+  // R-Worktime löscht den Eintrag dann auch in Timing
   const data =
     mapped.kept && mapped.entry.type === EntryType.SICK
-      ? toSyncEntryRow(mapped.entry)
-      : // Die Notiz markiert den Eintrag als von R-Worktime in Timing angelegt
-        // (siehe isOwnSickTimingEntry): nur dann löscht das Löschen ihn dort mit
-        { externalId: created.self, notes: SICK_TIMING_NOTE };
+      ? { ...toSyncEntryRow(mapped.entry), createdInTiming: true }
+      : { externalId: created.self, createdInTiming: true };
   try {
     await prisma.timeEntry.update({ where: { id: entryId }, data });
   } catch (error) {
@@ -152,16 +180,7 @@ async function pushSickEntry(
       await prisma.timeEntry.deleteMany({ where: { id: entryId, userId } });
       return { status: "synced" };
     }
-    // Sonst den Eintrag in Timing wieder löschen: unverknüpft holte ihn der
-    // nächste Sync als zweiten Krank-Eintrag desselben Tags
-    try {
-      await timing.client.deleteTimeEntry(created.self);
-    } catch (cleanupError) {
-      console.error(
-        `[timing] Krank-Eintrag ${created.self} nicht zurückgenommen:`,
-        errorText(cleanupError),
-      );
-    }
+    await rollBackUnlinked(userId, entryId, created.self, timing.client);
     throw error;
   }
   return { status: "synced" };

@@ -14,7 +14,7 @@ const {
   };
   const prismaMock = {
     timingIntegration: { findUnique: vi.fn() },
-    timeEntry: { update: vi.fn(), deleteMany: vi.fn() },
+    timeEntry: { update: vi.fn(), deleteMany: vi.fn(), findFirst: vi.fn() },
     $transaction: vi.fn(async (fn: (tx: typeof txMock) => unknown) =>
       fn(txMock),
     ),
@@ -127,6 +127,7 @@ describe("fillSickDay", () => {
         source: "TIMING_SYNC",
         type: "SICK",
         projectPath: "Work ▸ INNOQ ▸ Krank",
+        createdInTiming: true,
       }),
     });
     expect(invalidateCache).toHaveBeenCalledWith("user-1");
@@ -212,7 +213,7 @@ describe("fillSickDay", () => {
     await fillSickDay("user-1", "2026-10-28", NOW);
     expect(prismaMock.timeEntry.update).toHaveBeenCalledWith({
       where: { id: "e1" },
-      data: { externalId: "/time-entries/99", notes: "Krank aus R-Worktime" },
+      data: { externalId: "/time-entries/99", createdInTiming: true },
     });
   });
 
@@ -221,7 +222,7 @@ describe("fillSickDay", () => {
     await fillSickDay("user-1", "2026-10-28", NOW);
     expect(prismaMock.timeEntry.update).toHaveBeenCalledWith({
       where: { id: "e1" },
-      data: { externalId: "/time-entries/99", notes: "Krank aus R-Worktime" },
+      data: { externalId: "/time-entries/99", createdInTiming: true },
     });
   });
 
@@ -252,6 +253,7 @@ describe("fillSickDay", () => {
 
   it("nimmt den Timing-Eintrag zurück, wenn das Verknüpfen sonst scheitert", async () => {
     prismaMock.timeEntry.update.mockRejectedValue(new Error("db down"));
+    prismaMock.timeEntry.findFirst.mockResolvedValue({ externalId: null });
     const result = await fillSickDay("user-1", "2026-10-28", NOW);
     expect(result).toMatchObject({
       created: true,
@@ -259,5 +261,21 @@ describe("fillSickDay", () => {
     });
     expect(deleteTimeEntry).toHaveBeenCalledWith("/time-entries/99");
     expect(prismaMock.timeEntry.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("lässt den Timing-Eintrag stehen, wenn das Update doch angekommen ist", async () => {
+    prismaMock.timeEntry.update.mockRejectedValue(new Error("conn reset"));
+    prismaMock.timeEntry.findFirst.mockResolvedValue({
+      externalId: "/time-entries/99",
+    });
+    await fillSickDay("user-1", "2026-10-28", NOW);
+    expect(deleteTimeEntry).not.toHaveBeenCalled();
+  });
+
+  it("lässt den Timing-Eintrag stehen, wenn sich der lokale Stand nicht prüfen lässt", async () => {
+    prismaMock.timeEntry.update.mockRejectedValue(new Error("db down"));
+    prismaMock.timeEntry.findFirst.mockRejectedValue(new Error("db down"));
+    await fillSickDay("user-1", "2026-10-28", NOW);
+    expect(deleteTimeEntry).not.toHaveBeenCalled();
   });
 });

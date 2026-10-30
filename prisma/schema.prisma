@@ -70,6 +70,7 @@ model TimeEntry {
   billingStatus String?     // Abrechnungsstatus aus Timing Import
   importLogId   String?
   absenceId     String?     // Verknüpfte Abwesenheit (Timewarp oder Dialog)
+  createdInTiming Boolean   @default(false) // Von R-Worktime in Timing angelegt („Krank“): Löschen löscht dort mit
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

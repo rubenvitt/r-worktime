@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  isOwnSickTimingEntry,
-  isSickProjectPath,
-  planSickFill,
-  SICK_TIMING_NOTE,
-  suggestSickProject,
-} from "./sick";
+import { isSickProjectPath, planSickFill, suggestSickProject } from "./sick";
 
 describe("planSickFill", () => {
   it("füllt einen leeren Tag ab 08:00 Berliner Zeit auf das Soll", () => {
@@ -110,25 +104,5 @@ describe("Krank-Projekt", () => {
     ];
     expect(suggestSickProject(projects)?.id).toBe("/projects/2");
     expect(suggestSickProject(projects.slice(0, 1))).toBeNull();
-  });
-});
-
-describe("isOwnSickTimingEntry", () => {
-  const own = {
-    source: "MANUAL",
-    type: "SICK",
-    notes: SICK_TIMING_NOTE,
-    externalId: "/time-entries/1",
-  };
-
-  it("erkennt eigene Krank-Einträge", () => {
-    expect(isOwnSickTimingEntry(own)).toBe(true);
-  });
-
-  it("lässt bearbeitete Sync-Einträge und fremde Notizen in Ruhe", () => {
-    expect(isOwnSickTimingEntry({ ...own, notes: null })).toBe(false);
-    expect(isOwnSickTimingEntry({ ...own, type: "WORK" })).toBe(false);
-    expect(isOwnSickTimingEntry({ ...own, source: "TIMING_SYNC" })).toBe(false);
-    expect(isOwnSickTimingEntry({ ...own, externalId: null })).toBe(false);
   });
 });

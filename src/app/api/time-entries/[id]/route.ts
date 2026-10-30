@@ -4,7 +4,6 @@ import { suppressAbsenceDays } from "@/lib/absences/suppress";
 import { auth } from "@/lib/auth";
 import { keepExactTimes, manualEditOverrides } from "@/lib/manual-edit";
 import { prisma } from "@/lib/prisma";
-import { isOwnSickTimingEntry } from "@/lib/timing/sick";
 import { overtimeService } from "@/services/overtime.service";
 import { deleteOwnTimingEntries } from "@/services/timing-entries.service";
 import { EntryType } from "@/types/database";
@@ -54,7 +53,7 @@ export async function DELETE(
     // Vom Kalender-Abgleich oder von „Krank“ in Timing angelegt: dort auch
     // löschen (best effort, nach dem Commit – Fehler werden nur geloggt)
     if (
-      (entry.source === "TIMEWARP" || isOwnSickTimingEntry(entry)) &&
+      (entry.source === "TIMEWARP" || entry.createdInTiming) &&
       entry.externalId
     ) {
       await deleteOwnTimingEntries(session.user.id, [entry.externalId]);
