@@ -50,8 +50,13 @@ function errorText(error: unknown): string {
 
 // Je Nutzer nur ein Lauf gleichzeitig (Sync und Anlegen): sonst legen zwei
 // Läufe denselben Eintrag doppelt in Timing an. Der übersprungene Lauf holt
-// nichts nach – das macht der nächste Sync.
-const running = new Set<string>();
+// nichts nach – das macht der nächste Sync. Auf globalThis wie der Sync-Lock:
+// Route-Handler und Scheduler laufen in getrennten Bundles im selben Prozess.
+const globalForSick = globalThis as unknown as {
+  __sickPushLocks?: Set<string>;
+};
+const running: Set<string> = globalForSick.__sickPushLocks ?? new Set();
+globalForSick.__sickPushLocks = running;
 
 /**
  * Nach einem Fehler beim Verknüpfen: Den Eintrag in Timing nur löschen, wenn
