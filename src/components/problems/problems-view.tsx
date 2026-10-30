@@ -13,6 +13,7 @@ import { PageContainer } from "@/components/app/page-container";
 import { PageHeader } from "@/components/app/page-header";
 import { Panel } from "@/components/app/panel";
 import { PeriodNav } from "@/components/app/period-nav";
+import { invalidateEntryDependentQueries } from "@/components/app/query-invalidation";
 import { RefetchBar, SkeletonRows } from "@/components/app/skeletons";
 import { StickyActionBar } from "@/components/app/sticky-action-bar";
 import { useMonthClose } from "@/components/app/use-month-close";
@@ -49,7 +50,45 @@ import {
   plural,
 } from "@/lib/format";
 
+import type { SickFillResult } from "@/services/sick-fill.service";
+
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
+
+/** Rückmeldung zu „Krankheit“: aufgefüllt, nach Timing übertragen? */
+function sickFillMessage(result: SickFillResult): {
+  text: string;
+  warning: boolean;
+} {
+  if (!result.created) {
+    return {
+      text:
+        result.reason === "full"
+          ? "Tag als geprüft markiert – das Soll war schon erreicht."
+          : "Tag als geprüft markiert – an diesem Tag gibt es kein Soll.",
+      warning: false,
+    };
+  }
+  const filled = `${formatHours(result.hours)} „Krank“ eingetragen`;
+  switch (result.timing.status) {
+    case "synced":
+      return { text: `${filled} und in Timing übertragen.`, warning: false };
+    case "local":
+      return {
+        text: `${filled} – nur lokal, kein Krank-Projekt für Timing gewählt.`,
+        warning: false,
+      };
+    case "future":
+      return {
+        text: `${filled} – nur lokal, Timing nimmt keine Einträge in der Zukunft an.`,
+        warning: true,
+      };
+    case "failed":
+      return {
+        text: `${filled}, aber nicht in Timing: ${result.timing.error}`,
+        warning: true,
+      };
+  }
+}
 
 type Period = "month" | "90d" | "year";
 type ProblemType = NonNullable<ProblemsQuery["problemType"]>;
@@ -147,11 +186,19 @@ export function ProblemsView() {
         body: JSON.stringify({ date, reason }),
       });
       if (!response.ok) throw new Error("Failed to mark as reviewed");
-      return response.json();
+      return response.json() as Promise<{ sick?: SickFillResult[] }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["problems"] });
-      toast.success("Tag als geprüft markiert");
+      const sick = data.sick?.[0];
+      if (!sick) {
+        toast.success("Tag als geprüft markiert");
+        return;
+      }
+      invalidateEntryDependentQueries(queryClient);
+      const message = sickFillMessage(sick);
+      if (message.warning) toast.warning(message.text);
+      else toast.success(message.text);
     },
     onError: () => {
       toast.error("Der Tag konnte nicht als geprüft markiert werden.");

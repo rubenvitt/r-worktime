@@ -22,12 +22,13 @@ import {
   formatTimeRange,
   hoursToMinutes,
 } from "@/lib/format";
+import { SICK_REVIEW_REASON } from "@/lib/timing/sick";
 import { cn } from "@/lib/utils";
 
 const REVIEW_REASONS = [
   "Kein Arbeitstag",
   "Unbezahlter Urlaub",
-  "Krankheit",
+  SICK_REVIEW_REASON,
   "Feiertag",
 ] as const;
 
@@ -164,7 +165,16 @@ export function ProblemRow({
                   key={reason}
                   onSelect={() => onMarkAsReviewed(reason)}
                 >
-                  {reason}
+                  {reason === SICK_REVIEW_REASON && workday ? (
+                    <span className="flex flex-col">
+                      {reason}
+                      <span className="text-xs text-muted-foreground">
+                        Füllt mit „Krank“ auf das Soll auf
+                      </span>
+                    </span>
+                  ) : (
+                    reason
+                  )}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

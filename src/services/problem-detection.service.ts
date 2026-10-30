@@ -218,8 +218,11 @@ export class ProblemDetectionService {
     date: Date,
     reason?: string,
   ): Promise<void> {
-    await prisma.reviewedDay.create({
-      data: {
+    // Erneut prüfen (z. B. mit anderem Grund) überschreibt den alten Stand
+    await prisma.reviewedDay.upsert({
+      where: { userId_date: { userId, date: startOfDay(date) } },
+      update: { reason, reviewedAt: new Date() },
+      create: {
         userId,
         date: startOfDay(date),
         reason,

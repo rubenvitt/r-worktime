@@ -136,6 +136,9 @@ export async function PUT(request: NextRequest) {
     ...(input.holidayProjectId !== undefined && {
       holidayProjectId: input.holidayProjectId,
     }),
+    ...(input.sickProjectId !== undefined && {
+      sickProjectId: input.sickProjectId,
+    }),
     ...(turnsHolidaysOn && {
       holidaysSince: berlinDayStart(berlinTodayKey()),
     }),

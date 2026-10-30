@@ -1,7 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { isDateKey } from "@/lib/dates";
+import { SICK_REVIEW_REASON } from "@/lib/timing/sick";
 import { ProblemDetectionService } from "@/services/problem-detection.service";
+import { fillSickDay, type SickFillResult } from "@/services/sick-fill.service";
 
 const reviewSchema = z.object({
   date: z.string(),
@@ -12,6 +15,23 @@ const bulkReviewSchema = z.object({
   dates: z.array(z.string()),
   reason: z.string().optional(),
 });
+
+/**
+ * Grund „Krankheit“: Tag vorher mit „Krank“ auf das Soll auffüllen (und nach
+ * Timing schreiben). Nur für Tage im Format "YYYY-MM-DD".
+ */
+async function fillSickDays(
+  userId: string,
+  dates: string[],
+  reason: string | undefined,
+): Promise<SickFillResult[] | undefined> {
+  if (reason !== SICK_REVIEW_REASON) return undefined;
+  const results: SickFillResult[] = [];
+  for (const date of dates) {
+    if (isDateKey(date)) results.push(await fillSickDay(userId, date));
+  }
+  return results;
+}
 
 // Mark single day as reviewed
 export async function POST(req: NextRequest) {
@@ -24,6 +44,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validated = reviewSchema.parse(body);
 
+    const sick = await fillSickDays(
+      session.user.id,
+      [validated.date],
+      validated.reason,
+    );
+
     const problemService = new ProblemDetectionService();
     await problemService.markAsReviewed(
       session.user.id,
@@ -34,6 +60,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Day marked as reviewed",
+      ...(sick && { sick }),
     });
   } catch (error) {
     console.error("Error marking day as reviewed:", error);
@@ -61,6 +88,12 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     const validated = bulkReviewSchema.parse(body);
 
+    const sick = await fillSickDays(
+      session.user.id,
+      validated.dates,
+      validated.reason,
+    );
+
     const problemService = new ProblemDetectionService();
     const dates = validated.dates.map((d) => new Date(d));
 
@@ -73,6 +106,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `${dates.length} days marked as reviewed`,
+      ...(sick && { sick }),
     });
   } catch (error) {
     console.error("Error marking days as reviewed:", error);

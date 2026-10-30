@@ -19,6 +19,7 @@ export type TimingSettingsInput = Partial<{
   syncWindowDays: number;
   writeHolidays: boolean;
   holidayProjectId: string | null;
+  sickProjectId: string | null;
 }>;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
