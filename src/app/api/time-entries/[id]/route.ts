@@ -50,9 +50,12 @@ export async function DELETE(
       });
     }
 
-    // Vom Kalender-Abgleich in Timing angelegt: dort auch löschen (best
-    // effort, nach dem Commit – Fehler werden nur geloggt)
-    if (entry.source === "TIMEWARP" && entry.externalId) {
+    // Vom Kalender-Abgleich oder von „Krank“ in Timing angelegt: dort auch
+    // löschen (best effort, nach dem Commit – Fehler werden nur geloggt)
+    if (
+      (entry.source === "TIMEWARP" || entry.createdInTiming) &&
+      entry.externalId
+    ) {
       await deleteOwnTimingEntries(session.user.id, [entry.externalId]);
     }
 

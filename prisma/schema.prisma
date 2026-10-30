@@ -70,6 +70,7 @@ model TimeEntry {
   billingStatus String?     // Abrechnungsstatus aus Timing Import
   importLogId   String?
   absenceId     String?     // Verknüpfte Abwesenheit (Timewarp oder Dialog)
+  createdInTiming Boolean   @default(false) // Von R-Worktime in Timing angelegt („Krank“): Löschen löscht dort mit
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -154,6 +155,7 @@ model TimingIntegration {
   writeHolidays       Boolean   @default(false) // Feiertags-Einträge in Timing eintragen
   holidayProjectId    String?   // Timing-Projekt-Referenz für Feiertage
   holidaysSince       DateTime? @db.Date // erster Tag, der nach Timing geht (Einschalten)
+  sickProjectId       String?   // Timing-Projekt-Referenz für „Krank“ aus der Problemliste
   lastSyncAt          DateTime?
   lastSyncStatus      String?
   lastSyncError       String?

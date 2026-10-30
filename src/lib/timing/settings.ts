@@ -54,6 +54,12 @@ export const timingSettingsUpdateSchema = z.object({
     .refine(isProjectRef, { message: "Ungültiges Timing-Projekt" })
     .nullable()
     .optional(),
+  // null = Krank-Einträge nur lokal
+  sickProjectId: z
+    .string()
+    .refine(isProjectRef, { message: "Ungültiges Timing-Projekt" })
+    .nullable()
+    .optional(),
 });
 
 export type TimingSettingsUpdate = z.infer<typeof timingSettingsUpdateSchema>;
@@ -73,6 +79,8 @@ export interface PublicTimingSettings {
   holidayProjectId: string | null;
   /** Erster Tag, der nach Timing geht ("YYYY-MM-DD") */
   holidaysSince: string | null;
+  /** Timing-Projekt für „Krank“ aus der Problemliste; null = nur lokal */
+  sickProjectId: string | null;
 }
 
 export interface PublicTimingStatus {
@@ -124,6 +132,7 @@ export function toPublicSettings(
     holidaysSince: integration?.holidaysSince
       ? dateKeyFromDbDate(integration.holidaysSince)
       : null,
+    sickProjectId: integration?.sickProjectId ?? null,
   };
 }
 

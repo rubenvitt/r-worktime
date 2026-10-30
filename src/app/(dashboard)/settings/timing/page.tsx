@@ -7,6 +7,7 @@ import { SettingsNav } from "@/components/app/settings-nav";
 import { SkeletonPanel } from "@/components/app/skeletons";
 import { TimingConnectionCard } from "@/components/timing/timing-connection-card";
 import { TimingHolidaysCard } from "@/components/timing/timing-holidays-card";
+import { TimingSickCard } from "@/components/timing/timing-sick-card";
 import { TimingSyncSettingsCard } from "@/components/timing/timing-sync-settings-card";
 import {
   TimingSyncNowButton,
@@ -73,6 +74,10 @@ export default function TimingSettingsPage() {
           />
           <TimingHolidaysCard
             key={`${settings.writeHolidays}-${settings.holidayProjectId}`}
+            settings={settings}
+          />
+          <TimingSickCard
+            key={`${settings.hasToken}-${settings.sickProjectId}`}
             settings={settings}
           />
           <TimingConnectionCard settings={settings} />
