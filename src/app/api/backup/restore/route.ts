@@ -315,6 +315,16 @@ export async function POST(request: NextRequest) {
             absenceId: restoreAbsenceId(entry, restoredAbsenceIds),
           };
 
+          // Neu angelegt: ursprüngliches Anlegedatum behalten – sonst gälten
+          // alte Krank-Einträge als neu und gingen nach Timing (sickSince)
+          const backupCreatedAt = entry.createdAt
+            ? new Date(entry.createdAt)
+            : null;
+          const createData =
+            backupCreatedAt && !Number.isNaN(backupCreatedAt.getTime())
+              ? { ...entryData, createdAt: backupCreatedAt }
+              : entryData;
+
           // Gleiche externe ID → vorhandenen Eintrag aktualisieren (Unique-Key)
           const existingByExternalId = externalId
             ? await tx.timeEntry.findUnique({
@@ -333,7 +343,7 @@ export async function POST(request: NextRequest) {
           } else if (replaceExisting || !entry.id) {
             // Create new entry
             await tx.timeEntry.create({
-              data: entryData,
+              data: createData,
             });
             results.entriesCreated++;
           } else {
@@ -354,7 +364,7 @@ export async function POST(request: NextRequest) {
               results.entriesUpdated++;
             } else {
               await tx.timeEntry.create({
-                data: entryData,
+                data: createData,
               });
               results.entriesCreated++;
             }

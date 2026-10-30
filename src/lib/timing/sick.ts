@@ -3,6 +3,7 @@
 
 import { berlinWallClock } from "@/lib/absence-range";
 import { detectEntryType } from "@/lib/schemas/timing-import";
+import type { TimingApiTimeEntry } from "./client";
 
 /** Titel und Beschreibung des Auffüll-Eintrags. */
 export const SICK_FILL_TITLE = "Krank";
@@ -72,4 +73,59 @@ export function suggestSickProject<T extends { path: string }>(
   projects: readonly T[],
 ): T | null {
   return projects.find((project) => isSickProjectPath(project.path)) ?? null;
+}
+
+/** Lokaler Krank-Eintrag ohne Timing-ID, der nach Timing soll. */
+export interface PendingSickEntry {
+  id: string;
+  startTime: Date;
+  endTime: Date;
+  title: string;
+  notes: string | null;
+}
+
+export interface SickPushPlan {
+  /** Gleicher Eintrag schon in Timing (z. B. aus einem abgebrochenen Lauf): nur verknüpfen */
+  adopt: Array<{ id: string; self: string }>;
+  create: PendingSickEntry[];
+}
+
+/** Krank-Einträge, die Timing schon annimmt (Beginn erreicht). */
+export function startedSickEntries<T extends { startTime: Date }>(
+  pending: readonly T[],
+  now: Date,
+): T[] {
+  return pending.filter((entry) => entry.startTime.getTime() <= now.getTime());
+}
+
+/**
+ * Plant den Eintrag in Timing. `inTiming` sind die Einträge im Krank-Projekt,
+ * `usedSelves` deren IDs, die lokal schon an einem Eintrag hängen. Übernommen
+ * wird nur ein Timing-Eintrag mit genau gleichem Beginn und Ende.
+ */
+export function planSickPush(
+  pending: readonly PendingSickEntry[],
+  inTiming: readonly TimingApiTimeEntry[],
+  usedSelves: ReadonlySet<string>,
+): SickPushPlan {
+  const candidates = new Map<string, string[]>();
+  for (const entry of inTiming) {
+    if (entry.is_running || !entry.end_date || usedSelves.has(entry.self)) {
+      continue;
+    }
+    const start = Date.parse(entry.start_date);
+    const end = Date.parse(entry.end_date);
+    if (Number.isNaN(start) || Number.isNaN(end)) continue;
+    const key = `${start}-${end}`;
+    candidates.set(key, [...(candidates.get(key) ?? []), entry.self]);
+  }
+
+  const plan: SickPushPlan = { adopt: [], create: [] };
+  for (const entry of pending) {
+    const key = `${entry.startTime.getTime()}-${entry.endTime.getTime()}`;
+    const self = candidates.get(key)?.shift();
+    if (self) plan.adopt.push({ id: entry.id, self });
+    else plan.create.push(entry);
+  }
+  return plan;
 }

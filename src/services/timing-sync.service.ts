@@ -26,6 +26,10 @@ import {
   pushHolidaysToTiming,
 } from "@/services/holiday-timing.service";
 import { overtimeService } from "@/services/overtime.service";
+import {
+  pushPendingSickEntries,
+  type SickPushStats,
+} from "@/services/sick-timing.service";
 
 export const SYNC_STATUS_SUCCESS = "SUCCESS";
 export const SYNC_STATUS_FAILED = "FAILED";
@@ -53,6 +57,8 @@ export interface SyncStats {
   conflicts: number;
   /** Feiertage nach Timing; null, wenn ausgeschaltet */
   holidays: HolidayPushStats | null;
+  /** Krank-Einträge nach Timing; null ohne Krank-Projekt */
+  sick: SickPushStats | null;
   durationMs: number;
 }
 
@@ -187,6 +193,26 @@ async function runSync(
     };
   }
 
+  // Ebenso manuell angelegte Krank-Einträge (auch nachgeholte, die beim
+  // Anlegen noch nicht begonnen hatten oder deren Übertragung scheiterte)
+  let sick: SickPushStats | null;
+  try {
+    sick = await pushPendingSickEntries(
+      userId,
+      integration,
+      client,
+      options.now,
+    );
+  } catch (error) {
+    sick = {
+      pending: 0,
+      created: 0,
+      adopted: 0,
+      failed: 0,
+      error: sanitizeSyncError(error, token),
+    };
+  }
+
   const raw = await client.listTimeEntries(range);
   const { entries, stats: filterStats } = filterAndMapEntries(
     raw,
@@ -297,6 +323,7 @@ async function runSync(
     replacedFileImports: plan.replaceFileImports.length,
     conflicts: plan.conflicts.length,
     holidays,
+    sick,
     durationMs: Date.now() - startedAt,
   };
 }

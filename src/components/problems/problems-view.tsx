@@ -79,12 +79,12 @@ function sickFillMessage(result: SickFillResult): {
       };
     case "future":
       return {
-        text: `${filled} – nur lokal, Timing nimmt keine Einträge in der Zukunft an.`,
-        warning: true,
+        text: `${filled} – geht nach Timing, sobald der Tag begonnen hat.`,
+        warning: false,
       };
     case "failed":
       return {
-        text: `${filled}, aber nicht in Timing: ${result.timing.error}`,
+        text: `${filled}, aber noch nicht in Timing: ${result.timing.error} Der nächste Sync versucht es erneut.`,
         warning: true,
       };
   }

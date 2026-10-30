@@ -84,17 +84,18 @@ export function TimingSickCard({
       />
       <PanelBody className="space-y-6">
         <p className="max-w-prose text-[13px] text-muted-foreground">
-          Markierst du in den{" "}
+          Krankheit, die du in r-worktime einträgst, geht mit Projekt auch nach
+          Timing (nicht abrechenbar): ein neuer Eintrag mit Typ Krankheit,
+          „Abwesenheit eintragen“ und „Krankheit“ in den{" "}
           <Link
             href="/problems"
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
             Problemen
           </Link>{" "}
-          einen Tag mit „Krankheit“, füllt r-worktime ihn mit „Krank“ auf das
-          Tagessoll auf – nach dem letzten Eintrag des Tags, sonst ab 08:00,
-          nicht abrechenbar. Mit Projekt geht der Eintrag sofort auch nach
-          Timing.
+          (füllt den Tag mit „Krank“ auf das Tagessoll auf). Tage, die noch
+          nicht begonnen haben, trägt der Sync nach, sobald es so weit ist. Gilt
+          für Einträge ab dem Wählen des Projekts.
         </p>
 
         <div className="space-y-2">
