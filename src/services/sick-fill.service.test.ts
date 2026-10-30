@@ -1,27 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, txMock, invalidateCache, createTimeEntry, timingClient } =
-  vi.hoisted(() => {
-    const txMock = {
-      $queryRaw: vi.fn(),
-      timeEntry: { findMany: vi.fn(), create: vi.fn() },
-    };
-    const prismaMock = {
-      timingIntegration: { findUnique: vi.fn() },
-      timeEntry: { update: vi.fn(), deleteMany: vi.fn() },
-      $transaction: vi.fn(async (fn: (tx: typeof txMock) => unknown) =>
-        fn(txMock),
-      ),
-    };
-    const createTimeEntry = vi.fn();
-    return {
-      prismaMock,
-      txMock,
-      invalidateCache: vi.fn(),
-      createTimeEntry,
-      timingClient: vi.fn(),
-    };
-  });
+const {
+  prismaMock,
+  txMock,
+  invalidateCache,
+  createTimeEntry,
+  deleteTimeEntry,
+  timingClient,
+} = vi.hoisted(() => {
+  const txMock = {
+    $queryRaw: vi.fn(),
+    timeEntry: { findMany: vi.fn(), create: vi.fn() },
+  };
+  const prismaMock = {
+    timingIntegration: { findUnique: vi.fn() },
+    timeEntry: { update: vi.fn(), deleteMany: vi.fn() },
+    $transaction: vi.fn(async (fn: (tx: typeof txMock) => unknown) =>
+      fn(txMock),
+    ),
+  };
+  const createTimeEntry = vi.fn();
+  return {
+    prismaMock,
+    txMock,
+    invalidateCache: vi.fn(),
+    createTimeEntry,
+    deleteTimeEntry: vi.fn(),
+    timingClient: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/services/overtime.service", () => ({
@@ -77,7 +84,7 @@ beforeEach(() => {
   txMock.timeEntry.create.mockResolvedValue({ id: "e1" });
   prismaMock.timingIntegration.findUnique.mockResolvedValue(integration());
   timingClient.mockResolvedValue({
-    client: { createTimeEntry },
+    client: { createTimeEntry, deleteTimeEntry },
     problem: null,
   });
   createTimeEntry.mockResolvedValue(created(["Work", "INNOQ", "Krank"]));
@@ -205,7 +212,7 @@ describe("fillSickDay", () => {
     await fillSickDay("user-1", "2026-10-28", NOW);
     expect(prismaMock.timeEntry.update).toHaveBeenCalledWith({
       where: { id: "e1" },
-      data: { externalId: "/time-entries/99" },
+      data: { externalId: "/time-entries/99", notes: "Krank aus R-Worktime" },
     });
   });
 
@@ -214,7 +221,7 @@ describe("fillSickDay", () => {
     await fillSickDay("user-1", "2026-10-28", NOW);
     expect(prismaMock.timeEntry.update).toHaveBeenCalledWith({
       where: { id: "e1" },
-      data: { externalId: "/time-entries/99" },
+      data: { externalId: "/time-entries/99", notes: "Krank aus R-Worktime" },
     });
   });
 
@@ -241,5 +248,16 @@ describe("fillSickDay", () => {
     expect(prismaMock.timeEntry.deleteMany).toHaveBeenCalledWith({
       where: { id: "e1", userId: "user-1" },
     });
+  });
+
+  it("nimmt den Timing-Eintrag zurück, wenn das Verknüpfen sonst scheitert", async () => {
+    prismaMock.timeEntry.update.mockRejectedValue(new Error("db down"));
+    const result = await fillSickDay("user-1", "2026-10-28", NOW);
+    expect(result).toMatchObject({
+      created: true,
+      timing: { status: "failed" },
+    });
+    expect(deleteTimeEntry).toHaveBeenCalledWith("/time-entries/99");
+    expect(prismaMock.timeEntry.deleteMany).not.toHaveBeenCalled();
   });
 });

@@ -68,7 +68,8 @@ export function TimingSickCard({
       { sickProjectId: projectId },
       {
         onSuccess: () => {
-          setProjectChoice(undefined);
+          // Gespeicherte Wahl halten, sonst käme bei „Kein Projekt“ der Vorschlag zurück
+          setProjectChoice(projectId);
           toast.success("Krank-Projekt gespeichert");
         },
         onError: (error) => toast.error(error.message),
