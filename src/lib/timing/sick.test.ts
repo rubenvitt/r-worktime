@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isSickProjectPath, planSickFill, suggestSickProject } from "./sick";
+import type { TimingApiTimeEntry } from "./client";
+import {
+  isSickProjectPath,
+  type PendingSickEntry,
+  planSickFill,
+  planSickPush,
+  startedSickEntries,
+  suggestSickProject,
+} from "./sick";
 
 describe("planSickFill", () => {
   it("füllt einen leeren Tag ab 08:00 Berliner Zeit auf das Soll", () => {
@@ -104,5 +112,102 @@ describe("Krank-Projekt", () => {
     ];
     expect(suggestSickProject(projects)?.id).toBe("/projects/2");
     expect(suggestSickProject(projects.slice(0, 1))).toBeNull();
+  });
+});
+
+function pending(id: string, start: string, end: string): PendingSickEntry {
+  return {
+    id,
+    startTime: new Date(start),
+    endTime: new Date(end),
+    title: "Krankheit",
+    notes: null,
+  };
+}
+
+function timingEntry(
+  self: string,
+  start: string,
+  end: string,
+  overrides: Partial<TimingApiTimeEntry> = {},
+): TimingApiTimeEntry {
+  return {
+    self,
+    start_date: start,
+    end_date: end,
+    duration: null,
+    project: null,
+    title: "Krankheit",
+    notes: null,
+    is_running: false,
+    ...overrides,
+  };
+}
+
+describe("startedSickEntries", () => {
+  it("lässt Einträge weg, die noch nicht begonnen haben", () => {
+    const now = new Date("2026-10-30T08:00:00.000Z");
+    const entries = [
+      pending("a", "2026-10-30T07:00:00.000Z", "2026-10-30T15:00:00.000Z"),
+      pending("b", "2026-11-02T07:00:00.000Z", "2026-11-02T15:00:00.000Z"),
+    ];
+    expect(startedSickEntries(entries, now).map((e) => e.id)).toEqual(["a"]);
+  });
+});
+
+describe("planSickPush", () => {
+  const a = pending(
+    "a",
+    "2026-10-28T07:00:00.000Z",
+    "2026-10-28T15:00:00.000Z",
+  );
+  const b = pending(
+    "b",
+    "2026-10-29T07:00:00.000Z",
+    "2026-10-29T15:00:00.000Z",
+  );
+
+  it("übernimmt einen Timing-Eintrag mit genau gleichen Zeiten, sonst neu", () => {
+    const plan = planSickPush(
+      [a, b],
+      [
+        timingEntry(
+          "/time-entries/1",
+          "2026-10-28T08:00:00+01:00",
+          "2026-10-28T16:00:00+01:00",
+        ),
+        // anderes Ende: kein Treffer
+        timingEntry(
+          "/time-entries/2",
+          "2026-10-29T08:00:00+01:00",
+          "2026-10-29T12:00:00+01:00",
+        ),
+      ],
+      new Set(),
+    );
+    expect(plan.adopt).toEqual([{ id: "a", self: "/time-entries/1" }]);
+    expect(plan.create.map((entry) => entry.id)).toEqual(["b"]);
+  });
+
+  it("nimmt keine schon verknüpften oder laufenden Einträge", () => {
+    const plan = planSickPush(
+      [a],
+      [
+        timingEntry(
+          "/time-entries/1",
+          "2026-10-28T08:00:00+01:00",
+          "2026-10-28T16:00:00+01:00",
+        ),
+        timingEntry(
+          "/time-entries/3",
+          "2026-10-28T08:00:00+01:00",
+          "2026-10-28T16:00:00+01:00",
+          { is_running: true },
+        ),
+      ],
+      new Set(["/time-entries/1"]),
+    );
+    expect(plan.adopt).toEqual([]);
+    expect(plan.create).toEqual([a]);
   });
 });

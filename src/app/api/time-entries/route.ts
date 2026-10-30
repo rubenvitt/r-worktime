@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { overtimeService } from "@/services/overtime.service";
+import { pushPendingSickEntriesNow } from "@/services/sick-timing.service";
 import { EntryType } from "@/types/database";
 
 export async function GET(request: NextRequest) {
@@ -219,6 +220,11 @@ export async function POST(request: NextRequest) {
 
     // Invalidiere Overtime Cache nach neuer Time Entry
     overtimeService.invalidateCache(session.user.id);
+
+    // Krankheit mit gewähltem Krank-Projekt gleich nach Timing (best effort)
+    if (newEntry.type === EntryType.SICK) {
+      await pushPendingSickEntriesNow(session.user.id);
+    }
 
     return NextResponse.json(newEntry, { status: 201 });
   } catch (error) {

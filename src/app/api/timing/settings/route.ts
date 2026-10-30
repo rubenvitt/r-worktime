@@ -117,6 +117,7 @@ export async function PUT(request: NextRequest) {
       { status: 400 },
     );
   }
+  const turnsSickOn = Boolean(input.sickProjectId) && !existing?.sickProjectId;
   const turnsHolidaysOn =
     input.writeHolidays === true && !existing?.writeHolidays;
 
@@ -139,6 +140,9 @@ export async function PUT(request: NextRequest) {
     ...(input.sickProjectId !== undefined && {
       sickProjectId: input.sickProjectId,
     }),
+    // Krank nach Timing: ab dem Wählen des Projekts – früher angelegte
+    // Krank-Einträge bleiben nur lokal
+    ...(turnsSickOn && { sickSince: new Date() }),
     ...(turnsHolidaysOn && {
       holidaysSince: berlinDayStart(berlinTodayKey()),
     }),

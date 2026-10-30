@@ -155,7 +155,8 @@ model TimingIntegration {
   writeHolidays       Boolean   @default(false) // Feiertags-Einträge in Timing eintragen
   holidayProjectId    String?   // Timing-Projekt-Referenz für Feiertage
   holidaysSince       DateTime? @db.Date // erster Tag, der nach Timing geht (Einschalten)
-  sickProjectId       String?   // Timing-Projekt-Referenz für „Krank“ aus der Problemliste
+  sickProjectId       String?   // Timing-Projekt-Referenz für Krank-Einträge
+  sickSince           DateTime? // Krank-Einträge, die ab hier angelegt werden, gehen nach Timing (Projekt gewählt)
   lastSyncAt          DateTime?
   lastSyncStatus      String?
   lastSyncError       String?

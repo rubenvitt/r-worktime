@@ -19,6 +19,7 @@ import { dailyTargetHours } from "@/lib/reports/absences";
 import { loadOfficialHolidays } from "@/lib/reports/forecast-data";
 import { overtimeService } from "@/services/overtime.service";
 import { getUserSettings } from "@/services/settings.service";
+import { pushPendingSickEntriesNow } from "@/services/sick-timing.service";
 
 const absenceRangeSchema = z
   .object({
@@ -42,7 +43,8 @@ const absenceRangeSchema = z
 // POST /api/time-entries/absences – Urlaub/Krankheit für einen Zeitraum, mit dryRun als Vorschau.
 // Urlaub legt zusätzlich eine Absence (source MANUAL, kind VACATION) an und
 // verknüpft die Tage; Krankheit bleibt ohne Absence (siehe manualAbsenceFor).
-// Der Dialog schreibt nicht nach Timing.
+// Krankheit geht mit gewähltem Krank-Projekt nach Timing (siehe
+// sick-timing.service), Urlaub nicht.
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -150,6 +152,11 @@ export async function POST(request: NextRequest) {
         return txPlan;
       });
       if (plan.days.length > 0) overtimeService.invalidateCache(userId);
+      // Krankheit gleich nach Timing (begonnene Tage; den Rest holt der Sync
+      // nach, sobald der Tag begonnen hat)
+      if (type === EntryType.SICK && plan.days.length > 0) {
+        await pushPendingSickEntriesNow(userId);
+      }
     }
 
     const response: AbsenceRangeResponse = {

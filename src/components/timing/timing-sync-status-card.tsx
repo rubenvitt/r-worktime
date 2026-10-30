@@ -122,8 +122,19 @@ function StatsDetails({ stats }: { stats: SyncStats }) {
   );
 }
 
-/** Feiertage nach Timing im letzten Lauf – nur, wenn etwas passiert ist. */
-function HolidayStatsLine({ stats }: { stats: SyncStats["holidays"] }) {
+/** Feiertage bzw. Krank-Einträge nach Timing im letzten Lauf – nur, wenn etwas passiert ist. */
+function PushStatsLine({
+  stats,
+  label,
+  one,
+  many,
+}: {
+  stats: SyncStats["holidays"] | SyncStats["sick"] | undefined;
+  /** z. B. „Feiertage in Timing“ */
+  label: string;
+  one: string;
+  many: string;
+}) {
   // Ältere Läufe kennen das Feld nicht
   if (!stats) return null;
   const done = stats.created + stats.adopted;
@@ -132,14 +143,13 @@ function HolidayStatsLine({ stats }: { stats: SyncStats["holidays"] }) {
     <div className="space-y-1 text-[13px]">
       {done > 0 ? (
         <p className="text-muted-foreground">
-          Feiertage in Timing: {stats.created} eingetragen
+          {label}: {stats.created} eingetragen
           {stats.adopted > 0 ? `, ${stats.adopted} übernommen` : ""}
         </p>
       ) : null}
       {stats.failed > 0 ? (
         <p className="text-warning">
-          {plural(stats.failed, "Feiertag", "Feiertage")} nicht in Timing
-          eingetragen
+          {plural(stats.failed, one, many)} nicht in Timing eingetragen
           {stats.error ? `: ${stats.error}` : "."} Der nächste Lauf versucht es
           erneut.
         </p>
@@ -252,7 +262,18 @@ export function TimingSyncStatusCard({
               />
             </StatStrip>
             <StatsDetails stats={lastStats} />
-            <HolidayStatsLine stats={lastStats.holidays} />
+            <PushStatsLine
+              stats={lastStats.holidays}
+              label="Feiertage in Timing"
+              one="Feiertag"
+              many="Feiertage"
+            />
+            <PushStatsLine
+              stats={lastStats.sick}
+              label="Krank in Timing"
+              one="Krank-Eintrag"
+              many="Krank-Einträge"
+            />
           </>
         ) : null}
       </PanelBody>
