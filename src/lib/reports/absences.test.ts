@@ -575,3 +575,23 @@ describe("buildAbsenceReport", () => {
     });
   });
 });
+
+describe("buildAbsenceReport – Heiligabend und Silvester", () => {
+  it("belastet das Urlaubskonto am 24.12. und 31.12. höchstens mit ½ Tag", () => {
+    const report = buildAbsenceReport(
+      input({
+        entries: [
+          // ganzer Tag aus Timewarp (Zeitraum ohne halben Tag)
+          { dateKey: "2026-12-23", type: "VACATION", hours: 8 },
+          { dateKey: "2026-12-24", type: "VACATION", hours: 8 },
+          { dateKey: "2026-12-31", type: "VACATION", hours: 4 },
+        ],
+      }),
+    );
+    const byKey = new Map(report.days.map((d) => [d.dateKey, d]));
+    expect(byKey.get("2026-12-23")?.days.vacation).toBe(1);
+    expect(byKey.get("2026-12-24")?.days.vacation).toBe(0.5);
+    expect(byKey.get("2026-12-31")?.days.vacation).toBe(0.5);
+    expect(report.account.planned).toBe(2);
+  });
+});
