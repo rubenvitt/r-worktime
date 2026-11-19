@@ -31,9 +31,14 @@
 //   „Unbezahlt“ wie die geprüften Tage.
 // - Vorrang je Tag (höchstens ein Tag): Feiertag, Krankheit, Urlaub,
 //   Sonderurlaub, Bildungsurlaub, Unbezahlt, Überstundenabbau.
+// - Heiligabend und Silvester (HALF_VACATION_DAYS) belasten das Urlaubskonto
+//   an Arbeitstagen höchstens mit ½ Tag – wie in Timewarp, auch wenn der
+//   Eintrag über den ganzen Tag geht (Timewarp bucht den Zeitraum ohne
+//   halben Tag, der Abgleich legt dort 8 h an, damit der Saldo stimmt).
 
 import type { AbsenceKind } from "@/lib/absences/kinds";
 import { weekdayOfKey } from "@/lib/dates";
+import { isHalfVacationDay } from "@/lib/vacation-planner";
 
 export type AbsenceEntryType =
   | "VACATION"
@@ -366,7 +371,12 @@ export function buildAbsenceReport(input: AbsenceReportInput): AbsenceReport {
           category === "holiday" && holidayName !== undefined
             ? 1
             : hoursToAbsenceDays(hours[category], dailyHours);
-        const value = Math.min(categoryDays, capacity);
+        // Heiligabend/Silvester kosten höchstens ½ Urlaubstag
+        const limit =
+          category === "vacation" && isHalfVacationDay(dateKey)
+            ? Math.min(capacity, 0.5)
+            : capacity;
+        const value = Math.min(categoryDays, limit);
         counted[category] = value;
         capacity -= value;
       }
